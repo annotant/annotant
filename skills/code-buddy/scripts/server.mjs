@@ -218,7 +218,8 @@ async function handle(req, res) {
       }
       // history=1: every step of every run, for the widget's debug panel.
       const history = url.searchParams.get('history') === '1'
-      return send(res, 200, await store.list(route ?? undefined, { history }), cors)
+      const comments = await store.list(route ?? undefined, { history })
+      return send(res, 200, comments.map(withNotified), cors)
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
@@ -258,10 +259,27 @@ async function handle(req, res) {
 
 /**
  * By comment id, when last seen active: when it last opened (its latest
- * `open` event) and its latest reader message, as `<id> <body>`.
- * @type {Map<string, { opened: number, text: string }>}
+ * `open` event), its latest reader message, as `<id> <body>`, and when the
+ * manager was sent the line for that opening.
+ * @type {Map<string, { opened: number, text: string, notified: string }>}
  */
 const seen = new Map()
+
+/**
+ * An open comment with `notifiedAt`, once the manager was sent its line: the
+ * widget tells a manager slow to start it (busy with another turn) from one
+ * not told yet. Never stored in the file.
+ * @template {{ id: string, state: string, events: { state: string }[] }} T
+ * @param {T} comment
+ * @returns {T & { notifiedAt?: string }}
+ */
+function withNotified(comment) {
+  const known = seen.get(comment.id)
+  const opened = comment.events.findLastIndex((event) => event.state === 'open')
+  return comment.state === 'open' && known?.opened === opened
+    ? { ...comment, notifiedAt: known.notified }
+    : comment
+}
 
 /** The line for a comment that is no longer active, by where it went. */
 const goneLine = (id, state) =>
@@ -326,13 +344,15 @@ async function tick(first) {
     if (previous && previous.opened !== opened) {
       console.log(goneLine(comment.id, comment.events[opened - 1]?.state))
     }
+    let notified = previous?.notified ?? ''
     if (previous === undefined || previous.opened !== opened) {
       const kind = latestReply(comment) ? 'FOLLOWUP' : first ? 'OPEN' : 'NEW'
       console.log(`${kind} ${describe(comment)}`)
+      notified = new Date().toISOString()
     } else if (previous.text !== text) {
       console.log(`EDIT ${describe(comment)}`)
     }
-    seen.set(comment.id, { opened, text })
+    seen.set(comment.id, { opened, text, notified })
   }
   for (const id of seen.keys()) {
     if (current.has(id)) continue

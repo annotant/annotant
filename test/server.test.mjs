@@ -80,6 +80,10 @@ async function nextLine(prefix, from) {
   throw new Error(`no line starting with ${prefix}`)
 }
 
+/** @param {string} route The first comment listed for that page. */
+const firstOn = async (route) =>
+  (await json(await fetch(`${base}/api/comments?route=${route}`)))[0]
+
 const post = (body, headers = {}) =>
   fetch(`${base}/api/comments`, {
     method: 'POST',
@@ -186,6 +190,24 @@ test('groups the anchor of a new comment, and describes it to the manager', asyn
   })
   const event = await nextLine(`NEW ${created.id} `, printed)
   assert.match(event, / section="Beans" element=<h2> "Ethiopia Guji" body="Bigger"$/)
+})
+
+test('says when it sent an open comment to the manager, until an agent claims it', async () => {
+  const creating = output.length
+  const created = await json(
+    await post(JSON.stringify({ route: '/notified', body: 'Hi' })),
+  )
+  await nextLine(`NEW ${created.id} `, creating)
+  const open = await firstOn('/notified')
+  assert.ok(open.notifiedAt >= created.createdAt, open.notifiedAt)
+
+  await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    created.id,
+    '--project',
+    root,
+  ])
+  assert.equal((await firstOn('/notified')).notifiedAt, undefined)
 })
 
 test('refuses a move the comment cannot make with 409, in words for the reader', async () => {
