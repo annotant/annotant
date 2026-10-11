@@ -55,8 +55,8 @@ first start. Do not add `--plugin-dir .`: the plugin would load twice. On
 Windows, git creates the link only with `core.symlinks` enabled (Developer
 Mode, then `git config core.symlinks true` before cloning).
 
-Edits are read from your clone: after a change to `skills/code-buddy/SKILL.md`
-or `hooks/`, run `/reload-plugins` before the next `/playground`.
+Edits are read from your clone: after a change to `skills/code-buddy/SKILL.md`,
+`agents/` or `hooks/`, run `/reload-plugins` before the next `/playground`.
 
 It builds the widget (a dev build, see below) when `widget/dist/` is missing,
 a release build or older than `widget/src/`, copies `playground/` to
@@ -95,7 +95,8 @@ What to do after a change, in a running session, is in the README's
 | `.claude-plugin/`                     | Plugin and marketplace manifests                                    |
 | `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: file locks and progress, in every agent |
 | `types/index.d.ts`                    | The values the hooks keep for the session (`$.state`)               |
-| `skills/code-buddy/SKILL.md`          | The skill Claude reads: modes, agent prompts                        |
+| `agents/worker.md`                    | The agent that handles one comment (`code-buddy:worker`): its steps and rules |
+| `skills/code-buddy/SKILL.md`          | The skill Claude reads: modes, the manager's dispatch               |
 | `skills/code-buddy/scripts/`          | Node.js scripts (ES modules, JSDoc types), run by the skill         |
 | `skills/code-buddy/scripts/lib/format.mjs` | The comments file's format: its version, states, moves and types; the reference for every part that reads it |
 | `docs/comments-file.md` | The comments file and the step files: where they live, their schemas, the states diagram |

@@ -200,7 +200,7 @@ What to do after a change:
 
 | You changed                           | To see it                                              |
 | ------------------------------------- | ------------------------------------------------------ |
-| `SKILL.md`, `hooks/*`                 | `/reload-plugins` in the session, or a new session     |
+| `SKILL.md`, `agents/*`, `hooks/*`     | `/reload-plugins` in the session, or a new session     |
 | `scripts/*.mjs` except the server     | Nothing: each call runs the script again               |
 | `scripts/server.mjs`, `scripts/lib/*` | Restart the server: run `/code-buddy:code-buddy` again |
 | `widget/src/*`                        | Rebuild the widget, then reload the app page           |
@@ -223,14 +223,16 @@ Paths below are relative to `skills/code-buddy/`.
 
 | Path                                                   | What                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------- |
-| `SKILL.md`                                             | The skill: watch, init, update, uninstall; agent prompts   |
+| `SKILL.md`                                             | The skill: watch, init, update, uninstall                  |
 | `scripts/server.mjs`                                   | Local server: widget, API, events for the managing session |
 | `scripts/claim.mjs`, `resolve.mjs`, `ask.mjs`          | Used by the agents                                         |
 | `scripts/detect.mjs`, `verify-prod.mjs`, `migrate.mjs` | Used by `init` / `update`                                  |
 | `widget/src`                                           | The widget (React, TypeScript)                             |
 
-At the repository root, `hooks/register.ts` is the plugin's hooks module (a
-Claude Code mod, declared in `hooks/hooks.json`): file locks and live progress.
+At the repository root, `agents/worker.md` is the agent that handles a
+comment (`code-buddy:worker`): its steps and rules. `hooks/register.ts` is
+the plugin's hooks module (a Claude Code mod, declared in `hooks/hooks.json`):
+file locks and live progress.
 The values it keeps for the session are typed in `types/index.d.ts`, and
 `test/hooks.test.ts` tests it against Claude Code itself:
 

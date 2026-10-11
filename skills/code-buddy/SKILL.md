@@ -76,56 +76,29 @@ given) resumes it and nothing is lost.
 | `ASKED` / `ANSWERED <id>` | The subagent put a question, or its answer to a follow-up, in the thread; the reader resolves it or replies, as `FOLLOWUP`. Nothing to do. |
 | `RESOLVED` / `CANCELLED` / `DELETED <id>` | TaskStop that comment's subagent if it still runs; drop it from the queue. |
 
-Start subagents with the Agent tool: `run_in_background: true`, `name:
-"cb-<first 8 chars of id>"`, and the prompt below with SKILL, PROJECT, the
-config values and the server line filled in. Run at most three at once and
-queue the rest. `CANCELLED` means the reader stopped the run: the discussion
-stays open and comes back as `FOLLOWUP` or `NEW` when they send it again.
+Start subagents with the Agent tool: `subagent_type: "code-buddy:worker"`,
+`run_in_background: true`, `name: "cb-<first 8 chars of id>"`, and this
+prompt, filled in and nothing more (the agent holds the steps and reads
+`.code-buddy.json` itself):
+
+```
+<id>
+<server line>
+SKILL=<SKILL>
+PROJECT=<PROJECT>
+```
+
+If the Agent tool does not know `code-buddy:worker`, stop and tell the user
+to run `/reload-plugins` or start a new session; never use another agent type.
+
+Run at most three at once and queue the rest. `CANCELLED` means the reader
+stopped the run: the discussion stays open and comes back as `FOLLOWUP` or
+`NEW` when they send it again.
 
 When a subagent returns, tell the user its one line (nothing for
 `CANCELLED`). If it returned `QUESTION: …`, relay the question in the chat
 too; when the user answers there rather than in the widget, SendMessage the
 answer to the same subagent.
-
-### Subagent prompt
-
-> Handle the code-buddy comment `<id>` of the project PROJECT. Server line: `<line>`.
->
-> 1. Claim it: `node SKILL/scripts/claim.mjs <id> --project PROJECT`. This
->    shows the reader a spinner and your progress, and ties your edits to the
->    comment's file locks. If the claim fails because the comment was
->    cancelled, resolved or is waiting on the reader, stop and reply
->    `CANCELLED`.
-> 2. Read the entry in `<commentsFile>` if the line is not enough: `route`,
->    `url`, and `anchor`: `section`, a text `quote` or a pointed `element`
->    (selector from `body`, tag, text, HTML excerpt). `route` `*` means the
->    whole app. `messages` holds the whole thread, the reader's comment first:
->    your earlier answers (`claude`) were applied; act on the reader's last
->    message. `state` says where it stands. A
->    `cancellation` field lists files an earlier, stopped agent left changed:
->    keep, finish or revert them to match the current text. When the element
->    is unclear, screenshot it with Playwright on `<devUrl>`.
-> 3. Make the change, only under `<editable>`, with the Edit and Write tools:
->    never write files from Bash (`sed -i`, scripts, redirections). Other
->    agents may edit the project at the same time: a hook locks every file you
->    write and blocks an edit, with an explanation, when another comment's
->    agent holds the file.
->    Then re-read the files you are changing and retry. If the hook says the
->    reader cancelled the comment, stop at once and reply `CANCELLED`.
-> 4. Run `<checks>`, and `<build>` when a component or a dependency changed.
->    Errors only in files you did not touch belong to another agent's work in
->    progress: re-run once, then ignore them.
-> 5. Resolve it with one or two sentences the reader will see:
->    `node SKILL/scripts/resolve.mjs <id> --project PROJECT "<answer>"` (pipe
->    the answer on stdin when it is long). On a thread resolved before, it
->    prints `answered`: your answer waits on the reader, who resolves it.
-> 6. Reply with one line saying what changed. If the comment is unclear or
->    needs a product decision, do not guess: ask it in the thread with
->    `node SKILL/scripts/ask.mjs <id> --project PROJECT "<question>"` (stdin
->    works too) and reply `QUESTION: <your question>`. To offer choices, add
->    2 to 6 `--option "<label>: <description>"` (`--multiple` to allow
->    several); the reader can still answer in their own words. Never use
->    AskUserQuestion: the reader would not see it.
 
 ### Follow-up message (to an existing subagent)
 

@@ -9,6 +9,11 @@ released to the `stable` branch.
 
 ### Changed
 
+- **A new comment's agent starts sooner.** Its steps and rules now ship as a
+  plugin agent, `code-buddy:worker` (`agents/worker.md`), which reads
+  `.code-buddy.json` itself: the managing session passes it the comment id,
+  the server line and two paths instead of writing a ~2,500-character prompt
+  for every new agent.
 - **A new comments file format (version 2).** `.code-buddy/comments.json` is
   now `{ "version": 2, "comments": [...] }`: each comment has an explicit
   `state` (`open`, `working`, `asking`, `answered`, `stopped`, `resolved`) and an `events`
