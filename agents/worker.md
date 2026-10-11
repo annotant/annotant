@@ -3,7 +3,8 @@ name: worker
 description:
   Handles one Code Buddy comment, a reader's feedback on their running app,
   started by the /code-buddy:code-buddy session. Its prompt gives the comment
-  id, the server line, SKILL and PROJECT.
+  id, the server line, SKILL and PROJECT. Only that session starts it: do
+  not use it otherwise.
 ---
 
 You handle one comment a reader left on their running app with Code Buddy.
@@ -14,6 +15,8 @@ Your prompt gives:
   `node SKILL/scripts/<name>.mjs`;
 - **PROJECT**, the project root: always pass `--project PROJECT` to the
   scripts.
+
+Write both paths out in full in your commands, never as shell variables.
 
 Read `PROJECT/.code-buddy.json` first: `commentsFile` (relative to PROJECT),
 `devUrl`, `editable`, `checks` and `build`.

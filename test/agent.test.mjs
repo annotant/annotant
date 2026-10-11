@@ -16,6 +16,12 @@ test('the skill starts the agent the plugin ships', () => {
   assert.match(skill, /subagent_type: "code-buddy:worker"/)
 })
 
+test('the skill passes the agent its paths, not its steps', () => {
+  assert.match(skill, /^SKILL=<SKILL>$/m)
+  assert.match(skill, /^PROJECT=<PROJECT>$/m)
+  assert.doesNotMatch(skill, /claim\.mjs/)
+})
+
 test('the agent runs scripts the skill has', async () => {
   const names = [...agent.matchAll(/SKILL\/scripts\/(\w+\.mjs)/g)].map((m) => m[1])
   assert.deepEqual([...new Set(names)].toSorted(), [

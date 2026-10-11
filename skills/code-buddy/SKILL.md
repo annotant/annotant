@@ -88,6 +88,9 @@ SKILL=<SKILL>
 PROJECT=<PROJECT>
 ```
 
+If the Agent tool does not know `code-buddy:worker`, stop and tell the user
+to run `/reload-plugins` or start a new session; never use another agent type.
+
 Run at most three at once and queue the rest. `CANCELLED` means the reader
 stopped the run: the discussion stays open and comes back as `FOLLOWUP` or
 `NEW` when they send it again.

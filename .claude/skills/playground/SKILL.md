@@ -40,5 +40,5 @@ repository root.
 
 Tell the user, in one line, that the changes stay in `.playground/` and that
 `/playground keep` resumes them; `/playground` alone starts over. After a
-change to `skills/code-buddy/SKILL.md`, `agents/` or `hooks/`, they need `/reload-plugins`
-before the next `/playground`.
+change to `skills/code-buddy/SKILL.md`, `agents/` or `hooks/`, they need
+`/reload-plugins` before the next `/playground`.
