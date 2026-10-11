@@ -47,7 +47,7 @@ test('an open comment says Claude is busy once the manager has had it a while', 
   const waiting = await screen.findByTestId('cb-working')
   expect(waiting.textContent).toBe('Waiting for Claude…')
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(8000)
+    await vi.advanceTimersByTimeAsync(15_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
     'Claude has your comment but is busy…',
@@ -55,13 +55,19 @@ test('an open comment says Claude is busy once the manager has had it a while', 
 })
 
 test('an open comment the manager was not sent yet only waits', async () => {
-  fakeServer([comment({ createdAt: '2020-01-01T10:00:00.000Z' })])
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  fakeServer([comment()])
   openThread('c1')
   renderWidget()
 
-  expect((await screen.findByTestId('cb-working')).textContent).toBe(
-    'Waiting for Claude…',
-  )
+  await screen.findByTestId('cb-working')
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000)
+  })
+  expect(screen.getByTestId('cb-working').textContent).toBe('Waiting for Claude…')
 })
 
 test('an open comment sent to the manager long ago says Claude is busy at once', async () => {

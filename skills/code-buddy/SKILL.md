@@ -49,8 +49,7 @@ one line, that `/code-buddy:code-buddy` (with the same directory, if one was
 given) resumes it and nothing is lost; and in one more, to keep this session
 for Code Buddy and work in another one: a server line only reaches you
 between two turns, so while you answer anything else, new comments wait.
-Keep your own turns short for the same reason: one line per event, no long
-relays.
+For the same reason, keep to one line per event.
 
 1. Start the server through the Monitor tool with the maximum timeout, and
    re-arm it whenever it expires (state lives in files, restarting is safe):

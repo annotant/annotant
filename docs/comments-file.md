@@ -207,3 +207,11 @@ comments: `progress`, the last 10 steps of the run in progress, and with
 `history=1` (the debug panel), `history`, every step of every run. With a dev
 widget, `GET /api/debug/steps/<id>` serves both files as they are on disk,
 history first, which the debug panel opens in a tab.
+
+## What the server adds
+
+On an open comment, the server also serves `notifiedAt`, an ISO date: when it
+printed that opening's line (`OPEN`, `NEW` or `FOLLOWUP`) for the manager. It
+lives in the server's memory, never in `comments.json`: a restart prints the
+line again and dates it anew. The widget reads "Claude has your comment but is
+busy…" when no agent has claimed the comment 15 seconds later.

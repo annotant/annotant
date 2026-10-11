@@ -104,10 +104,11 @@ const STEP_ICONS: Record<string, IconName> = {
 
 const SLIDE_MS = 250
 /**
- * How long after the manager was sent a comment it may take to start an agent
- * before the widget says it is busy: it only reads the line between two turns.
+ * How long after the manager was sent a comment an agent may take to claim it
+ * before the widget says the manager is busy: the manager only reads the line
+ * between two turns, and a start alone often takes ten seconds.
  */
-const BUSY_AFTER_MS = 8000
+const BUSY_AFTER_MS = 15_000
 
 function StepLine({
   step,
@@ -203,7 +204,7 @@ function Waiting({ notifiedAt }: { notifiedAt: string | undefined }) {
       data-testid="cb-working"
       title={
         busy
-          ? 'The Claude session watching this app is busy with something else; it starts on your comment once it is done.'
+          ? 'The Claude session watching this app is answering something else, or already runs three agents; it starts on your comment once it is free.'
           : undefined
       }
     >

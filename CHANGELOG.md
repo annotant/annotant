@@ -53,7 +53,7 @@ released to the `stable` branch.
 ### Added
 
 - **The widget says when Claude is busy.** A comment the managing session has
-  had for 8 seconds without starting an agent now reads "Claude has your
+  had for 15 seconds without an agent claiming it now reads "Claude has your
   comment but is busy…" instead of "Waiting for Claude…": that session only
   hears of a comment between two of its turns. `/code-buddy:code-buddy` now
   tells you to keep its session for Code Buddy and work in another one.
