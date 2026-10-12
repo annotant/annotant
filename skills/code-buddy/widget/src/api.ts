@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
-const POLL_ACTIVE_MS = 3000
-const POLL_IDLE_MS = 10000
+const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
+// The server pushes its changes: this reload only catches what a dropped
+// stream missed.
+const POLL_MS = 30_000
 const CHANGED = 'code-buddy:changed'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -35,7 +37,71 @@ async function failure(response: Response): Promise<string> {
 
 const changed = () => window.dispatchEvent(new Event(CHANGED))
 
-function usePolledComments(url: string | undefined) {
+/** The server's changes: one stream per tab, whatever the number of lists. */
+let stream: EventSource | undefined
+let streamUsers = 0
+/** The reconnection planned after the browser gave the stream up. */
+let retry: ReturnType<typeof setTimeout> | undefined
+const RETRY_MS = 5000
+
+/**
+ * Opens the stream. Each opening reloads the lists: the first, for the
+ * changes made before the server knew this tab; the next, for those made
+ * while it was away.
+ */
+function connect() {
+  const source = new EventSource(EVENTS)
+  source.addEventListener('changed', changed)
+  source.addEventListener('open', changed)
+  source.addEventListener('error', () => {
+    // Dropped: the lists say whether the server is still there. The browser
+    // reconnects by itself, unless something else answered: then we do.
+    changed()
+    if (source.readyState !== EventSource.CLOSED || retry) return
+    retry = setTimeout(() => {
+      retry = undefined
+      disconnect()
+      if (streamUsers > 0 && !document.hidden) connect()
+    }, RETRY_MS)
+  })
+  stream = source
+}
+
+function disconnect() {
+  clearTimeout(retry)
+  retry = undefined
+  stream?.close()
+  stream = undefined
+}
+
+/**
+ * Closed while the tab is hidden: each stream holds one of the few
+ * connections a browser opens to the server, which every tab shares.
+ */
+function onVisibility() {
+  disconnect()
+  if (!document.hidden) connect()
+}
+
+/**
+ * Reloads the lists each time the server says a comment changed, until the
+ * returned function is called by every user.
+ */
+function listen(): () => void {
+  // An older browser, or a test without it: the slow reload alone.
+  if (typeof EventSource === 'undefined') return () => undefined
+  if (streamUsers++ === 0) {
+    if (!document.hidden) connect()
+    document.addEventListener('visibilitychange', onVisibility)
+  }
+  return () => {
+    if (--streamUsers > 0) return
+    document.removeEventListener('visibilitychange', onVisibility)
+    disconnect()
+  }
+}
+
+function useCommentList(url: string | undefined) {
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [loaded, setLoaded] = useState(false)
   const [reachable, setReachable] = useState(true)
@@ -52,35 +118,35 @@ function usePolledComments(url: string | undefined) {
     }
   }, [url])
 
-  const hasOpen = comments.some((comment) => comment.state !== 'resolved')
-
   useEffect(() => {
     if (!url) return undefined
     // load() never rejects: it records failures as `reachable: false`.
     const reload = () => void load()
     reload()
-    const timer = setInterval(reload, hasOpen ? POLL_ACTIVE_MS : POLL_IDLE_MS)
+    const timer = setInterval(reload, POLL_MS)
     window.addEventListener(CHANGED, reload)
+    const unlisten = listen()
     return () => {
       clearInterval(timer)
       window.removeEventListener(CHANGED, reload)
+      unlisten()
     }
-  }, [url, load, hasOpen])
+  }, [url, load])
 
   return { comments, loaded, reachable }
 }
 
 export function useComments(route: string) {
-  return usePolledComments(`${API}?route=${encodeURIComponent(route)}`)
+  return useCommentList(`${API}?route=${encodeURIComponent(route)}`)
 }
 
 export function useAllComments(enabled: boolean) {
-  return usePolledComments(enabled ? `${API}?all=1` : undefined)
+  return useCommentList(enabled ? `${API}?all=1` : undefined)
 }
 
 /** Every comment with every step of every run: the debug panel's list. */
 export function useCommentHistory(enabled: boolean) {
-  return usePolledComments(enabled ? `${API}?all=1&history=1` : undefined)
+  return useCommentList(enabled ? `${API}?all=1&history=1` : undefined)
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {

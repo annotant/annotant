@@ -139,7 +139,7 @@ const time = (at: string | undefined) => (at ? Date.parse(at) : NaN)
 const stepKeyOf = (step: ReviewProgress) => step.id ?? `${step.at}:${step.kind}`
 
 /**
- * Every step of every run, from the history the panel polls, updated by the
+ * Every step of every run, from the history the panel loads, updated by the
  * live run's steps the widget may have received since.
  */
 function stepsOf(comment: ReviewComment): ReviewProgress[] {
@@ -274,7 +274,7 @@ export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[
     .map((event) => time(event.at))
   for (const { at, line } of comment.lines ?? []) {
     const printed = time(at)
-    // The gap from the opening to its hand-over: the server's poll.
+    // The gap from the opening to its hand-over: the server's read of the file.
     const opening = HANDOVER.test(line)
       ? openings.findLast((open) => open <= printed)
       : undefined
@@ -782,7 +782,7 @@ export function DebugPanel({
   }, [])
 
   if (!open) return null
-  // The history poll's copy also has the server's lines: the widget's own polls do not.
+  // The history's copy also has the server's lines: the widget's own lists do not.
   const polled = new Map(others.comments.map((entry) => [entry.id, entry]))
   const comments = [...held, ...others.comments]
     .filter(

@@ -9,6 +9,12 @@ released to the `stable` branch.
 
 ### Changed
 
+- **Changes show in the widget at once.** The server watches the comments
+  file's and the step files' folders, and pushes each change to the widget on
+  `GET /api/events` (server-sent events): a new step, state or answer shows in
+  well under a second, and the widget sends no request while nothing changes,
+  instead of asking every 3 seconds. A slow re-read stays behind both, for a
+  dropped stream or a mount whose writes the watches miss.
 - **A new comment's agent starts sooner.** Its steps and rules now ship as a
   plugin agent, `code-buddy:worker` (`agents/worker.md`), which reads
   `.code-buddy.json` itself: the managing session passes it the comment id,

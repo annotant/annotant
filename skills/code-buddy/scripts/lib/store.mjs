@@ -132,7 +132,8 @@ export async function stepFiles(project, id) {
   )
 }
 
-const progressPath = (project, id) => path.join(project.progressDir, `${id}.jsonl`)
+/** The step file of comment `id`'s current run. */
+export const progressPath = (project, id) => path.join(project.progressDir, `${id}.jsonl`)
 // Every step of the runs that ended, for the widget's debug panel; kept with a
 // dev build of the widget only (createStore's `history`).
 const historyPath = (project, id) => path.join(project.progressDir, `${id}.history.jsonl`)
