@@ -57,6 +57,12 @@ released to the `stable` branch.
   comment but is busy…" instead of "Waiting for Claude…": that session only
   hears of a comment between two of its turns. `/code-buddy:code-buddy` now
   tells you to keep its session for Code Buddy and work in another one.
+- **The widget says where a new comment stands.** "Waiting for Claude…" is
+  gone: a comment reads "Sent…" until the server hands it over to the managing
+  session, "Claude has your comment, an agent is starting…" once it has, and
+  "No agent has started. Is the /code-buddy session busy?" when no agent has
+  claimed it a minute later. The debug panel marks each hand-over and how
+  long the claim took after it.
 - **The hook log**, to check what the plugin's hooks do in a real session:
   `/code-buddy-debug on` turns it on in every session, `tail -f
   ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last
