@@ -107,10 +107,11 @@ export async function findToolCall(
 
 /**
  * The first message agent `id` received, from its transcript: the prompt the
- * session that started it wrote.
+ * session that started it wrote; and its type (`code-buddy:worker`), from the
+ * metadata Claude Code keeps next to it.
  * @param {string} id
  * @param {{ dir?: string, now?: number }} [options]
- * @returns {Promise<{ transcript: string, prompt: string } | undefined>}
+ * @returns {Promise<{ transcript: string, prompt: string, agentType?: string } | undefined>}
  */
 export async function findAgentPrompt(
   id,
@@ -131,7 +132,28 @@ export async function findAgentPrompt(
       continue
     }
     if (message?.role !== 'user') continue
-    return { transcript, prompt: clip(textOf(message.content)) }
+    const agentType = await agentTypeOf(transcript)
+    return {
+      transcript,
+      prompt: clip(textOf(message.content)),
+      ...(agentType ? { agentType } : {}),
+    }
   }
   return undefined
+}
+
+/**
+ * The agent's type, from the `.meta.json` next to its transcript.
+ * @param {string} transcript
+ * @returns {Promise<string | undefined>}
+ */
+async function agentTypeOf(transcript) {
+  try {
+    const meta = JSON.parse(
+      await readFile(transcript.replace(/\.jsonl$/, '.meta.json'), 'utf8'),
+    )
+    return typeof meta?.agentType === 'string' ? meta.agentType : undefined
+  } catch {
+    return undefined
+  }
 }

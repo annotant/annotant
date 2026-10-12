@@ -80,6 +80,15 @@ test("reads an agent's first message from its own transcript", async (t) => {
     transcript: agent,
     prompt,
   })
+  // Its type, from the metadata Claude Code writes next to the transcript.
+  await writeFile(
+    path.join(subagents, 'agent-a1aaaaaaaa.meta.json'),
+    JSON.stringify({ agentType: 'code-buddy:worker', name: 'cb-c1' }),
+  )
+  assert.equal(
+    (await findAgentPrompt('a1aaaaaaaa', { dir }))?.agentType,
+    'code-buddy:worker',
+  )
   assert.equal(await findAgentPrompt('c3cccccccc', { dir }), undefined)
   assert.equal(await findAgentPrompt('../../etc', { dir }), undefined)
   const inAMonth = Date.now() + 30 * 24 * 60 * 60 * 1000

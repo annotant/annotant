@@ -163,7 +163,27 @@ function sanitisePatch(input) {
  */
 const DEBUG_FINDERS = {
   tool: [TOOL_ID, findToolCall],
-  agent: [AGENT_ID, findAgentPrompt],
+  agent: [AGENT_ID, agentContext],
+}
+
+/** This plugin's root, whose `agents/` holds its agents' instructions. */
+const PLUGIN_ROOT = path.resolve(SKILL_DIR, '..', '..')
+
+/**
+ * What agent `id` was given: its first message, and for one of the plugin's
+ * agents, its instructions (`agents/<name>.md`). Claude Code keeps only the
+ * message: the file is read as it is now, which a change since the agent
+ * started makes differ.
+ * @param {string} id
+ */
+async function agentContext(id) {
+  const agent = await findAgentPrompt(id)
+  if (!agent) return undefined
+  const name = /^code-buddy:([\w-]+)$/.exec(agent.agentType ?? '')?.[1]
+  const file = name && `agents/${name}.md`
+  const text =
+    file && (await readFile(path.join(PLUGIN_ROOT, file), 'utf8').catch(() => ''))
+  return { ...agent, ...(file && text ? { instructions: { file, text } } : {}) }
 }
 
 async function handle(req, res) {

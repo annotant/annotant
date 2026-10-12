@@ -220,6 +220,9 @@ With `history=1` (the debug panel), every comment the server printed a line
 about since it started also has `lines`: `{ at, line }` objects, oldest first,
 each line as printed (the last 50). They live in its memory too, and go when
 the comment is deleted. With a dev widget, `GET /api/debug/agent/<agent>`
-serves the first message the agent of a `working` event received, the prompt
-the manager wrote, read in Claude Code's transcripts of the last 7 days: the
-panel checks it holds one of the lines that may have started its first run.
+serves what the agent of a `working` event was given: its first message,
+exactly the prompt the manager wrote, read in Claude Code's transcripts of
+the last 7 days, and its type (`agentType`, from the `.meta.json` next to the
+transcript); for one of the plugin's agents, its instructions
+(`instructions`, `agents/<name>.md`), read as it is now: Claude Code does not
+keep it.

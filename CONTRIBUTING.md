@@ -78,9 +78,10 @@ deleted, and the server serves them with `history=1`; a link in the panel opens 
 holds them. A click on a tool call's id unfolds what the agent sent and got
 back: the server reads it in Claude Code's transcripts of the last 7 days
 (`~/.claude/projects/`), with a dev widget only. The timeline also shows the
-lines the server printed for the manager, and under each agent's first run its
-first message, the prompt it was started with, marked when it holds none of the
-lines (`OPEN`, `NEW`, `FOLLOWUP`, `EDIT`) printed since the run before. `npm run build` leaves the panel out: the released `widget.js`
+lines the server printed for the manager, and on each agent's first run a
+Context link that opens, in a dialog, what it was given: its instructions
+(`agents/worker.md`, as on disk now: Claude Code does not keep them) and its
+first message exactly as it was sent, read in its transcript. `npm run build` leaves the panel out: the released `widget.js`
 has none of its code (`test/bundle.test.mjs` checks it).
 
 To try a change in an app of your own instead, start Claude Code in it with

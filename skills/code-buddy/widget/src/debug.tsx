@@ -4,10 +4,13 @@
 import {
   Fragment,
   type ReactNode,
+  useCallback,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useCommentHistory } from './api'
 import type { ReviewComment, ReviewMessage, ReviewProgress, ReviewState } from './domain'
 import { readSession, writeSession } from './session'
@@ -47,13 +50,19 @@ const DEBUG_CSS = `
 .cb-debug-sep small { font-weight: 400; text-transform: none; letter-spacing: 0; }
 .cb-debug-sep--agent { margin-top: 16px; color: var(--cb-accent-strong); font-size: 12px; }
 .cb-debug-sep--agent::before, .cb-debug-sep--agent::after { border-top: 2px solid var(--cb-accent); }
-.cb-debug-sep--agent span { padding: 2px 10px; border: 2px solid var(--cb-accent); border-radius: 999px; background: var(--cb-accent-weak); }
+.cb-debug-sep--agent > span { padding: 2px 10px; border: 2px solid var(--cb-accent); border-radius: 999px; background: var(--cb-accent-weak); }
 .cb-debug-file { align-self: flex-start; color: var(--cb-accent-strong); }
 .cb-debug-runs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--cb-muted); }
 .cb-debug-run { border: 0; cursor: pointer; font-size: inherit; }
 .cb-debug-run[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent-strong); }
-.cb-debug-prompt { display: flex; flex-direction: column; gap: 4px; }
-.cb-debug-prompt > .cb-debug-id { align-self: flex-start; }
+.cb-debug-context { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cb-debug-context:hover { color: var(--cb-accent); }
+.cb-debug-context:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; border-radius: 2px; }
+.cb-debug-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(19, 41, 75, .35); }
+.cb-debug-dialog { width: min(860px, 100%); max-height: min(88vh, 960px); display: flex; flex-direction: column; background: var(--cb-surface); color: var(--cb-text); border: 1px solid var(--cb-border); border-radius: 12px; box-shadow: 0 12px 32px rgba(19, 41, 75, .25); font-size: 12px; overflow: hidden; outline: none; }
+.cb-debug-dialog .cb-debug-call pre { max-height: 45vh; }
+.cb-debug-layer { margin: 6px 0 0; font-size: 12px; font-weight: 600; }
+.cb-debug-layer small { color: var(--cb-muted); font-weight: 400; }
 `
 
 // Shown or not, and the raw JSON unfolded or not: shared by the header's toggle
@@ -189,7 +198,17 @@ export function withSeparators(
 const agentName = (agent: string) =>
   agent === 'main' ? 'main session' : agent.slice(0, 8)
 
-function SeparatorRow({ separator }: { separator: Separator }) {
+/**
+ * A run's separator. `context`: the link to what its agent was given, on the
+ * agent's first run.
+ */
+function SeparatorRow({
+  separator,
+  context,
+}: {
+  separator: Separator
+  context?: ReactNode
+}) {
   const { run, agent, newAgent } = separator
   return (
     <li
@@ -199,6 +218,7 @@ function SeparatorRow({ separator }: { separator: Separator }) {
       <span>
         {newAgent && agent ? `Agent ${agentName(agent)} · run ${run}` : `Run ${run}`}
         {!newAgent && agent && <small> · same agent</small>}
+        {context && <> · {context}</>}
       </span>
     </li>
   )
@@ -345,9 +365,14 @@ interface ToolCall {
   error?: boolean
 }
 
+/** What an agent was given, as the server read it. */
 interface AgentPrompt {
   transcript: string
+  /** Its first message, exactly as it was sent. */
   prompt: string
+  agentType?: string
+  /** Its instructions, for one of the plugin's agents, as on disk now. */
+  instructions?: { file: string; text: string }
 }
 
 /** A comment's step files, every run's, as the server has them on disk. */
@@ -365,26 +390,6 @@ async function fetchDebug<T>(path: string): Promise<T | null> {
   } catch {
     return null
   }
-}
-
-/** The lines that may start an agent: the manager passes them on in its prompt. */
-const STARTING_LINE = /^(OPEN|NEW|FOLLOWUP|EDIT) /
-
-/**
- * The lines the server printed that may have started an agent on the comment
- * between the run before `run` and `run`: its agent's prompt should hold one
- * of them as printed.
- */
-export function linesBefore(comment: ReviewComment, run: string): string[] {
-  const runs = runsOf(comment)
-  const startOf = (id: string | undefined) =>
-    time(comment.events.find((event) => event.run === id)?.at)
-  const started = startOf(run)
-  const previous =
-    runs.indexOf(run) > 0 ? startOf(runs[runs.indexOf(run) - 1]) : -Infinity
-  return (comment.lines ?? []).flatMap(({ at, line }) =>
-    STARTING_LINE.test(line) && time(at) > previous && time(at) <= started ? [line] : [],
-  )
 }
 
 /** The first run of each agent but the main session's: where its prompt shows. */
@@ -465,36 +470,96 @@ const TranscriptName = ({
 )
 
 /**
- * The first message an agent received, compared with `lines`, the server
- * lines it should hold one of as printed.
+ * What an agent was given, in a dialog over the page: its instructions, and
+ * its first message exactly as Claude Code recorded it. Escape, the backdrop
+ * or ✕ close it.
  */
-function FirstMessage({ agent, lines }: { agent: string; lines: string[] }) {
+function AgentPromptDialog({ agent, onClose }: { agent: string; onClose: () => void }) {
+  const [found, setFound] = useState<AgentPrompt | null>()
+  const dialog = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    void fetchDebug<AgentPrompt>(`agent/${agent}`).then(setFound)
+  }, [agent])
+  useEffect(() => {
+    dialog.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
   return (
-    <TranscriptFold
-      load={() => fetchDebug<AgentPrompt>(`agent/${agent}`)}
-      label="First message"
-      title="Show the prompt the agent was started with"
-      render={({ transcript, prompt }) => (
-        <>
-          <TranscriptName transcript={transcript} />
-          <pre>{prompt}</pre>
-          {lines.length === 0 ? (
+    // The backdrop closes it on a click; the keyboard has Escape and the close button.
+    <div
+      className="cb-debug-backdrop cb-live"
+      onClick={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div
+        ref={dialog}
+        className="cb-debug-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`What agent ${agentName(agent)} was given`}
+        tabIndex={-1}
+      >
+        <header className="cb-debug-head">
+          <h2>
+            Agent {agentName(agent)}{' '}
+            <span className="cb-debug-hint">· what it was given</span>
+          </h2>
+          <IconButton icon="x" label="Close" onClick={onClose} />
+        </header>
+        <div className="cb-debug-body cb-debug-call">
+          {found === undefined ? (
+            <span className="cb-debug-empty">Reading the transcripts…</span>
+          ) : found === null ? (
             <span className="cb-debug-empty">
-              No server line since the server started to compare it with.
+              Not in Claude Code's transcripts of the last 7 days.
             </span>
-          ) : lines.some((line) => prompt.includes(line)) ? (
-            <span className="cb-debug-empty">Holds the server line as printed.</span>
           ) : (
             <>
-              <span className="cb-debug-error">
-                Does not hold the server line as printed:
-              </span>
-              <pre>{lines.join('\n')}</pre>
+              <h3 className="cb-debug-layer">
+                Agent{found.agentType && ` ${found.agentType}`}{' '}
+                <small>
+                  ·{' '}
+                  {found.instructions
+                    ? `${found.instructions.file}, as on disk now`
+                    : 'instructions not found'}
+                </small>
+              </h3>
+              {found.instructions && <pre>{found.instructions.text}</pre>}
+              <h3 className="cb-debug-layer">
+                First message <small>· exactly as it was sent</small>
+              </h3>
+              <pre title={found.transcript}>{found.prompt}</pre>
             </>
           )}
-        </>
-      )}
-    />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** A link on the agent's first run that opens what it was given in a dialog. */
+function AgentPromptLink({ agent }: { agent: string }) {
+  // The panel it opens in, set by the click: in the separator, the dialog
+  // would take its capitals and its pill.
+  const [panel, setPanel] = useState<Element | null>(null)
+  // Stable: the dialog takes the focus again whenever its onClose changes.
+  const close = useCallback(() => setPanel(null), [])
+  return (
+    <>
+      <button
+        type="button"
+        className="cb-debug-context"
+        aria-haspopup="dialog"
+        title="What this agent was given: its instructions and its first message"
+        onClick={(event) => setPanel(event.currentTarget.closest('.cb-debug'))}
+      >
+        Context
+      </button>
+      {panel && createPortal(<AgentPromptDialog agent={agent} onClose={close} />, panel)}
+    </>
   )
 }
 
@@ -564,19 +629,17 @@ function Timeline({
         {withSeparators(timelineOf(comment, run), agentsOf(comment)).map(
           (event, index) =>
             event.kind === 'separator' ? (
-              // oxlint-disable-next-line react/no-array-index-key -- rebuilt on every change, like the rows
-              <Fragment key={index}>
-                <SeparatorRow separator={event} />
-                {/* Under the agent's first run, filtered or not; the main session's prompt is the user's. */}
-                {event.agent && firstRuns.has(event.run) && (
-                  <li className="cb-debug-prompt">
-                    <FirstMessage
-                      agent={event.agent}
-                      lines={linesBefore(comment, event.run)}
-                    />
-                  </li>
-                )}
-              </Fragment>
+              // One per run: keyed by it, its dialog stays open while rows come in above it.
+              <SeparatorRow
+                key={`run ${event.run}`}
+                separator={event}
+                // On the agent's first run, filtered or not; the main session's prompt is the user's.
+                context={
+                  event.agent && firstRuns.has(event.run) ? (
+                    <AgentPromptLink agent={event.agent} />
+                  ) : undefined
+                }
+              />
             ) : (
               <li
                 // The timeline is rebuilt from the comment on every change: its order is its identity.

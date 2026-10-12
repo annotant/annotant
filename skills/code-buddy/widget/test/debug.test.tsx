@@ -3,7 +3,6 @@ import { afterEach, expect, test, vi } from 'vitest'
 import {
   agentsOf,
   firstRunsOf,
-  linesBefore,
   timelineOf,
   toggleDebug,
   withSeparators,
@@ -367,9 +366,10 @@ test('a line marks each run, a bolder one where the agent changes', async () => 
   renderWidget()
   toggleDebug(true)
   const panel = within(await screen.findByTestId('cb-debug'))
-  expect(panel.getByText('Agent a1aaaaaa · run r1')).toBeTruthy()
+  // Followed by the link to what the agent was given.
+  expect(panel.getByText('Agent a1aaaaaa · run r1', { exact: false })).toBeTruthy()
   expect(panel.getByText('Run r2')).toBeTruthy()
-  expect(panel.getByText('Agent b2bbbbbb · run r3')).toBeTruthy()
+  expect(panel.getByText('Agent b2bbbbbb · run r3', { exact: false })).toBeTruthy()
 })
 
 const NEW_LINE = 'NEW c1 route=/ page-level body="Make the title bigger"'
@@ -403,7 +403,7 @@ const twoAgents = comment({
   ],
 })
 
-test('the timeline shows the lines the server printed, and which one started each run', () => {
+test('the timeline shows the lines the server printed', () => {
   expect(
     timelineOf(twoAgents).flatMap((event) =>
       event.kind === 'status' ? [event.detail ?? event.label] : [],
@@ -417,33 +417,6 @@ test('the timeline shows the lines the server printed, and which one started eac
     'by reader',
     FOLLOWUP_LINE,
     'by agent',
-  ])
-  expect(linesBefore(twoAgents, 'r1')).toEqual([NEW_LINE])
-  expect(linesBefore(twoAgents, 'r2')).toEqual([FOLLOWUP_LINE])
-  expect(linesBefore(comment(), 'r1')).toEqual([])
-})
-
-test('an edit before the claim may have started the agent too', () => {
-  const edited = comment({
-    state: 'working',
-    events: [
-      { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
-      {
-        at: '2026-01-01T10:00:03.000Z',
-        state: 'working',
-        by: 'agent',
-        run: 'r1',
-        agent: 'a1aaaaaaaa',
-      },
-    ],
-    lines: [
-      { at: '2026-01-01T10:00:01.000Z', line: NEW_LINE },
-      { at: '2026-01-01T10:00:02.000Z', line: 'EDIT c1 route=/ page-level body="B"' },
-    ],
-  })
-  expect(linesBefore(edited, 'r1')).toEqual([
-    NEW_LINE,
-    'EDIT c1 route=/ page-level body="B"',
   ])
 })
 
@@ -484,14 +457,19 @@ test("an agent's prompt shows under its first run only, never the main session's
   expect([...firstRunsOf(runs)]).toEqual(['r1', 'r4'])
 })
 
+/** The link on an agent's first run that opens its first message. */
+const CONTEXT = 'Context'
+
 /** The server's answer for an agent started with `line` in its prompt. */
 const prompt = (agent: string, line: string) =>
   Response.json({
     transcript: `/home/u/.claude/projects/-repo/s/subagents/agent-${agent}.jsonl`,
     prompt: `c1\n${line}\nSKILL=/skill\nPROJECT=/repo`,
+    agentType: 'code-buddy:worker',
+    instructions: { file: 'agents/worker.md', text: 'You handle one comment.' },
   })
 
-test("a new agent's first message unfolds, compared with the line that started it", async () => {
+test("a new agent's instructions and first message open in a dialog", async () => {
   const server = fakeServer([twoAgents]).fetch
   const comments = server.getMockImplementation()
   server.mockImplementation(async (input, init) =>
@@ -506,16 +484,22 @@ test("a new agent's first message unfolds, compared with the line that started i
   toggleDebug(true)
 
   const panel = within(await screen.findByTestId('cb-debug'))
-  const [first, second] = panel.getAllByRole('button', { name: 'First message' })
+  const [first, second] = panel.getAllByRole('button', { name: CONTEXT })
   fireEvent.click(first!)
-  expect(await panel.findByText(/SKILL=\/skill/)).toBeTruthy()
-  expect(panel.getByText('agent-a1aaaaaaaa.jsonl')).toBeTruthy()
-  expect(panel.getByText('Holds the server line as printed.')).toBeTruthy()
+  const dialog = within(
+    panel.getByRole('dialog', { name: 'What agent a1aaaaaa was given' }),
+  )
+  const sent = await dialog.findByText(/SKILL=\/skill/)
+  expect(sent.textContent).toBe(`c1\n${NEW_LINE}\nSKILL=/skill\nPROJECT=/repo`)
+  expect(dialog.getByText('You handle one comment.')).toBeTruthy()
+  expect(dialog.getByText(/agents\/worker\.md, as on disk now/)).toBeTruthy()
 
-  fireEvent.click(first!)
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(panel.queryByRole('dialog')).toBeNull()
   fireEvent.click(second!)
   expect(await panel.findByText(/rewritten by the manager/)).toBeTruthy()
-  expect(panel.getByText('Does not hold the server line as printed:')).toBeTruthy()
+  fireEvent.click(panel.getByRole('button', { name: 'Close' }))
+  expect(panel.queryByRole('dialog')).toBeNull()
 })
 
 test("a run shown alone keeps its agent's prompt where that agent started", async () => {
@@ -537,11 +521,11 @@ test("a run shown alone keeps its agent's prompt where that agent started", asyn
   toggleDebug(true)
 
   const panel = within(await screen.findByTestId('cb-debug'))
-  expect(panel.getAllByRole('button', { name: 'First message' })).toHaveLength(1)
+  expect(panel.getAllByRole('button', { name: CONTEXT })).toHaveLength(1)
   fireEvent.click(panel.getAllByRole('button', { name: 'r2' })[0]!)
-  expect(panel.queryByRole('button', { name: 'First message' })).toBeNull()
+  expect(panel.queryByRole('button', { name: CONTEXT })).toBeNull()
   fireEvent.click(panel.getAllByRole('button', { name: 'r1' })[0]!)
-  fireEvent.click(panel.getByRole('button', { name: 'First message' }))
+  fireEvent.click(panel.getByRole('button', { name: CONTEXT }))
   expect(
     await panel.findByText("Not in Claude Code's transcripts of the last 7 days."),
   ).toBeTruthy()
