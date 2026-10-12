@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { comment, fakeServer, openThread } from './server'
+import { comment, fakeEvents, fakeServer, openThread } from './server'
 import { renderWidget } from './widget'
 
 test('a claimed comment shows what Claude is doing, and can be cancelled', async () => {
@@ -133,11 +133,8 @@ test('a comment re-sent after a stop, with no reply, waits for a new agent', asy
   )
 })
 
-test('a sent comment says Claude has it once a poll brings the hand-over', async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true })
-  onTestFinished(() => {
-    vi.useRealTimers()
-  })
+test('a sent comment says Claude has it once the server pushes the hand-over', async () => {
+  const events = fakeEvents()
   const served = [comment()]
   fakeServer(served)
   openThread('c1')
@@ -145,9 +142,7 @@ test('a sent comment says Claude has it once a poll brings the hand-over', async
 
   expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
   served[0] = comment({ notifiedAt: new Date().toISOString() })
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(5_000)
-  })
+  events.send('changed')
   await waitFor(() =>
     expect(screen.getByTestId('cb-working').textContent).toBe(
       'Claude has your comment, an agent is starting…',

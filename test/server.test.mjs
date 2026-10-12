@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import net from 'node:net'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
@@ -11,6 +12,8 @@ const WIDGET = path.join(SCRIPTS, '..', 'widget', 'dist', 'widget.js')
 
 let base = ''
 let root = ''
+/** The server's state folder, where its step files are. */
+let state = ''
 let port = 0
 /** What the server printed for the manager so far. */
 let output = ''
@@ -42,9 +45,10 @@ before(async (t) => {
       env: {
         ...process.env,
         CODE_BUDDY_PORT: String(port),
-        CODE_BUDDY_STATE_DIR: await tempDir(t),
+        CODE_BUDDY_STATE_DIR: (state = await tempDir(t)),
         CODE_BUDDY_HOOKS: '1',
-        CODE_BUDDY_POLL_MS: '50',
+        // Never during a test: the server sees every change through its watches.
+        CODE_BUDDY_POLL_MS: '600000',
       },
       stdio: ['ignore', 'pipe', 'inherit'],
     },
@@ -90,6 +94,54 @@ const post = (body, headers = {}) =>
     headers: { 'content-type': 'application/json', ...headers },
     body,
   })
+
+/**
+ * Listens to the server's events, as a widget does.
+ * @param {Record<string, string>} [headers]
+ */
+async function listen(headers = {}) {
+  const controller = new AbortController()
+  const response = await fetch(`${base}/api/events`, {
+    headers,
+    signal: controller.signal,
+  })
+  if (!response.body) throw new Error('no event stream')
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  let received = ''
+  return {
+    response,
+    /**
+     * The next `changed` event naming comment `id`, within 3 s.
+     * @param {string} id
+     */
+    async changed(id) {
+      const deadline = setTimeout(() => controller.abort(), 3000)
+      try {
+        return await nextEvent(id)
+      } catch (error) {
+        throw controller.signal.aborted ? new Error(`no changed event for ${id}`) : error
+      } finally {
+        clearTimeout(deadline)
+      }
+    },
+    close: () => controller.abort(),
+  }
+
+  /** @param {string} id */
+  async function nextEvent(id) {
+    for (;;) {
+      const events = received.split('\n\n')
+      received = events.pop() ?? ''
+      for (const event of events) {
+        const data = /^event: changed\ndata: (.*)$/m.exec(event)?.[1]
+        if (data && JSON.parse(data).ids.includes(id)) return event
+      }
+      const { value, done } = await reader.read()
+      if (done) throw new Error(`no changed event for ${id}`)
+      received += value
+    }
+  }
+}
 
 test('answers the health check with the project it serves', async () => {
   const health = await json(await fetch(`${base}/api/health`))
@@ -383,4 +435,62 @@ test("refuses to start when Claude Code did not load the plugin's hooks", async 
   )
   assert.equal(started.code, 2)
   assert.match(started.stdout, /^HOOKS_MISSING .*Claude Code 2\.1\.287 or later/m)
+})
+
+test('tells the widgets which comment changed, as soon as it changes', async () => {
+  const events = await listen({ origin: 'http://localhost:3000' })
+  try {
+    assert.equal(events.response.headers.get('content-type'), 'text/event-stream')
+    assert.equal(
+      events.response.headers.get('access-control-allow-origin'),
+      'http://localhost:3000',
+    )
+    const created = await json(
+      await post(JSON.stringify({ route: '/events', body: 'Push it' })),
+    )
+    await events.changed(created.id)
+  } finally {
+    events.close()
+  }
+})
+
+test("tells the widgets when an agent writes a comment's step", async () => {
+  const events = await listen()
+  try {
+    const created = await json(
+      await post(JSON.stringify({ route: '/events', body: 'Show the steps' })),
+    )
+    // The event for the comment itself, then a quiet moment: the next is the step's.
+    await events.changed(created.id)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const progress = path.join(
+      state,
+      createHash('sha1').update(root).digest('hex').slice(0, 12),
+      'progress',
+    )
+    await appendFile(
+      path.join(progress, `${created.id}.jsonl`),
+      `${JSON.stringify({ at: 1, kind: 'read', label: 'src/App.tsx', state: 'running' })}\n`,
+    )
+    await events.changed(created.id)
+  } finally {
+    events.close()
+  }
+})
+
+test('tells the widgets when a comment is deleted', async () => {
+  const events = await listen()
+  try {
+    const created = await json(
+      await post(JSON.stringify({ route: '/events', body: 'Delete me' })),
+    )
+    await events.changed(created.id)
+    const deleted = await fetch(`${base}/api/comments/${created.id}`, {
+      method: 'DELETE',
+    })
+    assert.equal(deleted.status, 204)
+    await events.changed(created.id)
+  } finally {
+    events.close()
+  }
 })
