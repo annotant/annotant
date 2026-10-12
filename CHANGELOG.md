@@ -102,6 +102,11 @@ released to the `stable` branch.
 
 ### Fixed
 
+- A comment started on one page and saved after following an in-app link was
+  filed on the new page, with a quote or an element from the first: the agent
+  went to the wrong page and its mark showed nowhere. A comment is now filed
+  on the page it was started on, and its quote and element are marked only
+  there.
 - While pointing at an element, a press on it also reached the page: a menu
   that opens on `pointerdown` opened, a popover's click-outside handler closed
   it, a drag handle started dragging, an input took the focus. The page now
