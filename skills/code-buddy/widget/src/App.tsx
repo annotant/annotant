@@ -103,6 +103,12 @@ const STEP_ICONS: Record<string, IconName> = {
 }
 
 const SLIDE_MS = 250
+/**
+ * How long after the manager was sent a comment an agent may take to claim it
+ * before the widget says the manager is busy: the manager only reads the line
+ * between two turns, and a start alone often takes ten seconds.
+ */
+const BUSY_AFTER_MS = 15_000
 
 function StepLine({
   step,
@@ -172,6 +178,38 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
         step={step}
         className={`cb-current-line${leaving ? ' cb-current-line--in' : ''}`}
       />
+    </div>
+  )
+}
+
+/**
+ * An open comment while a session watches. Once the manager has had it for a
+ * while without starting an agent, it is busy (answering something else, or
+ * running three agents already): say so rather than wait in silence.
+ */
+function Waiting({ notifiedAt }: { notifiedAt: string | undefined }) {
+  const due = notifiedAt ? Date.parse(notifiedAt) + BUSY_AFTER_MS : undefined
+  const [now, setNow] = useState(Date.now)
+  const busy = due !== undefined && now >= due
+
+  useEffect(() => {
+    if (due === undefined) return undefined
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, due - Date.now()))
+    return () => clearTimeout(timer)
+  }, [due])
+
+  return (
+    <div
+      className="cb-working"
+      data-testid="cb-working"
+      title={
+        busy
+          ? 'The Claude session watching this app is answering something else, or already runs three agents; it starts on your comment once it is free.'
+          : undefined
+      }
+    >
+      <Spinner />
+      <span>{busy ? 'Claude has your comment but is busy…' : 'Waiting for Claude…'}</span>
     </div>
   )
 }
@@ -785,10 +823,7 @@ export default function App({ root }: { root: Element }) {
             <CurrentStep step={comment.progress?.at(-1)} />
           </div>
         ) : watching ? (
-          <div className="cb-working" data-testid="cb-working">
-            <Spinner />
-            <span>Waiting for Claude…</span>
-          </div>
+          <Waiting notifiedAt={comment.notifiedAt} />
         ) : (
           <div className="cb-idle" data-testid="cb-unwatched">
             No Claude session is watching. Run /code-buddy:code-buddy.

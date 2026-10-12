@@ -89,6 +89,12 @@ Then, in your frontend project:
 
 Plugin skills are prefixed with the plugin name, hence `/code-buddy:code-buddy`.
 
+Keep the session running `/code-buddy:code-buddy` for Code Buddy, and work in
+another one. That session dispatches the comments, and it only hears of a new
+one between two of its turns: while it answers a question, a review or a
+build, every new comment waits for that answer to end. The widget says so
+after 15 seconds ("Claude has your comment but is busy").
+
 When the frontend lives in a folder of the repository, name it after the
 command: `/code-buddy:code-buddy init web` installs Code Buddy in `web/`, and
 `/code-buddy:code-buddy web` starts a session there. The folder is resolved

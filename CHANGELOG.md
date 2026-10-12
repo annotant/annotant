@@ -52,6 +52,11 @@ released to the `stable` branch.
 
 ### Added
 
+- **The widget says when Claude is busy.** A comment the managing session has
+  had for 15 seconds without an agent claiming it now reads "Claude has your
+  comment but is busy…" instead of "Waiting for Claude…": that session only
+  hears of a comment between two of its turns. `/code-buddy:code-buddy` now
+  tells you to keep its session for Code Buddy and work in another one.
 - **The hook log**, to check what the plugin's hooks do in a real session:
   `/code-buddy-debug on` turns it on in every session, `tail -f
   ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last

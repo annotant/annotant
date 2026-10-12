@@ -103,6 +103,8 @@ export interface ReviewComment {
   progress?: ReviewProgress[]
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
+  /** Open only: when the server sent it to the manager; never stored in the file. */
+  notifiedAt?: string
 }
 
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {

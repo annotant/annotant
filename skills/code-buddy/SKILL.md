@@ -46,7 +46,10 @@ This session only dispatches; one background subagent per comment does the
 work. The server runs only while this session watches: closing the session
 stops it, and the widget disappears on the next page load. Tell the user, in
 one line, that `/code-buddy:code-buddy` (with the same directory, if one was
-given) resumes it and nothing is lost.
+given) resumes it and nothing is lost; and in one more, to keep this session
+for Code Buddy and work in another one: a server line only reaches you
+between two turns, so while you answer anything else, new comments wait.
+For the same reason, keep to one line per event.
 
 1. Start the server through the Monitor tool with the maximum timeout, and
    re-arm it whenever it expires (state lives in files, restarting is safe):

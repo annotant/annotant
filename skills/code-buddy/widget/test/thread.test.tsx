@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openThread } from './server'
 import { renderWidget } from './widget'
 
@@ -33,6 +33,53 @@ test('an open comment waits for Claude while a session watches', async () => {
     'Waiting for Claude…',
   )
   expect(screen.queryByTestId('cb-unwatched')).toBeNull()
+})
+
+test('an open comment says Claude is busy once the manager has had it a while', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  fakeServer([comment({ notifiedAt: new Date().toISOString() })])
+  openThread('c1')
+  renderWidget()
+
+  const waiting = await screen.findByTestId('cb-working')
+  expect(waiting.textContent).toBe('Waiting for Claude…')
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15_000)
+  })
+  expect(screen.getByTestId('cb-working').textContent).toBe(
+    'Claude has your comment but is busy…',
+  )
+})
+
+test('an open comment the manager was not sent yet only waits', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  fakeServer([comment()])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByTestId('cb-working')
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000)
+  })
+  expect(screen.getByTestId('cb-working').textContent).toBe('Waiting for Claude…')
+})
+
+test('an open comment sent to the manager long ago says Claude is busy at once', async () => {
+  fakeServer([comment({ notifiedAt: '2020-01-01T10:00:00.000Z' })])
+  openThread('c1')
+  renderWidget()
+
+  await waitFor(() =>
+    expect(screen.getByTestId('cb-working').textContent).toBe(
+      'Claude has your comment but is busy…',
+    ),
+  )
 })
 
 test('an open comment says when no session watches', async () => {
