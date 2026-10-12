@@ -107,6 +107,11 @@ released to the `stable` branch.
   went to the wrong page and its mark showed nowhere. A comment is now filed
   on the page it was started on, and its quote and element are marked only
   there.
+- A commented text or element scrolled out of a scrolling box (an
+  `overflow: auto` sidebar, a list) kept its rainbow or frame and its bubble,
+  drawn outside the box over the rest of the page. A mark now shows only where
+  its text or element does, cut at the box's edges; its bubble sits on the
+  part that shows.
 - While pointing at an element, a press on it also reached the page: a menu
   that opens on `pointerdown` opened, a popover's click-outside handler closed
   it, a drag handle started dragging, an input took the focus. The page now
