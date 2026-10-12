@@ -1,6 +1,6 @@
 // The debug panel's tool calls and agents' prompts, read from Claude Code's transcripts.
 import assert from 'node:assert/strict'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
 import {
@@ -61,11 +61,12 @@ test("reads an agent's first message from its own transcript", async (t) => {
   const subagents = path.join(dir, '-repo', 'session', 'subagents')
   await mkdir(subagents, { recursive: true })
   const prompt = 'c1\nNEW c1 route=/ page-level body="Hi"\nSKILL=/s\nPROJECT=/p'
-  // Another agent, whose prompt names this one.
-  await writeFile(
-    path.join(subagents, 'agent-b2bbbbbbbb.jsonl'),
-    record('user', 'see a1aaaaaaaa'),
-  )
+  // The same agent id in an older session's transcript.
+  const older = path.join(dir, '-repo', 'old', 'subagents', 'agent-a1aaaaaaaa.jsonl')
+  await mkdir(path.dirname(older), { recursive: true })
+  await writeFile(older, record('user', 'an older prompt'))
+  const anHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+  await utimes(older, anHourAgo, anHourAgo)
   const agent = path.join(subagents, 'agent-a1aaaaaaaa.jsonl')
   await writeFile(
     agent,
@@ -83,4 +84,14 @@ test("reads an agent's first message from its own transcript", async (t) => {
   assert.equal(await findAgentPrompt('../../etc', { dir }), undefined)
   const inAMonth = Date.now() + 30 * 24 * 60 * 60 * 1000
   assert.equal(await findAgentPrompt('a1aaaaaaaa', { dir, now: inAMonth }), undefined)
+})
+
+test('cuts a long first message, as the panel shows its start', async (t) => {
+  const dir = await tempDir(t)
+  await writeFile(
+    path.join(dir, 'agent-a1aaaaaaaa.jsonl'),
+    record('user', 'x'.repeat(30_000)),
+  )
+  const found = await findAgentPrompt('a1aaaaaaaa', { dir })
+  assert.equal(found?.prompt, `${'x'.repeat(20_000)}\n…`)
 })

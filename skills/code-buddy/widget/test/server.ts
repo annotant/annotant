@@ -89,7 +89,12 @@ export function fakeServer(comments: ReviewComment[], { reachable = true } = {})
     if (!reachable && url.searchParams.has('route')) {
       return new Response(null, { status: 502 })
     }
-    return Response.json(comments)
+    // Like the server, the lines it printed only come with the history.
+    return Response.json(
+      url.searchParams.get('history') === '1'
+        ? comments
+        : comments.map((entry) => ({ ...entry, lines: undefined })),
+    )
   })
   vi.stubGlobal('fetch', fetch)
   return { patches, fetch }

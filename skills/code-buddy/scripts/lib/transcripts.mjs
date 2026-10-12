@@ -12,8 +12,11 @@ export const AGENT_ID = /^[A-Za-z0-9]{6,64}$/
 
 // Only recent transcripts are read: a comment's runs are hours old, not months.
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
-// A result can be a whole file: the panel shows its start.
-const MAX_RESULT = 20_000
+// A result can be a whole file, a prompt a whole thread: the panel shows its start.
+const MAX_TEXT = 20_000
+
+/** @param {string} text */
+const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}\n…` : text)
 
 /** Where Claude Code keeps its transcripts: CLAUDE_CONFIG_DIR, else ~/.claude. */
 export function transcriptsDir() {
@@ -89,10 +92,8 @@ export async function findToolCall(
         if (block?.type === 'tool_use' && block.id === id) {
           call = { name: String(block.name), input: block.input }
         } else if (block?.type === 'tool_result' && block.tool_use_id === id) {
-          const result = textOf(block.content)
           outcome = {
-            result:
-              result.length > MAX_RESULT ? `${result.slice(0, MAX_RESULT)}\n…` : result,
+            result: clip(textOf(block.content)),
             error: block.is_error === true,
           }
         }
@@ -130,11 +131,7 @@ export async function findAgentPrompt(
       continue
     }
     if (message?.role !== 'user') continue
-    const prompt = textOf(message.content)
-    return {
-      transcript,
-      prompt: prompt.length > MAX_RESULT ? `${prompt.slice(0, MAX_RESULT)}\n…` : prompt,
-    }
+    return { transcript, prompt: clip(textOf(message.content)) }
   }
   return undefined
 }

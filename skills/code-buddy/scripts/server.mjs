@@ -156,6 +156,16 @@ function sanitisePatch(input) {
   return patch
 }
 
+/**
+ * What the debug panel reads in the transcripts, by kind: the id's pattern
+ * and its finder.
+ * @type {Record<string, [RegExp, (id: string) => Promise<object | undefined>]>}
+ */
+const DEBUG_FINDERS = {
+  tool: [TOOL_ID, findToolCall],
+  agent: [AGENT_ID, findAgentPrompt],
+}
+
 async function handle(req, res) {
   const cors = corsHeaders(req.headers.origin)
   const url = new URL(req.url, `http://${req.headers.host}`)
@@ -180,29 +190,18 @@ async function handle(req, res) {
     )
   }
 
-  // The dev widget's debug panel: a tool call and its result, from Claude
-  // Code's transcripts. A released widget has no panel, and this answers 404.
-  const tool = /^\/api\/debug\/tool\/([^/]+)$/.exec(url.pathname)?.[1]
-  if (req.method === 'GET' && tool !== undefined) {
-    if (!isDevWidget(WIDGET) || !TOOL_ID.test(tool)) {
+  // The dev widget's debug panel, from Claude Code's transcripts: a tool call
+  // and its result, or the first message an agent received, the prompt the
+  // manager wrote. A released widget has no panel, and this answers 404.
+  const [, kind, id] = /^\/api\/debug\/(tool|agent)\/([^/]+)$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && kind && id) {
+    const [pattern, find] = DEBUG_FINDERS[kind]
+    if (!isDevWidget(WIDGET) || !pattern.test(id)) {
       return send(res, 404, { error: 'not found' }, cors)
     }
-    const call = await findToolCall(tool)
-    return call
-      ? send(res, 200, call, cors)
-      : send(res, 404, { error: 'not in the recent transcripts' }, cors)
-  }
-
-  // The dev widget's debug panel: the first message an agent received, the
-  // prompt the manager wrote, from its transcript.
-  const agent = /^\/api\/debug\/agent\/([^/]+)$/.exec(url.pathname)?.[1]
-  if (req.method === 'GET' && agent !== undefined) {
-    if (!isDevWidget(WIDGET) || !AGENT_ID.test(agent)) {
-      return send(res, 404, { error: 'not found' }, cors)
-    }
-    const prompt = await findAgentPrompt(agent)
-    return prompt
-      ? send(res, 200, prompt, cors)
+    const read = await find(id)
+    return read
+      ? send(res, 200, read, cors)
       : send(res, 404, { error: 'not in the recent transcripts' }, cors)
   }
 
@@ -232,14 +231,8 @@ async function handle(req, res) {
       // history=1: every step of every run, for the widget's debug panel.
       const history = url.searchParams.get('history') === '1'
       const comments = await store.list(route ?? undefined, { history })
-      return send(
-        res,
-        200,
-        comments.map((comment) =>
-          history ? withLines(withNotified(comment)) : withNotified(comment),
-        ),
-        cors,
-      )
+      const served = comments.map(withNotified)
+      return send(res, 200, history ? served.map(withLines) : served, cors)
     }
     if (req.method === 'POST') {
       const input = await readJson(req)

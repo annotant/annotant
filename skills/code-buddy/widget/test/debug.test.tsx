@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, expect, test, vi } from 'vitest'
 import {
   agentsOf,
-  lineBefore,
+  firstRunsOf,
+  linesBefore,
   timelineOf,
   toggleDebug,
   withSeparators,
@@ -417,9 +418,70 @@ test('the timeline shows the lines the server printed, and which one started eac
     FOLLOWUP_LINE,
     'by agent',
   ])
-  expect(lineBefore(twoAgents, 'r1')).toBe(NEW_LINE)
-  expect(lineBefore(twoAgents, 'r2')).toBe(FOLLOWUP_LINE)
-  expect(lineBefore(comment(), 'r1')).toBeUndefined()
+  expect(linesBefore(twoAgents, 'r1')).toEqual([NEW_LINE])
+  expect(linesBefore(twoAgents, 'r2')).toEqual([FOLLOWUP_LINE])
+  expect(linesBefore(comment(), 'r1')).toEqual([])
+})
+
+test('an edit before the claim may have started the agent too', () => {
+  const edited = comment({
+    state: 'working',
+    events: [
+      { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+      {
+        at: '2026-01-01T10:00:03.000Z',
+        state: 'working',
+        by: 'agent',
+        run: 'r1',
+        agent: 'a1aaaaaaaa',
+      },
+    ],
+    lines: [
+      { at: '2026-01-01T10:00:01.000Z', line: NEW_LINE },
+      { at: '2026-01-01T10:00:02.000Z', line: 'EDIT c1 route=/ page-level body="B"' },
+    ],
+  })
+  expect(linesBefore(edited, 'r1')).toEqual([
+    NEW_LINE,
+    'EDIT c1 route=/ page-level body="B"',
+  ])
+})
+
+test("an agent's prompt shows under its first run only, never the main session's", () => {
+  const runs = comment({
+    events: [
+      { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+      {
+        at: '2026-01-01T10:00:01.000Z',
+        state: 'working',
+        by: 'agent',
+        run: 'r1',
+        agent: 'a1aaaaaaaa',
+      },
+      {
+        at: '2026-01-01T10:00:02.000Z',
+        state: 'working',
+        by: 'agent',
+        run: 'r2',
+        agent: 'a1aaaaaaaa',
+      },
+      {
+        at: '2026-01-01T10:00:03.000Z',
+        state: 'working',
+        by: 'agent',
+        run: 'r3',
+        agent: 'main',
+      },
+      {
+        at: '2026-01-01T10:00:04.000Z',
+        state: 'working',
+        by: 'agent',
+        run: 'r4',
+        agent: 'b2bbbbbbbb',
+      },
+    ],
+  })
+  expect([...firstRunsOf(runs)]).toEqual(['r1', 'r4'])
 })
 
 /** The server's answer for an agent started with `line` in its prompt. */
@@ -454,4 +516,33 @@ test("a new agent's first message unfolds, compared with the line that started i
   fireEvent.click(second!)
   expect(await panel.findByText(/rewritten by the manager/)).toBeTruthy()
   expect(panel.getByText('Does not hold the server line as printed:')).toBeTruthy()
+})
+
+test("a run shown alone keeps its agent's prompt where that agent started", async () => {
+  const followedUp = comment({
+    ...twoAgents,
+    events: twoAgents.events.map((event) =>
+      event.run === 'r2' ? { ...event, agent: 'a1aaaaaaaa' } : event,
+    ),
+  })
+  const server = fakeServer([followedUp]).fetch
+  const comments = server.getMockImplementation()
+  server.mockImplementation(async (input, init) =>
+    input.includes('/api/debug/agent/')
+      ? new Response(null, { status: 404 })
+      : (comments?.(input, init) ?? new Response(null, { status: 500 })),
+  )
+  openThread('c1')
+  renderWidget()
+  toggleDebug(true)
+
+  const panel = within(await screen.findByTestId('cb-debug'))
+  expect(panel.getAllByRole('button', { name: 'First message' })).toHaveLength(1)
+  fireEvent.click(panel.getAllByRole('button', { name: 'r2' })[0]!)
+  expect(panel.queryByRole('button', { name: 'First message' })).toBeNull()
+  fireEvent.click(panel.getAllByRole('button', { name: 'r1' })[0]!)
+  fireEvent.click(panel.getByRole('button', { name: 'First message' }))
+  expect(
+    await panel.findByText("Not in Claude Code's transcripts of the last 7 days."),
+  ).toBeTruthy()
 })

@@ -52,8 +52,8 @@ const DEBUG_CSS = `
 .cb-debug-runs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--cb-muted); }
 .cb-debug-run { border: 0; cursor: pointer; font-size: inherit; }
 .cb-debug-run[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent-strong); }
-.cb-debug-prompt { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.cb-debug-prompt .cb-debug-call { align-self: stretch; }
+.cb-debug-prompt { display: flex; flex-direction: column; gap: 4px; }
+.cb-debug-prompt > .cb-debug-id { align-self: flex-start; }
 `
 
 // Shown or not, and the raw JSON unfolded or not: shared by the header's toggle
@@ -367,32 +367,60 @@ async function fetchDebug<T>(path: string): Promise<T | null> {
   }
 }
 
-/** The lines that start an agent: the manager passes them on in its prompt. */
-const STARTING_LINE = /^(OPEN|NEW|FOLLOWUP) /
+/** The lines that may start an agent: the manager passes them on in its prompt. */
+const STARTING_LINE = /^(OPEN|NEW|FOLLOWUP|EDIT) /
 
 /**
- * The last line the server printed to start an agent on the comment before
- * `run` began: what that run's agent should have been sent.
+ * The lines the server printed that may have started an agent on the comment
+ * between the run before `run` and `run`: its agent's prompt should hold one
+ * of them as printed.
  */
-export function lineBefore(comment: ReviewComment, run: string): string | undefined {
-  const started = time(comment.events.find((event) => event.run === run)?.at)
-  return comment.lines?.findLast(
-    ({ at, line }) => STARTING_LINE.test(line) && time(at) <= started,
-  )?.line
+export function linesBefore(comment: ReviewComment, run: string): string[] {
+  const runs = runsOf(comment)
+  const startOf = (id: string | undefined) =>
+    time(comment.events.find((event) => event.run === id)?.at)
+  const started = startOf(run)
+  const previous =
+    runs.indexOf(run) > 0 ? startOf(runs[runs.indexOf(run) - 1]) : -Infinity
+  return (comment.lines ?? []).flatMap(({ at, line }) =>
+    STARTING_LINE.test(line) && time(at) > previous && time(at) <= started ? [line] : [],
+  )
+}
+
+/** The first run of each agent but the main session's: where its prompt shows. */
+export function firstRunsOf(comment: ReviewComment): Set<string> {
+  const agents = agentsOf(comment)
+  const seen = new Set<string>()
+  const first = new Set<string>()
+  for (const run of runsOf(comment)) {
+    const agent = agents.get(run)
+    if (!agent || seen.has(agent)) continue
+    seen.add(agent)
+    if (agent !== 'main') first.add(run)
+  }
+  return first
 }
 
 /**
- * The first message an agent received, unfolded on a click, compared with
- * `line`, the server line it should hold as printed.
+ * A button that unfolds what the server read in Claude Code's transcripts,
+ * `load`ed on the first click.
  */
-function FirstMessage({ agent, line }: { agent: string; line: string | undefined }) {
+function TranscriptFold<T>({
+  load,
+  label,
+  title,
+  render,
+}: {
+  load: () => Promise<T | null>
+  label: string
+  title: string
+  render: (found: T) => ReactNode
+}) {
   const [open, setOpen] = useState(false)
-  const [found, setFound] = useState<AgentPrompt | null>()
+  const [found, setFound] = useState<T | null>()
   const toggle = () => {
     setOpen(!open)
-    if (found === undefined) {
-      void fetchDebug<AgentPrompt>(`agent/${agent}`).then(setFound)
-    }
+    if (found === undefined) void load().then(setFound)
   }
   return (
     <>
@@ -400,10 +428,10 @@ function FirstMessage({ agent, line }: { agent: string; line: string | undefined
         type="button"
         className="cb-debug-tag cb-debug-id"
         aria-expanded={open}
-        title="Show the prompt the agent was started with"
+        title={title}
         onClick={toggle}
       >
-        First message
+        {label}
       </button>
       {open && (
         <div className="cb-debug-call">
@@ -414,26 +442,7 @@ function FirstMessage({ agent, line }: { agent: string; line: string | undefined
               Not in Claude Code's transcripts of the last 7 days.
             </span>
           ) : (
-            <>
-              <span className="cb-debug-empty" title={found.transcript}>
-                {found.transcript.split('/').at(-1)}
-              </span>
-              <pre>{found.prompt}</pre>
-              {line === undefined ? (
-                <span className="cb-debug-empty">
-                  No server line since the server started to compare it with.
-                </span>
-              ) : found.prompt.includes(line) ? (
-                <span className="cb-debug-empty">Holds the server line as printed.</span>
-              ) : (
-                <>
-                  <span className="cb-debug-error">
-                    Does not hold the server line as printed:
-                  </span>
-                  <pre>{line}</pre>
-                </>
-              )}
-            </>
+            render(found)
           )}
         </div>
       )}
@@ -441,49 +450,71 @@ function FirstMessage({ agent, line }: { agent: string; line: string | undefined
   )
 }
 
-/** A tool call's id: a click unfolds what the agent sent and got back. */
-function ToolId({ id }: { id: string }) {
-  const [open, setOpen] = useState(false)
-  const [call, setCall] = useState<ToolCall | null>()
-  const toggle = () => {
-    setOpen(!open)
-    if (call === undefined) void fetchDebug<ToolCall>(`tool/${id}`).then(setCall)
-  }
+/** The transcript's file name, its whole path on hover. */
+const TranscriptName = ({
+  transcript,
+  prefix,
+}: {
+  transcript: string
+  prefix?: string
+}) => (
+  <span className="cb-debug-empty" title={transcript}>
+    {prefix && `${prefix} · `}
+    {transcript.split('/').at(-1)}
+  </span>
+)
+
+/**
+ * The first message an agent received, compared with `lines`, the server
+ * lines it should hold one of as printed.
+ */
+function FirstMessage({ agent, lines }: { agent: string; lines: string[] }) {
   return (
-    <>
-      <button
-        type="button"
-        className="cb-debug-tag cb-debug-id"
-        aria-expanded={open}
-        title="Show what the agent sent and got back"
-        onClick={toggle}
-      >
-        {id}
-      </button>
-      {open && (
-        <div className="cb-debug-call">
-          {call === undefined ? (
-            <span className="cb-debug-empty">Reading the transcripts…</span>
-          ) : call === null ? (
+    <TranscriptFold
+      load={() => fetchDebug<AgentPrompt>(`agent/${agent}`)}
+      label="First message"
+      title="Show the prompt the agent was started with"
+      render={({ transcript, prompt }) => (
+        <>
+          <TranscriptName transcript={transcript} />
+          <pre>{prompt}</pre>
+          {lines.length === 0 ? (
             <span className="cb-debug-empty">
-              Not in Claude Code's transcripts of the last 7 days.
+              No server line since the server started to compare it with.
             </span>
+          ) : lines.some((line) => prompt.includes(line)) ? (
+            <span className="cb-debug-empty">Holds the server line as printed.</span>
           ) : (
             <>
-              <span className="cb-debug-empty" title={call.transcript}>
-                {call.name} · {call.transcript.split('/').at(-1)}
+              <span className="cb-debug-error">
+                Does not hold the server line as printed:
               </span>
-              <pre>{JSON.stringify(call.input, null, 2)}</pre>
-              {call.result !== undefined && (
-                <pre className={call.error ? 'cb-debug-error' : undefined}>
-                  {call.result}
-                </pre>
-              )}
+              <pre>{lines.join('\n')}</pre>
             </>
           )}
-        </div>
+        </>
       )}
-    </>
+    />
+  )
+}
+
+/** A tool call's id: a click unfolds what the agent sent and got back. */
+function ToolId({ id }: { id: string }) {
+  return (
+    <TranscriptFold
+      load={() => fetchDebug<ToolCall>(`tool/${id}`)}
+      label={id}
+      title="Show what the agent sent and got back"
+      render={(call) => (
+        <>
+          <TranscriptName transcript={call.transcript} prefix={call.name} />
+          <pre>{JSON.stringify(call.input, null, 2)}</pre>
+          {call.result !== undefined && (
+            <pre className={call.error ? 'cb-debug-error' : undefined}>{call.result}</pre>
+          )}
+        </>
+      )}
+    />
   )
 }
 
@@ -518,6 +549,7 @@ function Timeline({
   onRun: (run: string | undefined) => void
 }) {
   const runs = runsOf(comment)
+  const firstRuns = firstRunsOf(comment)
   return (
     <>
       {runs.length > 0 && (
@@ -535,12 +567,12 @@ function Timeline({
               // oxlint-disable-next-line react/no-array-index-key -- rebuilt on every change, like the rows
               <Fragment key={index}>
                 <SeparatorRow separator={event} />
-                {/* A new agent's prompt; the main session's is the user's. */}
-                {event.newAgent && event.agent && event.agent !== 'main' && (
+                {/* Under the agent's first run, filtered or not; the main session's prompt is the user's. */}
+                {event.agent && firstRuns.has(event.run) && (
                   <li className="cb-debug-prompt">
                     <FirstMessage
                       agent={event.agent}
-                      line={lineBefore(comment, event.run)}
+                      lines={linesBefore(comment, event.run)}
                     />
                   </li>
                 )}
@@ -655,15 +687,20 @@ export function DebugPanel({
   }, [])
 
   if (!open) return null
-  const histories = new Map(others.comments.map((entry) => [entry.id, entry.history]))
+  // The history poll's copy also has the server's lines: the widget's own polls do not.
+  const polled = new Map(others.comments.map((entry) => [entry.id, entry]))
   const comments = [...held, ...others.comments]
     .filter(
       (comment, index, list) =>
         list.findIndex((other) => other.id === comment.id) === index,
     )
     .map((comment) => {
-      const history = histories.get(comment.id)
-      return history ? { ...comment, history } : comment
+      const { history, lines } = polled.get(comment.id) ?? {}
+      return {
+        ...comment,
+        ...(history ? { history } : {}),
+        ...(lines ? { lines } : {}),
+      }
     })
   const comment =
     comments.find((entry) => entry.id === selected?.id && selected.current === current) ??
