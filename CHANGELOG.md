@@ -102,6 +102,13 @@ released to the `stable` branch.
 
 ### Fixed
 
+- Pointing at one of several elements that share a `data-testid` or an `id`
+  (the items of a list) anchored the comment to the first of them: its
+  outline, *center on element* and the agent's selector. The selector now
+  stops at a test id or id only when it names the element alone, and climbs
+  on by position otherwise; a test id holding a quote is escaped. A comment
+  saved before this fix finds the element with its saved text, or none rather
+  than a wrong one.
 - A comment whose `url` was not a full URL (a hand-edited comments file, or
   another client) made the widget vanish as soon as the panel drew it, and it
   stayed gone in that tab until the comment was deleted. The widget now shows
