@@ -1,4 +1,5 @@
-import { vi } from 'vitest'
+import { act } from '@testing-library/react'
+import { expect, vi } from 'vitest'
 import type {
   NewReviewComment,
   ReviewAnchor,
@@ -111,4 +112,34 @@ export function openPanel(view: 'page' | 'all' = 'page', threadId?: string) {
     'code-buddy:ui',
     JSON.stringify({ open: true, docked: false, width: 380, view, threadId }),
   )
+}
+
+/** Stands in for the server's event stream: the test sends its events. */
+export function fakeEvents() {
+  const streams: FakeEventSource[] = []
+  class FakeEventSource extends EventTarget {
+    static readonly CLOSED = 2
+    /** Connecting or open: the browser retries by itself. */
+    readyState = 0
+    closed = false
+    constructor(readonly url: string) {
+      super()
+      streams.push(this)
+    }
+    close() {
+      this.closed = true
+    }
+  }
+  vi.stubGlobal('EventSource', FakeEventSource)
+  return {
+    streams,
+    /** Sends `type` on the stream the widget listens to. */
+    send(type: string) {
+      const open = streams.filter((stream) => !stream.closed)
+      expect(open).toHaveLength(1)
+      act(() => {
+        open[0]?.dispatchEvent(new Event(type))
+      })
+    },
+  }
 }

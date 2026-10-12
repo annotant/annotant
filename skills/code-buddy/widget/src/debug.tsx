@@ -274,7 +274,7 @@ export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[
     .map((event) => time(event.at))
   for (const { at, line } of comment.lines ?? []) {
     const printed = time(at)
-    // The gap from the opening to its hand-over: the server's poll.
+    // The gap from the opening to its hand-over: the server's read of the file.
     const opening = HANDOVER.test(line)
       ? openings.findLast((open) => open <= printed)
       : undefined

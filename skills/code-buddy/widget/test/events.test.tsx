@@ -1,37 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { comment, fakeServer, openPanel, openThread } from './server'
+import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
-
-/** Stands in for the server's event stream: the test sends its events. */
-function fakeEvents() {
-  const streams: FakeEventSource[] = []
-  class FakeEventSource extends EventTarget {
-    static readonly CLOSED = 2
-    /** Connecting or open: the browser retries by itself. */
-    readyState = 0
-    closed = false
-    constructor(readonly url: string) {
-      super()
-      streams.push(this)
-    }
-    close() {
-      this.closed = true
-    }
-  }
-  vi.stubGlobal('EventSource', FakeEventSource)
-  return {
-    streams,
-    /** Sends `type` on the stream the widget listens to. */
-    send(type: string) {
-      const open = streams.filter((stream) => !stream.closed)
-      expect(open).toHaveLength(1)
-      act(() => {
-        open[0]?.dispatchEvent(new Event(type))
-      })
-    },
-  }
-}
 
 const listed = (fetch: ReturnType<typeof fakeServer>['fetch']) =>
   fetch.mock.calls.filter(([url, init]) => !init?.method && url.includes('/api/comments'))
