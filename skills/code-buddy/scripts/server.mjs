@@ -16,7 +16,7 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
-import { TOOL_ID, findToolCall } from './lib/transcripts.mjs'
+import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
   MAX_OPTIONS,
@@ -156,6 +156,36 @@ function sanitisePatch(input) {
   return patch
 }
 
+/**
+ * What the debug panel reads in the transcripts, by kind: the id's pattern
+ * and its finder.
+ * @type {Record<string, [RegExp, (id: string) => Promise<object | undefined>]>}
+ */
+const DEBUG_FINDERS = {
+  tool: [TOOL_ID, findToolCall],
+  agent: [AGENT_ID, agentContext],
+}
+
+/** This plugin's root, whose `agents/` holds its agents' instructions. */
+const PLUGIN_ROOT = path.resolve(SKILL_DIR, '..', '..')
+
+/**
+ * What agent `id` was given: its first message, and for one of the plugin's
+ * agents, its instructions (`agents/<name>.md`). Claude Code keeps only the
+ * message: the file is read as it is now, which a change since the agent
+ * started makes differ.
+ * @param {string} id
+ */
+async function agentContext(id) {
+  const agent = await findAgentPrompt(id)
+  if (!agent) return undefined
+  const name = /^code-buddy:([\w-]+)$/.exec(agent.agentType ?? '')?.[1]
+  const file = name && `agents/${name}.md`
+  const text =
+    file && (await readFile(path.join(PLUGIN_ROOT, file), 'utf8').catch(() => ''))
+  return { ...agent, ...(file && text ? { instructions: { file, text } } : {}) }
+}
+
 async function handle(req, res) {
   const cors = corsHeaders(req.headers.origin)
   const url = new URL(req.url, `http://${req.headers.host}`)
@@ -180,16 +210,18 @@ async function handle(req, res) {
     )
   }
 
-  // The dev widget's debug panel: a tool call and its result, from Claude
-  // Code's transcripts. A released widget has no panel, and this answers 404.
-  const tool = /^\/api\/debug\/tool\/([^/]+)$/.exec(url.pathname)?.[1]
-  if (req.method === 'GET' && tool !== undefined) {
-    if (!isDevWidget(WIDGET) || !TOOL_ID.test(tool)) {
+  // The dev widget's debug panel, from Claude Code's transcripts: a tool call
+  // and its result, or the first message an agent received, the prompt the
+  // manager wrote. A released widget has no panel, and this answers 404.
+  const [, kind, id] = /^\/api\/debug\/(tool|agent)\/([^/]+)$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && kind && id) {
+    const [pattern, find] = DEBUG_FINDERS[kind]
+    if (!isDevWidget(WIDGET) || !pattern.test(id)) {
       return send(res, 404, { error: 'not found' }, cors)
     }
-    const call = await findToolCall(tool)
-    return call
-      ? send(res, 200, call, cors)
+    const read = await find(id)
+    return read
+      ? send(res, 200, read, cors)
       : send(res, 404, { error: 'not in the recent transcripts' }, cors)
   }
 
@@ -219,7 +251,8 @@ async function handle(req, res) {
       // history=1: every step of every run, for the widget's debug panel.
       const history = url.searchParams.get('history') === '1'
       const comments = await store.list(route ?? undefined, { history })
-      return send(res, 200, comments.map(withNotified), cors)
+      const served = comments.map(withNotified)
+      return send(res, 200, history ? served.map(withLines) : served, cors)
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
@@ -279,6 +312,39 @@ function withNotified(comment) {
   return comment.state === 'open' && known?.opened === opened
     ? { ...comment, notifiedAt: known.notified }
     : comment
+}
+
+/** The most lines kept per comment for the debug panel. */
+const LINES_KEPT = 50
+
+/**
+ * By comment id, the lines printed about it for the manager, oldest first:
+ * what an agent should have been sent, for the debug panel.
+ * @type {Map<string, { at: string, line: string }[]>}
+ */
+const printed = new Map()
+
+/**
+ * Prints `line` about comment `id` for the manager, and keeps it.
+ * @param {string} id
+ * @param {string} line
+ */
+function print(id, line) {
+  console.log(line)
+  const lines = [...(printed.get(id) ?? []), { at: new Date().toISOString(), line }]
+  printed.set(id, lines.slice(-LINES_KEPT))
+}
+
+/**
+ * A comment with `lines`, the lines printed about it since the server
+ * started, when there are any. Never stored in the file.
+ * @template {{ id: string }} T
+ * @param {T} comment
+ * @returns {T & { lines?: { at: string, line: string }[] }}
+ */
+function withLines(comment) {
+  const lines = printed.get(comment.id)
+  return lines ? { ...comment, lines } : comment
 }
 
 /** The line for a comment that is no longer active, by where it went. */
@@ -342,24 +408,27 @@ async function tick(first) {
     // Stopped, asked or resolved, then opened again between two polls: the
     // manager hears both, as if it had seen each.
     if (previous && previous.opened !== opened) {
-      console.log(goneLine(comment.id, comment.events[opened - 1]?.state))
+      print(comment.id, goneLine(comment.id, comment.events[opened - 1]?.state))
     }
     let notified = previous?.notified ?? ''
     if (previous === undefined || previous.opened !== opened) {
       const kind = latestReply(comment) ? 'FOLLOWUP' : first ? 'OPEN' : 'NEW'
-      console.log(`${kind} ${describe(comment)}`)
+      print(comment.id, `${kind} ${describe(comment)}`)
       notified = new Date().toISOString()
     } else if (previous.text !== text) {
-      console.log(`EDIT ${describe(comment)}`)
+      print(comment.id, `EDIT ${describe(comment)}`)
     }
     seen.set(comment.id, { opened, text, notified })
   }
   for (const id of seen.keys()) {
     if (current.has(id)) continue
     const gone = comments.find((comment) => comment.id === id)
-    console.log(gone ? goneLine(id, gone.state) : `DELETED ${id}`)
+    print(id, gone ? goneLine(id, gone.state) : `DELETED ${id}`)
     seen.delete(id)
   }
+  // A deleted comment's lines go with it, even one deleted while inactive.
+  const ids = new Set(comments.map((comment) => comment.id))
+  for (const id of printed.keys()) if (!ids.has(id)) printed.delete(id)
 }
 
 const server = http.createServer((req, res) => {

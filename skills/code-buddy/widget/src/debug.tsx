@@ -4,10 +4,13 @@
 import {
   Fragment,
   type ReactNode,
+  useCallback,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useCommentHistory } from './api'
 import type { ReviewComment, ReviewMessage, ReviewProgress, ReviewState } from './domain'
 import { readSession, writeSession } from './session'
@@ -47,11 +50,19 @@ const DEBUG_CSS = `
 .cb-debug-sep small { font-weight: 400; text-transform: none; letter-spacing: 0; }
 .cb-debug-sep--agent { margin-top: 16px; color: var(--cb-accent-strong); font-size: 12px; }
 .cb-debug-sep--agent::before, .cb-debug-sep--agent::after { border-top: 2px solid var(--cb-accent); }
-.cb-debug-sep--agent span { padding: 2px 10px; border: 2px solid var(--cb-accent); border-radius: 999px; background: var(--cb-accent-weak); }
+.cb-debug-sep--agent > span { padding: 2px 10px; border: 2px solid var(--cb-accent); border-radius: 999px; background: var(--cb-accent-weak); }
 .cb-debug-file { align-self: flex-start; color: var(--cb-accent-strong); }
 .cb-debug-runs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--cb-muted); }
 .cb-debug-run { border: 0; cursor: pointer; font-size: inherit; }
 .cb-debug-run[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent-strong); }
+.cb-debug-context { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cb-debug-context:hover { color: var(--cb-accent); }
+.cb-debug-context:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; border-radius: 2px; }
+.cb-debug-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(19, 41, 75, .35); }
+.cb-debug-dialog { width: min(860px, 100%); max-height: min(88vh, 960px); display: flex; flex-direction: column; background: var(--cb-surface); color: var(--cb-text); border: 1px solid var(--cb-border); border-radius: 12px; box-shadow: 0 12px 32px rgba(19, 41, 75, .25); font-size: 12px; overflow: hidden; outline: none; }
+.cb-debug-dialog .cb-debug-call pre { max-height: 45vh; }
+.cb-debug-layer { margin: 6px 0 0; font-size: 12px; font-weight: 600; }
+.cb-debug-layer small { color: var(--cb-muted); font-weight: 400; }
 `
 
 // Shown or not, and the raw JSON unfolded or not: shared by the header's toggle
@@ -187,7 +198,17 @@ export function withSeparators(
 const agentName = (agent: string) =>
   agent === 'main' ? 'main session' : agent.slice(0, 8)
 
-function SeparatorRow({ separator }: { separator: Separator }) {
+/**
+ * A run's separator. `context`: the link to what its agent was given, on the
+ * agent's first run.
+ */
+function SeparatorRow({
+  separator,
+  context,
+}: {
+  separator: Separator
+  context?: ReactNode
+}) {
   const { run, agent, newAgent } = separator
   return (
     <li
@@ -197,6 +218,7 @@ function SeparatorRow({ separator }: { separator: Separator }) {
       <span>
         {newAgent && agent ? `Agent ${agentName(agent)} · run ${run}` : `Run ${run}`}
         {!newAgent && agent && <small> · same agent</small>}
+        {context && <> · {context}</>}
       </span>
     </li>
   )
@@ -227,6 +249,9 @@ export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[
   }
   for (const message of comment.messages) {
     events.push({ kind: 'message', at: time(message.at), message })
+  }
+  for (const { at, line } of comment.lines ?? []) {
+    events.push({ kind: 'status', at: time(at), label: 'server line', detail: line })
   }
   const cancellation = comment.cancellation
   if (cancellation) {
@@ -340,30 +365,67 @@ interface ToolCall {
   error?: boolean
 }
 
+/** What an agent was given, as the server read it. */
+interface AgentPrompt {
+  transcript: string
+  /** Its first message, exactly as it was sent. */
+  prompt: string
+  agentType?: string
+  /** Its instructions, for one of the plugin's agents, as on disk now. */
+  instructions?: { file: string; text: string }
+}
+
 /** A comment's step files, every run's, as the server has them on disk. */
 const stepsUrl = (id: string) =>
   new URL(`api/debug/steps/${id}`, new URL('.', import.meta.url)).href
 
-/** The call as the server read it in Claude Code's transcripts; null when it could not. */
-async function fetchToolCall(id: string): Promise<ToolCall | null> {
+/** What the server read in Claude Code's transcripts; null when it could not. */
+async function fetchDebug<T>(path: string): Promise<T | null> {
   try {
-    const url = new URL(`api/debug/tool/${id}`, new URL('.', import.meta.url))
+    const url = new URL(`api/debug/${path}`, new URL('.', import.meta.url))
     const response = await fetch(url.href)
     // The server's JSON has the shape it answers with.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return response.ok ? ((await response.json()) as ToolCall) : null
+    return response.ok ? ((await response.json()) as T) : null
   } catch {
     return null
   }
 }
 
-/** A tool call's id: a click unfolds what the agent sent and got back. */
-function ToolId({ id }: { id: string }) {
+/** The first run of each agent but the main session's: where its prompt shows. */
+export function firstRunsOf(comment: ReviewComment): Set<string> {
+  const agents = agentsOf(comment)
+  const seen = new Set<string>()
+  const first = new Set<string>()
+  for (const run of runsOf(comment)) {
+    const agent = agents.get(run)
+    if (!agent || seen.has(agent)) continue
+    seen.add(agent)
+    if (agent !== 'main') first.add(run)
+  }
+  return first
+}
+
+/**
+ * A button that unfolds what the server read in Claude Code's transcripts,
+ * `load`ed on the first click.
+ */
+function TranscriptFold<T>({
+  load,
+  label,
+  title,
+  render,
+}: {
+  load: () => Promise<T | null>
+  label: string
+  title: string
+  render: (found: T) => ReactNode
+}) {
   const [open, setOpen] = useState(false)
-  const [call, setCall] = useState<ToolCall | null>()
+  const [found, setFound] = useState<T | null>()
   const toggle = () => {
     setOpen(!open)
-    if (call === undefined) void fetchToolCall(id).then(setCall)
+    if (found === undefined) void load().then(setFound)
   }
   return (
     <>
@@ -371,35 +433,153 @@ function ToolId({ id }: { id: string }) {
         type="button"
         className="cb-debug-tag cb-debug-id"
         aria-expanded={open}
-        title="Show what the agent sent and got back"
+        title={title}
         onClick={toggle}
       >
-        {id}
+        {label}
       </button>
       {open && (
         <div className="cb-debug-call">
-          {call === undefined ? (
+          {found === undefined ? (
             <span className="cb-debug-empty">Reading the transcripts…</span>
-          ) : call === null ? (
+          ) : found === null ? (
+            <span className="cb-debug-empty">
+              Not in Claude Code's transcripts of the last 7 days.
+            </span>
+          ) : (
+            render(found)
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** The transcript's file name, its whole path on hover. */
+const TranscriptName = ({
+  transcript,
+  prefix,
+}: {
+  transcript: string
+  prefix?: string
+}) => (
+  <span className="cb-debug-empty" title={transcript}>
+    {prefix && `${prefix} · `}
+    {transcript.split('/').at(-1)}
+  </span>
+)
+
+/**
+ * What an agent was given, in a dialog over the page: its instructions, and
+ * its first message exactly as Claude Code recorded it. Escape, the backdrop
+ * or ✕ close it.
+ */
+function AgentPromptDialog({ agent, onClose }: { agent: string; onClose: () => void }) {
+  const [found, setFound] = useState<AgentPrompt | null>()
+  const dialog = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    void fetchDebug<AgentPrompt>(`agent/${agent}`).then(setFound)
+  }, [agent])
+  useEffect(() => {
+    dialog.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    // The backdrop closes it on a click; the keyboard has Escape and the close button.
+    <div
+      className="cb-debug-backdrop cb-live"
+      onClick={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div
+        ref={dialog}
+        className="cb-debug-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`What agent ${agentName(agent)} was given`}
+        tabIndex={-1}
+      >
+        <header className="cb-debug-head">
+          <h2>
+            Agent {agentName(agent)}{' '}
+            <span className="cb-debug-hint">· what it was given</span>
+          </h2>
+          <IconButton icon="x" label="Close" onClick={onClose} />
+        </header>
+        <div className="cb-debug-body cb-debug-call">
+          {found === undefined ? (
+            <span className="cb-debug-empty">Reading the transcripts…</span>
+          ) : found === null ? (
             <span className="cb-debug-empty">
               Not in Claude Code's transcripts of the last 7 days.
             </span>
           ) : (
             <>
-              <span className="cb-debug-empty" title={call.transcript}>
-                {call.name} · {call.transcript.split('/').at(-1)}
-              </span>
-              <pre>{JSON.stringify(call.input, null, 2)}</pre>
-              {call.result !== undefined && (
-                <pre className={call.error ? 'cb-debug-error' : undefined}>
-                  {call.result}
-                </pre>
-              )}
+              <h3 className="cb-debug-layer">
+                Agent{found.agentType && ` ${found.agentType}`}{' '}
+                <small>
+                  ·{' '}
+                  {found.instructions
+                    ? `${found.instructions.file}, as on disk now`
+                    : 'instructions not found'}
+                </small>
+              </h3>
+              {found.instructions && <pre>{found.instructions.text}</pre>}
+              <h3 className="cb-debug-layer">
+                First message <small>· exactly as it was sent</small>
+              </h3>
+              <pre title={found.transcript}>{found.prompt}</pre>
             </>
           )}
         </div>
-      )}
+      </div>
+    </div>
+  )
+}
+
+/** A link on the agent's first run that opens what it was given in a dialog. */
+function AgentPromptLink({ agent }: { agent: string }) {
+  // The panel it opens in, set by the click: in the separator, the dialog
+  // would take its capitals and its pill.
+  const [panel, setPanel] = useState<Element | null>(null)
+  // Stable: the dialog takes the focus again whenever its onClose changes.
+  const close = useCallback(() => setPanel(null), [])
+  return (
+    <>
+      <button
+        type="button"
+        className="cb-debug-context"
+        aria-haspopup="dialog"
+        title="What this agent was given: its instructions and its first message"
+        onClick={(event) => setPanel(event.currentTarget.closest('.cb-debug'))}
+      >
+        Context
+      </button>
+      {panel && createPortal(<AgentPromptDialog agent={agent} onClose={close} />, panel)}
     </>
+  )
+}
+
+/** A tool call's id: a click unfolds what the agent sent and got back. */
+function ToolId({ id }: { id: string }) {
+  return (
+    <TranscriptFold
+      load={() => fetchDebug<ToolCall>(`tool/${id}`)}
+      label={id}
+      title="Show what the agent sent and got back"
+      render={(call) => (
+        <>
+          <TranscriptName transcript={call.transcript} prefix={call.name} />
+          <pre>{JSON.stringify(call.input, null, 2)}</pre>
+          {call.result !== undefined && (
+            <pre className={call.error ? 'cb-debug-error' : undefined}>{call.result}</pre>
+          )}
+        </>
+      )}
+    />
   )
 }
 
@@ -434,6 +614,7 @@ function Timeline({
   onRun: (run: string | undefined) => void
 }) {
   const runs = runsOf(comment)
+  const firstRuns = firstRunsOf(comment)
   return (
     <>
       {runs.length > 0 && (
@@ -448,8 +629,17 @@ function Timeline({
         {withSeparators(timelineOf(comment, run), agentsOf(comment)).map(
           (event, index) =>
             event.kind === 'separator' ? (
-              // oxlint-disable-next-line react/no-array-index-key -- rebuilt on every change, like the rows
-              <SeparatorRow key={index} separator={event} />
+              // One per run: keyed by it, its dialog stays open while rows come in above it.
+              <SeparatorRow
+                key={`run ${event.run}`}
+                separator={event}
+                // On the agent's first run, filtered or not; the main session's prompt is the user's.
+                context={
+                  event.agent && firstRuns.has(event.run) ? (
+                    <AgentPromptLink agent={event.agent} />
+                  ) : undefined
+                }
+              />
             ) : (
               <li
                 // The timeline is rebuilt from the comment on every change: its order is its identity.
@@ -560,15 +750,20 @@ export function DebugPanel({
   }, [])
 
   if (!open) return null
-  const histories = new Map(others.comments.map((entry) => [entry.id, entry.history]))
+  // The history poll's copy also has the server's lines: the widget's own polls do not.
+  const polled = new Map(others.comments.map((entry) => [entry.id, entry]))
   const comments = [...held, ...others.comments]
     .filter(
       (comment, index, list) =>
         list.findIndex((other) => other.id === comment.id) === index,
     )
     .map((comment) => {
-      const history = histories.get(comment.id)
-      return history ? { ...comment, history } : comment
+      const { history, lines } = polled.get(comment.id) ?? {}
+      return {
+        ...comment,
+        ...(history ? { history } : {}),
+        ...(lines ? { lines } : {}),
+      }
     })
   const comment =
     comments.find((entry) => entry.id === selected?.id && selected.current === current) ??
