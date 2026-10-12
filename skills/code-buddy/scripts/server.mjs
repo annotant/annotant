@@ -4,9 +4,11 @@
 // per comment needing attention (the manager reads them through Monitor):
 // OPEN (backlog at start), NEW, FOLLOWUP, EDIT, ASKED, ANSWERED, RESOLVED, CANCELLED,
 // DELETED.
+// It watches the comments file's folder and the step files' folder, and pushes
+// `changed` to the widgets on /api/events: they reload only then.
 // Only runs while /code-buddy is active: no server, no widget.
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { existsSync, watch } from 'node:fs'
+import { mkdir, readFile, stat } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import {
@@ -24,6 +26,7 @@ import {
   createStore,
   isActive,
   normaliseQuote,
+  progressPath,
   stepFiles,
 } from './lib/store.mjs'
 
@@ -43,7 +46,9 @@ if (!process.env.CODE_BUDDY_HOOKS) {
 }
 const { config } = project
 const port = Number(process.env.CODE_BUDDY_PORT ?? config.port ?? 4599)
-const pollMs = Number(process.env.CODE_BUDDY_POLL_MS ?? 1000)
+// The re-read behind the folder watches, for the mounts whose writes they miss
+// (some Docker, network or WSL ones).
+const pollMs = Number(process.env.CODE_BUDDY_POLL_MS ?? 5000)
 const store = createStore(project)
 const WIDGET = path.join(SKILL_DIR, 'widget', 'dist', 'widget.js')
 // Releases ship the built widget; a clone of the repository builds it first.
@@ -199,6 +204,10 @@ async function handle(req, res) {
       'cache-control': 'no-store',
     })
     return res.end(source)
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/events') {
+    return listen(req, res, cors)
   }
 
   if (url.pathname === '/api/health') {
@@ -390,13 +399,13 @@ function describe(comment) {
   return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}`
 }
 
-async function tick(first) {
-  let comments
-  try {
-    comments = await store.readAll()
-  } catch {
-    return
-  }
+/**
+ * Prints the lines for the manager about what changed in `comments` since the
+ * last read.
+ * @param {Awaited<ReturnType<typeof store.readAll>>} comments
+ * @param {boolean} first
+ */
+function tick(comments, first) {
   const current = new Set()
   for (const comment of comments) {
     if (!isActive(comment)) continue
@@ -429,6 +438,127 @@ async function tick(first) {
   // A deleted comment's lines go with it, even one deleted while inactive.
   const ids = new Set(comments.map((comment) => comment.id))
   for (const id of printed.keys()) if (!ids.has(id)) printed.delete(id)
+}
+
+/**
+ * The widgets listening for changes: one stream per tab.
+ * @type {Set<http.ServerResponse>}
+ */
+const listeners = new Set()
+
+/**
+ * Opens a stream of server-sent events: `changed`, with the ids of the
+ * comments that changed, each time the comments file or a step file changes.
+ * @param {http.IncomingMessage} req
+ * @param {http.ServerResponse} res
+ * @param {Record<string, string>} cors
+ */
+function listen(req, res, cors) {
+  res.writeHead(200, {
+    ...cors,
+    'content-type': 'text/event-stream',
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'no-store',
+  })
+  // Sent at once: the widget's EventSource opens on the headers.
+  res.write(': listening\n\n')
+  listeners.add(res)
+  req.on('close', () => listeners.delete(res))
+}
+
+/**
+ * By comment id, what it was at the last read: the comment, and the size and
+ * time of its step file.
+ * @type {Map<string, string>}
+ */
+const fingerprints = new Map()
+
+/**
+ * The ids of the comments that changed since the last read, the deleted ones
+ * included.
+ * @param {Awaited<ReturnType<typeof store.readAll>>} comments
+ */
+async function changedIds(comments) {
+  const read = await Promise.all(
+    comments.map(async (comment) => {
+      const steps = await stat(progressPath(project, comment.id)).then(
+        (file) => `${file.size} ${file.mtimeMs}`,
+        () => '',
+      )
+      return /** @type {const} */ ([comment.id, `${JSON.stringify(comment)}\n${steps}`])
+    }),
+  )
+  const next = new Map(read)
+  const ids = [
+    ...read
+      .filter(([id, fingerprint]) => fingerprints.get(id) !== fingerprint)
+      .map(([id]) => id),
+    ...[...fingerprints.keys()].filter((id) => !next.has(id)),
+  ]
+  fingerprints.clear()
+  for (const [id, fingerprint] of next) fingerprints.set(id, fingerprint)
+  return ids
+}
+
+/**
+ * Reads the comments: prints the manager's lines, and tells the widgets which
+ * comments changed.
+ * @param {boolean} first
+ */
+async function refresh(first) {
+  let comments
+  try {
+    comments = await store.readAll()
+  } catch {
+    return
+  }
+  tick(comments, first)
+  const ids = await changedIds(comments)
+  if (first || !ids.length) return
+  const event = `event: changed\ndata: ${JSON.stringify({ ids })}\n\n`
+  for (const res of listeners) res.write(event)
+}
+
+/** @type {Promise<void>} */
+let refreshing = Promise.resolve()
+
+/**
+ * Refreshes after the refresh under way, never during it: two reads finishing
+ * out of order would print a line twice.
+ */
+const refreshNext = (first = false) =>
+  (refreshing = refreshing.then(() => refresh(first)).catch(() => undefined))
+
+/** One write fires several watch events: a refresh once they stop. */
+const DEBOUNCE_MS = 50
+/** @type {NodeJS.Timeout | undefined} */
+let debounce
+
+function changeSeen() {
+  clearTimeout(debounce)
+  debounce = setTimeout(() => void refreshNext(), DEBOUNCE_MS)
+}
+
+/**
+ * By folder, its watch. The folders, not the files: the store writes a temp
+ * file and renames it over the comments file, which a watch on the file loses.
+ * @type {Map<string, import('node:fs').FSWatcher>}
+ */
+const watchers = new Map()
+
+/** Watches the folders not watched yet: one removed since waits for the next re-read. */
+function watchFolders() {
+  for (const dir of [path.dirname(project.commentsFile), project.progressDir]) {
+    if (watchers.has(dir)) continue
+    try {
+      const watcher = watch(dir, changeSeen)
+      watcher.on('error', () => {
+        watcher.close()
+        watchers.delete(dir)
+      })
+      watchers.set(dir, watcher)
+    } catch {}
+  }
 }
 
 const server = http.createServer((req, res) => {
@@ -484,7 +614,14 @@ try {
 }
 
 server.listen(port, '127.0.0.1', async () => {
+  // Made before the first comment: a folder must be there to be watched.
+  await mkdir(path.dirname(project.commentsFile), { recursive: true })
+  await mkdir(project.progressDir, { recursive: true })
   console.log(`READY http://127.0.0.1:${port} project=${project.root}`)
-  await tick(true)
-  setInterval(() => tick(false).catch(() => undefined), pollMs)
+  watchFolders()
+  await refreshNext(true)
+  setInterval(() => {
+    watchFolders()
+    void refreshNext()
+  }, pollMs)
 })

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
-const POLL_ACTIVE_MS = 3000
-const POLL_IDLE_MS = 10000
+const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
+// The server pushes its changes: this reload only catches what a dropped
+// stream missed.
+const POLL_MS = 30_000
 const CHANGED = 'code-buddy:changed'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -35,6 +37,44 @@ async function failure(response: Response): Promise<string> {
 
 const changed = () => window.dispatchEvent(new Event(CHANGED))
 
+/** The server's changes, one stream per tab whatever the number of lists. */
+let stream: EventSource | undefined
+let streamUsers = 0
+/** Whether the stream dropped since it last opened. */
+let dropped = false
+
+/**
+ * Reloads the lists each time the server says a comment changed, until the
+ * returned function is called by every user.
+ */
+function listen(): () => void {
+  // An older browser, or a test without it: the slow reload alone.
+  if (typeof EventSource === 'undefined') return () => undefined
+  if (streamUsers++ === 0) {
+    const source = new EventSource(EVENTS)
+    source.addEventListener('changed', changed)
+    // Dropped (the server stopped): the lists say it is unreachable. Opened
+    // again: the changes made meanwhile were missed.
+    source.addEventListener('error', () => {
+      if (dropped) return
+      dropped = true
+      changed()
+    })
+    source.addEventListener('open', () => {
+      if (!dropped) return
+      dropped = false
+      changed()
+    })
+    stream = source
+  }
+  return () => {
+    if (--streamUsers > 0) return
+    stream?.close()
+    stream = undefined
+    dropped = false
+  }
+}
+
 function usePolledComments(url: string | undefined) {
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -52,20 +92,20 @@ function usePolledComments(url: string | undefined) {
     }
   }, [url])
 
-  const hasOpen = comments.some((comment) => comment.state !== 'resolved')
-
   useEffect(() => {
     if (!url) return undefined
     // load() never rejects: it records failures as `reachable: false`.
     const reload = () => void load()
     reload()
-    const timer = setInterval(reload, hasOpen ? POLL_ACTIVE_MS : POLL_IDLE_MS)
+    const timer = setInterval(reload, POLL_MS)
     window.addEventListener(CHANGED, reload)
+    const unlisten = listen()
     return () => {
       clearInterval(timer)
       window.removeEventListener(CHANGED, reload)
+      unlisten()
     }
-  }, [url, load, hasOpen])
+  }, [url, load])
 
   return { comments, loaded, reachable }
 }
