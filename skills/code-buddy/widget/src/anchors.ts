@@ -283,10 +283,20 @@ export function rangesFromAnchors(
   return anchors.map((anchor) => findAnchor(index, anchor))
 }
 
-function step(element: Element): string {
+/** The element's own name: its test id or id, when it has one. */
+function nameStep(element: Element): string | undefined {
   const testId = element.getAttribute('data-testid')
-  if (testId) return `[data-testid="${testId}"]`
+  // Quoted as written, for the agent to search the code for; escaped otherwise.
+  if (testId)
+    return /["\\\n\r\f]/.test(testId)
+      ? `[data-testid=${CSS.escape(testId)}]`
+      : `[data-testid="${testId}"]`
   if (element.id) return `#${CSS.escape(element.id)}`
+  return undefined
+}
+
+/** Where the element sits among its parent's children. */
+function positionStep(element: Element): string {
   const tag = element.tagName.toLowerCase()
   const parent = element.parentElement
   if (!parent) return tag
@@ -298,12 +308,19 @@ function step(element: Element): string {
     : tag
 }
 
+/**
+ * Climbs from `element` to the first test id or id that names it alone; one
+ * repeated in a list names every item, so it climbs on by position.
+ */
 function selectorFor(root: Element, element: Element): string {
   const steps: string[] = []
   for (let node: Element | null = element; node && node !== root;) {
-    const current = step(node)
-    steps.unshift(current)
-    if (current.startsWith('[') || current.startsWith('#')) break
+    const name = nameStep(node)
+    if (name) {
+      const selector = [name, ...steps].join(' > ')
+      if (root.querySelectorAll(selector).length === 1) return selector
+    }
+    steps.unshift(positionStep(node))
     node = node.parentElement
   }
   return steps.join(' > ')
@@ -325,14 +342,26 @@ export function anchorFromElement(root: Element, element: Element): ReviewAnchor
   }
 }
 
+/**
+ * The element a stored anchor points at. Of several matches (a selector saved
+ * before it was unique), the one with the saved text; none rather than a wrong
+ * one. A single match is kept even if its text changed: the agent edits it.
+ */
 export function elementFromAnchor(
   root: Element,
   anchor: ReviewAnchor,
 ): Element | undefined {
   if (!anchor.element) return undefined
+  const { selector, tag, text } = anchor.element
+  let matches: Element[]
   try {
-    return root.querySelector(anchor.element.selector) ?? undefined
+    matches = Array.from(root.querySelectorAll(selector))
   } catch {
     return undefined
   }
+  const sameTag = matches.filter((match) => match.tagName.toLowerCase() === tag)
+  if (sameTag.length === 1) return sameTag[0]
+  return sameTag.find(
+    (match) => normaliseQuote(match.textContent ?? '').slice(0, 200) === text,
+  )
 }
