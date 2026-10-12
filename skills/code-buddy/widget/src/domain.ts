@@ -148,7 +148,8 @@ export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
 /**
  * Open again on the reader's reply: the thread ends on their message after
  * the comment, which the server sends the manager as `FOLLOWUP`, for the
- * thread's agent when it still has one. A re-sent comment is `NEW`.
+ * thread's agent when it still has one. A comment re-sent with only the
+ * reader's comment in its thread is `NEW`.
  */
 export const isReply = (comment: Pick<ReviewComment, 'messages'>) =>
   comment.messages.length > 1 && comment.messages.at(-1)?.author === 'reader'

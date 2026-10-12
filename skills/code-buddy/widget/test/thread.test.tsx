@@ -111,7 +111,7 @@ test("the reader's reply says an agent is picking it up, at each step", async ()
   )
 })
 
-test('a comment sent again after its run was stopped waits for a new agent', async () => {
+test('a comment re-sent after a stop, with no reply, waits for a new agent', async () => {
   const at = '2026-01-01T10:00:00.000Z'
   fakeServer([
     comment({

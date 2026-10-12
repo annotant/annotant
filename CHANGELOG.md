@@ -63,8 +63,8 @@ released to the `stable` branch.
   "No agent has started. Is the /code-buddy session busy?" when no agent has
   claimed it a minute later. The reader's reply in the thread (an answer or
   a follow-up) says "Claude has your reply, an agent is picking it up…"
-  instead: the manager hands it to the thread's agent when it still has one. The debug panel marks each hand-over and
-  how long the claim took after it.
+  instead: the manager hands it to the thread's agent when it still has one.
+  The debug panel marks each hand-over and how long the claim took after it.
 - **The hook log**, to check what the plugin's hooks do in a real session:
   `/code-buddy-debug on` turns it on in every session, `tail -f
   ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last
