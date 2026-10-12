@@ -1,5 +1,6 @@
 import {
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   Fragment,
   useCallback,
   useEffect,
@@ -41,6 +42,7 @@ import { readSession, writeSession } from './session'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
 import { ElementMarks, ElementPicker, QuoteBubbles, TargetOutline } from './overlays'
 import {
+  Boundary,
   Button,
   Checkbox,
   Chip,
@@ -371,10 +373,15 @@ interface UiState {
 
 const PAGE_LEVEL: ReviewAnchor = { quote: '', occurrence: 0, section: '' }
 
+/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
 function pagePath(url: string | undefined): string {
   if (!url) return ''
-  const { pathname, search, hash } = new URL(url)
-  return pathname + search + hash
+  try {
+    const { pathname, search, hash } = new URL(url)
+    return pathname + search + hash
+  } catch {
+    return ''
+  }
 }
 
 function scopeLabel(comment: { route: string; url?: string }): string {
@@ -827,6 +834,24 @@ export default function App({ root }: { root: Element }) {
       />
     )
 
+  /** Draws `comment` with `draw`, or says it cannot, and still offers to delete it. */
+  const guarded = (comment: ReviewComment, draw: () => ReactNode) => (
+    <Boundary
+      key={comment.id}
+      resetOn={comment}
+      fallback={
+        <article className="cb-item cb-summary" data-testid="code-buddy-error">
+          <div className="cb-summary-head">
+            <span className="cb-idle">This comment could not be shown.</span>
+            {deleteButton(comment)}
+          </div>
+        </article>
+      }
+    >
+      {draw}
+    </Boundary>
+  )
+
   const renderItem = (comment: ReviewComment) => (
     <article key={comment.id} className="cb-item cb-discussion">
       <div className="cb-item-top">
@@ -1006,7 +1031,7 @@ export default function App({ root }: { root: Element }) {
     )
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
 
-  const allCommentsView = (
+  const allCommentsView = () => (
     <>
       <Toggle
         value={statusFilter}
@@ -1026,7 +1051,7 @@ export default function App({ root }: { root: Element }) {
           </Button>
         </div>
       ) : (
-        filtered.map((comment) => renderSummary(comment, true))
+        filtered.map((comment) => guarded(comment, () => renderSummary(comment, true)))
       )}
     </>
   )
@@ -1129,31 +1154,55 @@ export default function App({ root }: { root: Element }) {
             </div>
           </header>
           <div className="cb-body" ref={setScroller}>
-            {view === 'all' && (thread ? renderItem(thread) : allCommentsView)}
-            {drafting && (
-              <div className="cb-form">
-                {draft.section && <span className="cb-section">{draft.section}</span>}
-                {draft.quote && (
-                  <blockquote className="cb-quote">{draft.quote}</blockquote>
-                )}
-                {elementChip(draft)}
-                {!draft.quote && !draft.element && (
-                  <Checkbox
-                    checked={!draft.app}
-                    onChange={(checked) => setDraft({ ...draft, app: !checked })}
-                  >
-                    Linked to the current page ({pagePath(window.location.href)})
-                  </Checkbox>
-                )}
-              </div>
-            )}
-            {view === 'page' && !drafting && thread && renderItem(thread)}
-            {view === 'page' &&
-              !drafting &&
-              !thread &&
-              comments
-                .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-                .map((comment) => renderSummary(comment, false))}
+            <Boundary
+              // Somewhere else in the panel, it draws again.
+              key={`${view} ${threadId ?? ''} ${drafting}`}
+              fallback={
+                <div className="cb-empty" data-testid="code-buddy-error">
+                  <span className="cb-idle">This could not be shown.</span>
+                </div>
+              }
+            >
+              {() => (
+                <>
+                  {view === 'all' &&
+                    (thread
+                      ? guarded(thread, () => renderItem(thread))
+                      : allCommentsView())}
+                  {drafting && (
+                    <div className="cb-form">
+                      {draft.section && (
+                        <span className="cb-section">{draft.section}</span>
+                      )}
+                      {draft.quote && (
+                        <blockquote className="cb-quote">{draft.quote}</blockquote>
+                      )}
+                      {elementChip(draft)}
+                      {!draft.quote && !draft.element && (
+                        <Checkbox
+                          checked={!draft.app}
+                          onChange={(checked) => setDraft({ ...draft, app: !checked })}
+                        >
+                          Linked to the current page ({pagePath(window.location.href)})
+                        </Checkbox>
+                      )}
+                    </div>
+                  )}
+                  {view === 'page' &&
+                    !drafting &&
+                    thread &&
+                    guarded(thread, () => renderItem(thread))}
+                  {view === 'page' &&
+                    !drafting &&
+                    !thread &&
+                    comments
+                      .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+                      .map((comment) =>
+                        guarded(comment, () => renderSummary(comment, false)),
+                      )}
+                </>
+              )}
+            </Boundary>
             {/* The end of the body: the message box follows the content, and
                 sticks to the panel's bottom once the content overflows. */}
             <div className="cb-body-end">
