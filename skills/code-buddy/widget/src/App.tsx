@@ -354,6 +354,9 @@ function Question({
 interface Draft extends ReviewAnchor {
   body: string
   app?: boolean
+  /** The page the draft was started on: the app may navigate before it is saved. */
+  route: string
+  url: string
 }
 
 interface PendingCenter {
@@ -576,7 +579,12 @@ export default function App({ root }: { root: Element }) {
   }, [pendingCenter, root, route, spotlight])
 
   const startDraft = useCallback((anchor: ReviewAnchor) => {
-    setDraft({ ...anchor, body: '' })
+    setDraft({
+      ...anchor,
+      body: '',
+      route: window.location.pathname,
+      url: window.location.href,
+    })
     setView('page')
     setThreadId(undefined)
     setOpen(true)
@@ -607,13 +615,13 @@ export default function App({ root }: { root: Element }) {
 
   const save = async () => {
     if (!draft?.body.trim()) return
-    const { app, body, ...anchor } = draft
+    const { app, body, route: startedOn, url, ...anchor } = draft
     await run(async () => {
       const comment = await createComment({
         anchor,
         body,
-        route: app ? APP_ROUTE : route,
-        url: window.location.href,
+        route: app ? APP_ROUTE : startedOn,
+        url,
       })
       setCreated(comment)
       setDraft(undefined)
@@ -1183,7 +1191,7 @@ export default function App({ root }: { root: Element }) {
                           checked={!draft.app}
                           onChange={(checked) => setDraft({ ...draft, app: !checked })}
                         >
-                          Linked to the current page ({pagePath(window.location.href)})
+                          Linked to the current page ({pagePath(draft.url)})
                         </Checkbox>
                       )}
                     </div>

@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
+import type { ReviewComment } from '../src/domain'
 import { comment, fakeServer } from './server'
 import { renderWidget, stubHighlights } from './widget'
 
@@ -7,10 +8,10 @@ import { renderWidget, stubHighlights } from './widget'
  * The widget over a page with two blocks, the reader selecting from the first
  * to the second, as a browser reads it (happy-dom puts no line break between).
  */
-async function selectAcrossBlocks() {
+async function selectAcrossBlocks(comments: ReviewComment[] = []) {
   // renderWidget's page outlives the test: only its unmount removes it.
   document.body.replaceChildren()
-  fakeServer([])
+  fakeServer(comments)
   renderWidget()
   const page = document.querySelector('main')
   if (!page) throw new Error('no page')
@@ -160,4 +161,25 @@ test('the Comment button sits on the quote when the drag starts on the line abov
 
   const button = await screen.findByTestId('cb-selection')
   expect([button.style.left, button.style.top]).toEqual(['40px', '90px'])
+})
+
+test('a comment is filed on the page where it was started, not where it is saved', async () => {
+  const comments: ReviewComment[] = []
+  const startedOn = window.location.href
+  const { selection, button } = await selectAcrossBlocks(comments)
+  fireEvent.click(button)
+  selection.removeAllRanges()
+  const box = await screen.findByRole('textbox')
+  // The app navigates on the client: the widget stays mounted.
+  history.pushState(null, '', '/docs')
+  onTestFinished(() => history.pushState(null, '', startedOn))
+  window.dispatchEvent(new PopStateEvent('popstate'))
+
+  fireEvent.change(box, { target: { value: 'Shorter' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  await screen.findByText('Comment saved')
+  expect(comments.map(({ route, url }) => ({ route, url }))).toEqual([
+    { route: '/', url: startedOn },
+  ])
 })
