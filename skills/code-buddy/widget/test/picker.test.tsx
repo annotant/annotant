@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react'
+import { act, createEvent, fireEvent, render } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { ElementPicker, HOVER_DWELL_MS } from '../src/overlays'
 
@@ -131,4 +131,53 @@ test('an element gone from the page takes its outline with it', () => {
 
   // Not slid to the viewport's corner, where a detached element's box is.
   expect(outline()).toBeNull()
+})
+
+test.each(['pointerDown', 'mouseDown', 'pointerUp', 'mouseUp', 'click'] as const)(
+  'a %s on the element being picked never reaches the page',
+  (name) => {
+    const { root, first, hover } = page()
+    const reached = vi.fn()
+    const type = name.toLowerCase()
+    first.addEventListener(type, reached)
+    document.addEventListener(type, reached)
+    onTestFinished(() => document.removeEventListener(type, reached))
+    render(<ElementPicker root={root} onPick={() => {}} onCancel={() => {}} />)
+    act(() => hover(first))
+
+    const event = createEvent[name](first, { clientX: 20, clientY: 30 })
+    fireEvent(first, event)
+
+    expect(reached).not.toHaveBeenCalled()
+    // Nor its default: no focus taken, no text selection started.
+    expect(event.defaultPrevented).toBe(true)
+  },
+)
+
+test('only the click picks the element', () => {
+  const { root, first, hover } = page()
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+
+  fireEvent.pointerDown(first)
+  fireEvent.mouseDown(first)
+  fireEvent.pointerUp(first)
+  fireEvent.mouseUp(first)
+  expect(onPick).not.toHaveBeenCalled()
+
+  fireEvent.click(first)
+  expect(onPick).toHaveBeenCalledExactlyOnceWith(first)
+})
+
+test('a press on nothing to pick reaches the page', () => {
+  const { root, hover } = page()
+  const reached = vi.fn()
+  root.addEventListener('mousedown', reached)
+  render(<ElementPicker root={root} onPick={() => {}} onCancel={() => {}} />)
+  act(() => hover(root))
+
+  fireEvent.mouseDown(root)
+
+  expect(reached).toHaveBeenCalledOnce()
 })

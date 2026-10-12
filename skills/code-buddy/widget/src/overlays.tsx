@@ -353,6 +353,9 @@ export function TargetOutline({ element }: { element: Element }) {
   )
 }
 
+/** The events of a press, from pointerdown to click. */
+const PRESSES = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'] as const
+
 /** How long the pointer stays on an element before the outline moves to it. */
 export const HOVER_DWELL_MS = 50
 
@@ -401,12 +404,14 @@ export function ElementPicker({
         setScrolled(false)
       }, HOVER_DWELL_MS)
     }
-    const onClick = (event: MouseEvent) => {
+    // The page gets no press on the element being picked, nor its default
+    // (focus, a menu opening on pointerdown, a drag): the click only picks.
+    const onPress = (event: MouseEvent) => {
       const element = target(event)
       if (!element) return
       event.preventDefault()
       event.stopPropagation()
-      onPick(element)
+      if (event.type === 'click') onPick(element)
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel()
@@ -416,14 +421,14 @@ export function ElementPicker({
       setTick((tick) => tick + 1)
     }
     document.addEventListener('mousemove', onMove)
-    document.addEventListener('click', onClick, true)
+    for (const type of PRESSES) window.addEventListener(type, onPress, true)
     document.addEventListener('keydown', onKey)
     document.addEventListener('scroll', onScroll, true)
     document.documentElement.style.cursor = 'crosshair'
     return () => {
       clearTimeout(dwell)
       document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('click', onClick, true)
+      for (const type of PRESSES) window.removeEventListener(type, onPress, true)
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('scroll', onScroll, true)
       document.documentElement.style.cursor = ''
