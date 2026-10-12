@@ -411,13 +411,37 @@ test('the timeline shows the lines the server printed', () => {
   ).toEqual([
     'by reader',
     NEW_LINE,
-    'by agent',
+    'by agent · 1.0 s after the hand-over',
     'by agent',
     'ASKED c1',
     'by reader',
     FOLLOWUP_LINE,
-    'by agent',
+    'by agent · 1.0 s after the hand-over',
   ])
+})
+
+test('the timeline marks each hand-over to the manager', () => {
+  expect(
+    timelineOf(twoAgents).flatMap((event) =>
+      event.kind === 'status' && !event.state ? [event.label] : [],
+    ),
+  ).toEqual([
+    'handed over · 1.0 s after the opening',
+    'server line',
+    'handed over · 1.0 s after the opening',
+  ])
+})
+
+test('a claim with no hand-over of its opening shows no gap', () => {
+  const restarted = {
+    ...twoAgents,
+    lines: [{ at: '2026-01-01T10:00:01.000Z', line: NEW_LINE }],
+  }
+  const claims = timelineOf(restarted).flatMap((event) =>
+    event.kind === 'status' && event.state === 'working' ? [event.detail] : [],
+  )
+  // The second opening was handed over before the lines kept start.
+  expect(claims).toEqual(['by agent · 1.0 s after the hand-over', 'by agent'])
 })
 
 test("an agent's prompt shows under its first run only, never the main session's", () => {

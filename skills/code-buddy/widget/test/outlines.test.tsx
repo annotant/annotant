@@ -64,9 +64,7 @@ test("a bubble on an element opens its comment's thread", async () => {
 
   fireEvent.click(await screen.findByRole('button', { name: 'Open the comment on <h1>' }))
 
-  expect((await screen.findByTestId('cb-working')).textContent).toBe(
-    'Waiting for Claude…',
-  )
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
 })
 
 test('an element keeps its in-progress look once its thread is opened', async () => {
