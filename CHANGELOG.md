@@ -66,6 +66,10 @@ released to the `stable` branch.
   Alt+Shift+D shows each comment as the widget holds it, its conversation in
   order, every tool call of every run, and its raw JSON, live. The released
   widget does not contain it, and keeps no steps once a run ends.
+- The debug panel shows what each agent was told: the lines the server
+  printed for the managing session, and under each agent's first run its first
+  message, the prompt it was started with, flagged when it holds none of the
+  lines that may have started it.
 
 - Claude can ask the reader a question in the thread (`ask.mjs`) instead of
   guessing; the comment waits on the reader's answer.
