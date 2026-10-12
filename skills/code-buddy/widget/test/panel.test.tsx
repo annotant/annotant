@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
-import { comment, fakeServer, openPanel } from './server'
+import { comment, fakeEvents, fakeServer, openPanel } from './server'
 import { renderWidget } from './widget'
 
 function renderOpenPanel() {
@@ -98,18 +98,28 @@ test('a comment with an invalid url shows its route, in the list and its thread'
   expect((await screen.findByText('Whole page · /')).isConnected).toBe(true)
 })
 
-test('a comment that cannot be shown leaves the rest of the panel working', async () => {
+test('a comment that cannot be shown leaves the others, until the server sends it anew', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  // No thread at all: not a comment the server writes.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a comment broken on purpose
-  fakeServer([{ ...comment(), messages: undefined } as unknown as ReviewComment])
+  const events = fakeEvents()
+  const good = comment({ id: 'c2', body: 'Fix the footer' })
+  const comments = [
+    // No thread at all: not a comment the server writes. Stopped, so it can be deleted.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a comment broken on purpose
+    { ...comment({ state: 'stopped' }), messages: undefined } as unknown as ReviewComment,
+    good,
+  ]
+  fakeServer(comments)
   openPanel('all')
   renderWidget()
 
-  expect((await screen.findByTestId('code-buddy-error')).textContent).toContain(
-    'could not be shown',
-  )
-  fireEvent.click(screen.getByRole('button', { name: 'New comment' }))
+  const broken = await screen.findByTestId('code-buddy-error')
+  expect(broken.textContent).toContain('could not be shown')
+  expect(broken.querySelector('[data-testid="cb-delete"]')).toBeTruthy()
+  expect(screen.getByText('Fix the footer').isConnected).toBe(true)
+  expect(screen.getByRole('radiogroup').isConnected).toBe(true)
+
+  comments[0] = comment()
+  events.send('changed')
+  expect((await screen.findByText('Make the title bigger')).isConnected).toBe(true)
   expect(screen.queryByTestId('code-buddy-error')).toBeNull()
-  expect(screen.getByRole('heading', { name: 'New comment' }).isConnected).toBe(true)
 })

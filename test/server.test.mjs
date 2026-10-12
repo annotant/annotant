@@ -95,6 +95,10 @@ const post = (body, headers = {}) =>
     body,
   })
 
+/** @param {string} url The url stored for a comment posted with it. */
+const stored = async (url) =>
+  (await json(await post(JSON.stringify({ route: '/about', url, body: 'Odd url' })))).url
+
 /**
  * Listens to the server's events, as a widget does.
  * @param {Record<string, string>} [headers]
@@ -178,13 +182,13 @@ test('creates a comment and lists it for its page', async () => {
   assert.ok(listed.some((c) => c.messages[0].body === 'Typo here' && c.state === 'open'))
 })
 
-test('keeps a comment without a url that is not a web page', async () => {
+test('keeps only http and https urls, as the parser writes them', async () => {
   for (const url of ['x', 'javascript:alert(1)', '/about']) {
-    const created = await json(
-      await post(JSON.stringify({ route: '/about', url, body: 'Odd url' })),
-    )
-    assert.equal(created.url, undefined, url)
+    assert.equal(await stored(url), undefined, url)
   }
+  assert.equal(await stored('http://localhost:3000/a\nb'), 'http://localhost:3000/ab')
+  const long = `http://localhost:3000/?q=${'a'.repeat(3000)}`
+  assert.equal(await stored(long), long.slice(0, 2000))
 })
 
 test("takes the reader's choice among the options Claude asked with", async () => {

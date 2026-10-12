@@ -1,5 +1,6 @@
 import {
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   Fragment,
   useCallback,
   useEffect,
@@ -833,6 +834,24 @@ export default function App({ root }: { root: Element }) {
       />
     )
 
+  /** Draws `comment` with `draw`, or says it cannot, and still offers to delete it. */
+  const guarded = (comment: ReviewComment, draw: () => ReactNode) => (
+    <Boundary
+      key={comment.id}
+      resetOn={comment}
+      fallback={
+        <article className="cb-item cb-summary" data-testid="code-buddy-error">
+          <div className="cb-summary-head">
+            <span className="cb-idle">This comment could not be shown.</span>
+            {deleteButton(comment)}
+          </div>
+        </article>
+      }
+    >
+      {draw}
+    </Boundary>
+  )
+
   const renderItem = (comment: ReviewComment) => (
     <article key={comment.id} className="cb-item cb-discussion">
       <div className="cb-item-top">
@@ -1032,7 +1051,7 @@ export default function App({ root }: { root: Element }) {
           </Button>
         </div>
       ) : (
-        filtered.map((comment) => renderSummary(comment, true))
+        filtered.map((comment) => guarded(comment, () => renderSummary(comment, true)))
       )}
     </>
   )
@@ -1146,7 +1165,10 @@ export default function App({ root }: { root: Element }) {
             >
               {() => (
                 <>
-                  {view === 'all' && (thread ? renderItem(thread) : allCommentsView())}
+                  {view === 'all' &&
+                    (thread
+                      ? guarded(thread, () => renderItem(thread))
+                      : allCommentsView())}
                   {drafting && (
                     <div className="cb-form">
                       {draft.section && (
@@ -1166,13 +1188,18 @@ export default function App({ root }: { root: Element }) {
                       )}
                     </div>
                   )}
-                  {view === 'page' && !drafting && thread && renderItem(thread)}
+                  {view === 'page' &&
+                    !drafting &&
+                    thread &&
+                    guarded(thread, () => renderItem(thread))}
                   {view === 'page' &&
                     !drafting &&
                     !thread &&
                     comments
                       .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-                      .map((comment) => renderSummary(comment, false))}
+                      .map((comment) =>
+                        guarded(comment, () => renderSummary(comment, false)),
+                      )}
                 </>
               )}
             </Boundary>

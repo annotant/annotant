@@ -318,17 +318,26 @@ export function Toasts() {
 
 /**
  * Draws `children()`, or `fallback` once that throws: one comment the widget
- * cannot draw never takes the whole widget down. Given a new `key`, it tries
- * again.
+ * cannot draw never takes the whole widget down. It tries again when
+ * `resetOn` changes, as when the server sends that comment anew.
  */
 export class Boundary extends Component<
-  { fallback: ReactNode; children: () => ReactNode },
-  { failed: boolean }
+  { fallback: ReactNode; resetOn?: unknown; children: () => ReactNode },
+  { failed: boolean; resetOn?: unknown }
 > {
-  override state = { failed: false }
+  override state = { failed: false, resetOn: this.props.resetOn }
 
   static getDerivedStateFromError() {
     return { failed: true }
+  }
+
+  static getDerivedStateFromProps(
+    props: { resetOn?: unknown },
+    state: { resetOn?: unknown },
+  ) {
+    return props.resetOn === state.resetOn
+      ? null
+      : { failed: false, resetOn: props.resetOn }
   }
 
   override render() {

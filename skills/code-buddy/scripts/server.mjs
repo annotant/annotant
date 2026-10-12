@@ -128,13 +128,16 @@ function sanitiseElement(element) {
 }
 
 /**
- * The page of a new comment, when it is one: an http or https URL, up to 2000
- * characters. Anything else is dropped, and the comment keeps its route.
+ * The page of a new comment, when it is one: an http or https URL, as the
+ * parser writes it, up to 2000 characters. Anything else is dropped, and the
+ * comment keeps its route.
  * @param {unknown} url
  */
 function sanitiseUrl(url) {
-  if (typeof url !== 'string' || url.length > 2000 || !URL.canParse(url)) return undefined
-  return /^https?:$/.test(new URL(url).protocol) ? url : undefined
+  const parsed = typeof url === 'string' ? URL.parse(url.slice(0, 2000)) : null
+  return parsed && /^https?:$/.test(parsed.protocol)
+    ? parsed.href.slice(0, 2000)
+    : undefined
 }
 
 /** The anchor of a new comment: where on the page it is. */

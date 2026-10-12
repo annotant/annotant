@@ -105,8 +105,9 @@ released to the `stable` branch.
 - A comment whose `url` was not a full URL (a hand-edited comments file, or
   another client) made the widget vanish as soon as the panel drew it, and it
   stayed gone in that tab until the comment was deleted. The widget now shows
-  that comment's route, a part of the panel it cannot draw says so instead of
-  taking the widget down, and the server keeps only `http` and `https` URLs.
+  that comment's route; a comment it cannot draw says so, with its delete
+  button, next to the others; and the server keeps only `http` and `https`
+  URLs.
 - A text selection across several elements (two paragraphs, list items, table
   cells) could not be commented on, and neither could text styled by CSS
   (`text-transform`) or around hidden text, a `<select>` or a `<textarea>`:
