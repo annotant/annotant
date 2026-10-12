@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useState } from 'react'
+import { type CSSProperties, Fragment, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { elementFromAnchor, rangesFromAnchors, startRect } from './anchors'
 import { type ReviewComment, wasResolved } from './domain'
@@ -36,6 +36,98 @@ const cornersOf = (element: Element): Corners => {
     borderBottomRightRadius: style.borderBottomRightRadius || '0px',
     borderBottomLeftRadius: style.borderBottomLeftRadius || '0px',
   }
+}
+
+interface Edges {
+  top: number
+  left: number
+  right: number
+  bottom: number
+}
+
+/** Whether a side of a box shows from `from` to `to`: with no `size`, at a point. */
+const shows = (from: number, to: number, size: number) => (size ? to > from : to >= from)
+
+/** The part of `box` inside `clip`, if any: a box with no size shows where it is. */
+function within(box: Box, clip: Edges): Box | undefined {
+  const top = Math.max(box.top, clip.top)
+  const left = Math.max(box.left, clip.left)
+  const bottom = Math.min(box.top + box.height, clip.bottom)
+  const right = Math.min(box.left + box.width, clip.right)
+  return shows(top, bottom, box.height) && shows(left, right, box.width)
+    ? { top, left, width: right - left, height: bottom - top }
+    : undefined
+}
+
+/** An ancestor that cuts what overflows it, on one axis or both. */
+interface Clipper {
+  element: Element
+  x: boolean
+  y: boolean
+}
+
+const cuts = (overflow: string) => overflow !== '' && overflow !== 'visible'
+
+/** Whether its element holds its fixed descendants, as it holds its absolute ones. */
+const holdsFixed = (style: CSSStyleDeclaration) =>
+  [style.transform, style.filter, style.perspective].some(
+    (value) => value && value !== 'none',
+  ) ||
+  /paint|layout|strict|content/.test(style.contain) ||
+  /transform|filter|perspective/.test(style.willChange)
+
+/**
+ * What cuts what `element` holds: `element` and each ancestor that clips its
+ * overflow (a scrolling sidebar, a list) and contains it, up to `body`, whose
+ * overflow is the viewport's. `position` is that of what it holds: absolute
+ * or fixed, it escapes the ancestors that do not contain it. Read with the
+ * page's changes, not on every scroll: a scroll leaves them as they are.
+ */
+function clippersOf(element: Element | null, position = 'static'): Clipper[] {
+  const clippers: Clipper[] = []
+  for (
+    let ancestor = element;
+    ancestor && ancestor !== document.body && ancestor !== document.documentElement;
+    ancestor = ancestor.parentElement
+  ) {
+    const style = getComputedStyle(ancestor)
+    const contains =
+      position === 'fixed'
+        ? holdsFixed(style)
+        : position !== 'absolute' || style.position !== 'static' || holdsFixed(style)
+    if (!contains) continue
+    position = style.position
+    // Overflow cuts nothing on an inline box (a truncated `span`), nor on no box.
+    if (style.display === 'inline' || style.display === 'contents') continue
+    const x = cuts(style.overflowX)
+    const y = cuts(style.overflowY)
+    if (x || y) clippers.push({ element: ancestor, x, y })
+  }
+  return clippers
+}
+
+/** Where what `clippers` cut shows on screen: the viewport, cut by their padding boxes. */
+function clipOf(clippers: Clipper[]): Edges {
+  const clip = { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight }
+  for (const { element, x, y } of clippers) {
+    const rect = element.getBoundingClientRect()
+    // Its padding box, scaled as its box is: its border and scrollbars hide what scrolls too.
+    const scaled =
+      element instanceof HTMLElement && element.offsetWidth && element.offsetHeight
+    const scaleX = scaled ? rect.width / element.offsetWidth : 1
+    const scaleY = scaled ? rect.height / element.offsetHeight : 1
+    if (x) {
+      const left = rect.left + element.clientLeft * scaleX
+      clip.left = Math.max(clip.left, left)
+      clip.right = Math.min(clip.right, left + element.clientWidth * scaleX)
+    }
+    if (y) {
+      const top = rect.top + element.clientTop * scaleY
+      clip.top = Math.max(clip.top, top)
+      clip.bottom = Math.min(clip.bottom, top + element.clientHeight * scaleY)
+    }
+  }
+  return clip
 }
 
 const sameBox = (a?: Box, b?: Box) =>
@@ -92,8 +184,12 @@ function useTracked<Found, Measured>(
   return measured
 }
 
-interface Mark extends Box {
+interface Mark {
   comment: ReviewComment
+  /** The element's box. */
+  frame: Box
+  /** The part of it that shows, out of the scrolling boxes that hide the rest. */
+  shown: Box
   corners: Corners
 }
 
@@ -102,16 +198,19 @@ function findElements(root: Element, comments: ReviewComment[]) {
     if (wasResolved(comment)) return []
     const element = elementFromAnchor(root, comment.anchor)
     // Read with the page's changes, not on every scroll: a scroll leaves them as they are.
-    return element ? [{ comment, element, corners: cornersOf(element) }] : []
+    if (!element) return []
+    const { position } = getComputedStyle(element)
+    const clippers = clippersOf(element.parentElement, position)
+    return [{ comment, element, corners: cornersOf(element), clippers }]
   })
 }
 
 function measureElements(found: ReturnType<typeof findElements>): Mark[] {
-  return found.map(({ comment, element, corners }) => ({
-    comment,
-    ...boxOf(element),
-    corners,
-  }))
+  return found.flatMap(({ comment, element, corners, clippers }) => {
+    const frame = boxOf(element)
+    const shown = within(frame, clipOf(clippers))
+    return shown ? [{ comment, frame, shown, corners }] : []
+  })
 }
 
 /**
@@ -132,22 +231,33 @@ export function ElementMarks({
 
   return (
     <>
-      {marks.map(({ comment, top, left, width, height, corners }) => (
-        <div
-          key={comment.id}
-          className="cb-mark"
-          style={{ top, left, width, height, ...corners }}
-        >
+      {marks.map(({ comment, frame, shown, corners }) => (
+        <Fragment key={comment.id}>
+          {/* The frame, cut to the part of the element that shows. */}
+          <div className="cb-clip" style={shown}>
+            <div
+              className="cb-mark"
+              style={{
+                top: frame.top - shown.top,
+                left: frame.left - shown.left,
+                width: frame.width,
+                height: frame.height,
+                ...corners,
+              }}
+            />
+          </div>
+          {/* On its top left corner, the tail towards it: on the part that shows. */}
           <button
             type="button"
-            className="cb-quote-pin cb-mark-pin cb-live"
+            className="cb-quote-pin cb-live"
+            style={{ top: shown.top, left: shown.left }}
             aria-label={`Open the comment on <${comment.anchor.element?.tag ?? 'element'}>`}
             title={comment.messages[0]?.body}
             onClick={() => onOpen(comment)}
           >
             <Icon name="chat" />
           </button>
-        </div>
+        </Fragment>
       ))}
     </>
   )
@@ -155,14 +265,22 @@ export function ElementMarks({
 
 interface QuotePin {
   comment: ReviewComment
-  top: number
-  left: number
-  /** One box per line of the quote, behind its text. */
+  /** One box per line of the quote, behind its text, cut to where it shows. */
   lines: Box[]
+  /** Its bubble, if a part of the quote shows. */
+  bubble: { top: number; left: number } | undefined
 }
 
-/** The boxes of the text `range` covers, line by line: not those of the elements it spans. */
-function lineBoxes(range: Range): Box[] {
+interface TextPart {
+  range: Range
+  clippers: Clipper[]
+}
+
+/** The text `range` covers, node by node, each with what cuts it: not the elements it spans. */
+function textParts(
+  range: Range,
+  clippers: (element: Element | null) => Clipper[],
+): TextPart[] {
   const ancestor = range.commonAncestorContainer
   const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT)
   const texts: Text[] = []
@@ -172,14 +290,12 @@ function lineBoxes(range: Range): Box[] {
       texts.push(walker.currentNode)
     }
   }
-  return texts.flatMap((text) => {
+  return texts.map((text) => {
     const part = document.createRange()
     part.selectNodeContents(text)
     if (text === range.startContainer) part.setStart(text, range.startOffset)
     if (text === range.endContainer) part.setEnd(text, range.endOffset)
-    return Array.from(part.getClientRects())
-      .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map(({ top, left, width, height }) => ({ top, left, width, height }))
+    return { range: part, clippers: clippers(text.parentElement) }
   })
 }
 
@@ -192,9 +308,19 @@ function findQuotes(root: Element, comments: ReviewComment[]) {
     root,
     quoted.map((comment) => comment.anchor),
   )
+  // Texts side by side share what cuts them.
+  const read = new Map<Element | null, Clipper[]>()
+  const clippers = (element: Element | null) => {
+    const known = read.get(element) ?? clippersOf(element)
+    read.set(element, known)
+    return known
+  }
   return quoted.flatMap((comment, i) => {
     const range = ranges[i]
-    return range ? [{ comment, range }] : []
+    if (!range) return []
+    const { startContainer: start } = range
+    const startClippers = clippers(start instanceof Element ? start : start.parentElement)
+    return [{ comment, range, parts: textParts(range, clippers), startClippers }]
   })
 }
 
@@ -247,14 +373,38 @@ function usePageLayer() {
 /** Width of a bubble and its gap: the next one on the same spot sits beside it. */
 const PIN_STEP = 26
 
-/** Where each quote starts, where its Comment button was. */
+/**
+ * The lines of each quote, and its bubble where it starts, where its Comment
+ * button was; its start out of sight, on its first line that shows.
+ */
 function measureQuotes(found: ReturnType<typeof findQuotes>): QuotePin[] {
+  const clips = new Map<Clipper[], Edges>()
+  const clip = (clippers: Clipper[]) => {
+    const known = clips.get(clippers) ?? clipOf(clippers)
+    clips.set(clippers, known)
+    return known
+  }
+  const spots: { top: number; left: number }[] = []
   const pins: QuotePin[] = []
-  for (const { comment, range } of found) {
-    const { top, left, height } = startRect(range)
-    if (!height) continue
-    const stacked = pins.filter((pin) => pin.top === top && pin.left === left).length
-    pins.push({ comment, top, left: left + stacked * PIN_STEP, lines: lineBoxes(range) })
+  for (const { comment, range, parts, startClippers } of found) {
+    const start = startRect(range)
+    if (!start.height) continue
+    const lines = parts.flatMap(({ range: part, clippers }) =>
+      Array.from(part.getClientRects())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .flatMap((rect) => within(rect, clip(clippers)) ?? []),
+    )
+    const shown = within(start, clip(startClippers))
+    const spot = shown?.height === start.height ? start : lines[0]
+    const bubble = spot && {
+      top: spot.top,
+      left:
+        spot.left +
+        spots.filter(({ top, left }) => top === spot.top && left === spot.left).length *
+          PIN_STEP,
+    }
+    if (spot) spots.push({ top: spot.top, left: spot.left })
+    pins.push({ comment, lines, bubble })
   }
   return pins
 }
@@ -297,20 +447,24 @@ export function QuoteBubbles({
         ),
         layer,
       )}
-      {pins.map(({ comment, top, left }) => (
-        <button
-          key={comment.id}
-          type="button"
-          className="cb-quote-pin cb-live"
-          style={{ top, left }}
-          aria-label={`Open the comment on “${comment.anchor.quote}”`}
-          title={comment.messages[0]?.body}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onOpen(comment)}
-        >
-          <Icon name="chat" />
-        </button>
-      ))}
+      {pins.flatMap(({ comment, bubble }) =>
+        bubble ? (
+          <button
+            key={comment.id}
+            type="button"
+            className="cb-quote-pin cb-live"
+            style={bubble}
+            aria-label={`Open the comment on “${comment.anchor.quote}”`}
+            title={comment.messages[0]?.body}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onOpen(comment)}
+          >
+            <Icon name="chat" />
+          </button>
+        ) : (
+          []
+        ),
+      )}
     </>
   )
 }
