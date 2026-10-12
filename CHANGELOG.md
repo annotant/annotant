@@ -61,8 +61,10 @@ released to the `stable` branch.
   gone: a comment reads "Sent…" until the server hands it over to the managing
   session, "Claude has your comment, an agent is starting…" once it has, and
   "No agent has started. Is the /code-buddy session busy?" when no agent has
-  claimed it a minute later. The debug panel marks each hand-over and how
-  long the claim took after it.
+  claimed it a minute later. A reply on a thread an agent already worked on
+  says "Claude has your reply, an agent is picking it up…" instead: the
+  manager hands it to that agent. The debug panel marks each hand-over and
+  how long the claim took after it.
 - **The hook log**, to check what the plugin's hooks do in a real session:
   `/code-buddy-debug on` turns it on in every session, `tail -f
   ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last

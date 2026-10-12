@@ -29,6 +29,7 @@ import {
   type ReviewMessage,
   type ReviewProgress,
   answered,
+  hadRun,
   isActive,
   isAsking,
   latestText,
@@ -204,18 +205,43 @@ const WAITS = [
   },
 ]
 
+/** The same, for a reply on a thread an agent already worked on. */
+const REPLY_WAITS = [
+  { after: 0, text: 'Claude has your reply, an agent is picking it up…' },
+  {
+    after: BUSY_AFTER_MS,
+    text: 'Claude has your reply but is busy…',
+    title:
+      'The Claude session watching this app is answering something else, or already runs three agents; it picks up your reply once it is free.',
+  },
+  {
+    after: NO_AGENT_AFTER_MS,
+    text: 'No agent has picked up your reply. Is the /code-buddy session busy?',
+    title:
+      'The server handed your reply over a minute ago and no agent claimed it: check the terminal running /code-buddy:code-buddy, or run it again.',
+  },
+]
+
 /**
  * An open comment while a session watches: sent, then handed over to the
  * manager, then, while no agent claims it, busy, then not started at all.
- * Each return to `open` starts again, with its own `notifiedAt`.
+ * Each return to `open` starts again, with its own `notifiedAt`; `reply` when
+ * an agent worked on the thread before.
  */
-function Waiting({ notifiedAt }: { notifiedAt: string | undefined }) {
+function Waiting({
+  notifiedAt,
+  reply,
+}: {
+  notifiedAt: string | undefined
+  reply: boolean
+}) {
+  const waits = reply ? REPLY_WAITS : WAITS
   const since = notifiedAt ? Date.parse(notifiedAt) : undefined
   const [now, setNow] = useState(Date.now)
   const wait =
-    since === undefined ? undefined : WAITS.findLast(({ after }) => now >= since + after)
+    since === undefined ? undefined : waits.findLast(({ after }) => now >= since + after)
   const next =
-    since === undefined ? undefined : WAITS.find(({ after }) => now < since + after)
+    since === undefined ? undefined : waits.find(({ after }) => now < since + after)
   const due = next && since !== undefined ? since + next.after : undefined
 
   useEffect(() => {
@@ -841,7 +867,7 @@ export default function App({ root }: { root: Element }) {
             <CurrentStep step={comment.progress?.at(-1)} />
           </div>
         ) : watching ? (
-          <Waiting notifiedAt={comment.notifiedAt} />
+          <Waiting notifiedAt={comment.notifiedAt} reply={hadRun(comment)} />
         ) : (
           <div className="cb-idle" data-testid="cb-unwatched">
             No Claude session is watching. Run /code-buddy:code-buddy.

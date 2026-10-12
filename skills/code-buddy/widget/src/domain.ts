@@ -145,6 +145,15 @@ type Lifecycle = Pick<ReviewComment, 'state'>
 export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
   comment.events.some((event) => event.state === 'resolved')
 
+/**
+ * Back to `open` after an agent worked on it: the manager hands the reply to
+ * that agent, when it still has it, rather than starting one.
+ */
+export function hadRun(comment: Pick<ReviewComment, 'events'>) {
+  const opened = comment.events.findLastIndex((event) => event.state === 'open')
+  return comment.events.slice(0, opened).some((event) => event.state === 'working')
+}
+
 /** Waiting for an agent, or worked on by one. */
 export function isActive(comment: Lifecycle) {
   return comment.state === 'open' || comment.state === 'working'

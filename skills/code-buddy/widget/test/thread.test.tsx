@@ -58,6 +58,47 @@ test('an open comment says each step while no agent claims it', async () => {
   )
 })
 
+test('a reply on a thread an agent worked on says an agent is picking it up', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      messages: [
+        { author: 'claude', body: 'Which title?', at },
+        { author: 'reader', body: 'Fresh coffee, every week', at },
+      ],
+      events: [
+        { at, state: 'open', by: 'reader' },
+        { at, state: 'working', by: 'agent' },
+        { at, state: 'asking', by: 'agent' },
+        { at, state: 'open', by: 'reader' },
+      ],
+      notifiedAt: new Date().toISOString(),
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  expect((await screen.findByTestId('cb-working')).textContent).toBe(
+    'Claude has your reply, an agent is picking it up…',
+  )
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15_000)
+  })
+  expect(screen.getByTestId('cb-working').textContent).toBe(
+    'Claude has your reply but is busy…',
+  )
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(45_000)
+  })
+  expect(screen.getByTestId('cb-working').textContent).toBe(
+    'No agent has picked up your reply. Is the /code-buddy session busy?',
+  )
+})
+
 test('a sent comment says Claude has it once a poll brings the hand-over', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => {
