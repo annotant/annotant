@@ -1,6 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { agentsOf, timelineOf, toggleDebug, withSeparators } from '../src/debug'
+import {
+  agentsOf,
+  lineBefore,
+  timelineOf,
+  toggleDebug,
+  withSeparators,
+} from '../src/debug'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
@@ -363,4 +369,89 @@ test('a line marks each run, a bolder one where the agent changes', async () => 
   expect(panel.getByText('Agent a1aaaaaa · run r1')).toBeTruthy()
   expect(panel.getByText('Run r2')).toBeTruthy()
   expect(panel.getByText('Agent b2bbbbbb · run r3')).toBeTruthy()
+})
+
+const NEW_LINE = 'NEW c1 route=/ page-level body="Make the title bigger"'
+const FOLLOWUP_LINE = 'FOLLOWUP c1 route=/ page-level followup="40px" messages=3'
+
+const twoAgents = comment({
+  state: 'working',
+  events: [
+    { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+    {
+      at: '2026-01-01T10:00:02.000Z',
+      state: 'working',
+      by: 'agent',
+      run: 'r1',
+      agent: 'a1aaaaaaaa',
+    },
+    { at: '2026-01-01T10:00:03.000Z', state: 'asking', by: 'agent', run: 'r1' },
+    { at: '2026-01-01T10:00:04.000Z', state: 'open', by: 'reader' },
+    {
+      at: '2026-01-01T10:00:06.000Z',
+      state: 'working',
+      by: 'agent',
+      run: 'r2',
+      agent: 'b2bbbbbbbb',
+    },
+  ],
+  lines: [
+    { at: '2026-01-01T10:00:01.000Z', line: NEW_LINE },
+    { at: '2026-01-01T10:00:03.500Z', line: 'ASKED c1' },
+    { at: '2026-01-01T10:00:05.000Z', line: FOLLOWUP_LINE },
+  ],
+})
+
+test('the timeline shows the lines the server printed, and which one started each run', () => {
+  expect(
+    timelineOf(twoAgents).flatMap((event) =>
+      event.kind === 'status' ? [event.detail ?? event.label] : [],
+    ),
+  ).toEqual([
+    'by reader',
+    NEW_LINE,
+    'by agent',
+    'by agent',
+    'ASKED c1',
+    'by reader',
+    FOLLOWUP_LINE,
+    'by agent',
+  ])
+  expect(lineBefore(twoAgents, 'r1')).toBe(NEW_LINE)
+  expect(lineBefore(twoAgents, 'r2')).toBe(FOLLOWUP_LINE)
+  expect(lineBefore(comment(), 'r1')).toBeUndefined()
+})
+
+/** The server's answer for an agent started with `line` in its prompt. */
+const prompt = (agent: string, line: string) =>
+  Response.json({
+    transcript: `/home/u/.claude/projects/-repo/s/subagents/agent-${agent}.jsonl`,
+    prompt: `c1\n${line}\nSKILL=/skill\nPROJECT=/repo`,
+  })
+
+test("a new agent's first message unfolds, compared with the line that started it", async () => {
+  const server = fakeServer([twoAgents]).fetch
+  const comments = server.getMockImplementation()
+  server.mockImplementation(async (input, init) =>
+    input.endsWith('/api/debug/agent/a1aaaaaaaa')
+      ? prompt('a1aaaaaaaa', NEW_LINE)
+      : input.endsWith('/api/debug/agent/b2bbbbbbbb')
+        ? prompt('b2bbbbbbbb', 'FOLLOWUP c1 rewritten by the manager')
+        : (comments?.(input, init) ?? new Response(null, { status: 500 })),
+  )
+  openThread('c1')
+  renderWidget()
+  toggleDebug(true)
+
+  const panel = within(await screen.findByTestId('cb-debug'))
+  const [first, second] = panel.getAllByRole('button', { name: 'First message' })
+  fireEvent.click(first!)
+  expect(await panel.findByText(/SKILL=\/skill/)).toBeTruthy()
+  expect(panel.getByText('agent-a1aaaaaaaa.jsonl')).toBeTruthy()
+  expect(panel.getByText('Holds the server line as printed.')).toBeTruthy()
+
+  fireEvent.click(first!)
+  fireEvent.click(second!)
+  expect(await panel.findByText(/rewritten by the manager/)).toBeTruthy()
+  expect(panel.getByText('Does not hold the server line as printed:')).toBeTruthy()
 })

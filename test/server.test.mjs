@@ -295,9 +295,23 @@ test('tells the manager when the reader resolves a comment themselves', async ()
   await nextLine(`RESOLVED ${created.id}`, printed)
 })
 
-test("a released widget's server serves no step files", async () => {
-  const response = await fetch(`${base}/api/debug/steps/c1`)
-  assert.equal(response.status, 404)
+test("a released widget's server serves no step files nor agent prompts", async () => {
+  assert.equal((await fetch(`${base}/api/debug/steps/c1`)).status, 404)
+  assert.equal((await fetch(`${base}/api/debug/agent/a1aaaaaaaa`)).status, 404)
+})
+
+test('serves the lines it printed about a comment with its history only', async () => {
+  const creating = output.length
+  const created = await json(await post(JSON.stringify({ route: '/lines', body: 'Hi' })))
+  const line = await nextLine(`NEW ${created.id} `, creating)
+  assert.equal((await firstOn('/lines')).lines, undefined)
+
+  const listed = await json(await fetch(`${base}/api/comments?route=/lines&history=1`))
+  assert.deepEqual(
+    listed[0].lines.map((/** @type {{ line: string }} */ entry) => entry.line),
+    [line],
+  )
+  assert.ok(listed[0].lines[0].at >= created.createdAt)
 })
 
 test('rejects malformed JSON with 400, and never echoes an exception', async () => {

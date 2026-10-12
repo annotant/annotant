@@ -16,7 +16,7 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
-import { TOOL_ID, findToolCall } from './lib/transcripts.mjs'
+import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
   MAX_OPTIONS,
@@ -193,6 +193,19 @@ async function handle(req, res) {
       : send(res, 404, { error: 'not in the recent transcripts' }, cors)
   }
 
+  // The dev widget's debug panel: the first message an agent received, the
+  // prompt the manager wrote, from its transcript.
+  const agent = /^\/api\/debug\/agent\/([^/]+)$/.exec(url.pathname)?.[1]
+  if (req.method === 'GET' && agent !== undefined) {
+    if (!isDevWidget(WIDGET) || !AGENT_ID.test(agent)) {
+      return send(res, 404, { error: 'not found' }, cors)
+    }
+    const prompt = await findAgentPrompt(agent)
+    return prompt
+      ? send(res, 200, prompt, cors)
+      : send(res, 404, { error: 'not in the recent transcripts' }, cors)
+  }
+
   // The dev widget's debug panel: a comment's step files as they are on disk,
   // to read in a tab of their own.
   const steps = /^\/api\/debug\/steps\/([^/]+)$/.exec(url.pathname)?.[1]
@@ -219,7 +232,14 @@ async function handle(req, res) {
       // history=1: every step of every run, for the widget's debug panel.
       const history = url.searchParams.get('history') === '1'
       const comments = await store.list(route ?? undefined, { history })
-      return send(res, 200, comments.map(withNotified), cors)
+      return send(
+        res,
+        200,
+        comments.map((comment) =>
+          history ? withLines(withNotified(comment)) : withNotified(comment),
+        ),
+        cors,
+      )
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
@@ -279,6 +299,39 @@ function withNotified(comment) {
   return comment.state === 'open' && known?.opened === opened
     ? { ...comment, notifiedAt: known.notified }
     : comment
+}
+
+/** The most lines kept per comment for the debug panel. */
+const LINES_KEPT = 50
+
+/**
+ * By comment id, the lines printed about it for the manager, oldest first:
+ * what an agent should have been sent, for the debug panel.
+ * @type {Map<string, { at: string, line: string }[]>}
+ */
+const printed = new Map()
+
+/**
+ * Prints `line` about comment `id` for the manager, and keeps it.
+ * @param {string} id
+ * @param {string} line
+ */
+function print(id, line) {
+  console.log(line)
+  const lines = [...(printed.get(id) ?? []), { at: new Date().toISOString(), line }]
+  printed.set(id, lines.slice(-LINES_KEPT))
+}
+
+/**
+ * A comment with `lines`, the lines printed about it since the server
+ * started, when there are any. Never stored in the file.
+ * @template {{ id: string }} T
+ * @param {T} comment
+ * @returns {T & { lines?: { at: string, line: string }[] }}
+ */
+function withLines(comment) {
+  const lines = printed.get(comment.id)
+  return lines ? { ...comment, lines } : comment
 }
 
 /** The line for a comment that is no longer active, by where it went. */
@@ -342,24 +395,27 @@ async function tick(first) {
     // Stopped, asked or resolved, then opened again between two polls: the
     // manager hears both, as if it had seen each.
     if (previous && previous.opened !== opened) {
-      console.log(goneLine(comment.id, comment.events[opened - 1]?.state))
+      print(comment.id, goneLine(comment.id, comment.events[opened - 1]?.state))
     }
     let notified = previous?.notified ?? ''
     if (previous === undefined || previous.opened !== opened) {
       const kind = latestReply(comment) ? 'FOLLOWUP' : first ? 'OPEN' : 'NEW'
-      console.log(`${kind} ${describe(comment)}`)
+      print(comment.id, `${kind} ${describe(comment)}`)
       notified = new Date().toISOString()
     } else if (previous.text !== text) {
-      console.log(`EDIT ${describe(comment)}`)
+      print(comment.id, `EDIT ${describe(comment)}`)
     }
     seen.set(comment.id, { opened, text, notified })
   }
   for (const id of seen.keys()) {
     if (current.has(id)) continue
     const gone = comments.find((comment) => comment.id === id)
-    console.log(gone ? goneLine(id, gone.state) : `DELETED ${id}`)
+    print(id, gone ? goneLine(id, gone.state) : `DELETED ${id}`)
     seen.delete(id)
   }
+  // A deleted comment's lines go with it, even one deleted while inactive.
+  const ids = new Set(comments.map((comment) => comment.id))
+  for (const id of printed.keys()) if (!ids.has(id)) printed.delete(id)
 }
 
 const server = http.createServer((req, res) => {

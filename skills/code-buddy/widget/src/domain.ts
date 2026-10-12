@@ -105,6 +105,17 @@ export interface ReviewComment {
   history?: ReviewProgress[]
   /** Open only: when the server sent it to the manager; never stored in the file. */
   notifiedAt?: string
+  /**
+   * With `history=1` only: the lines the server printed about it for the
+   * manager since it started, oldest first; never stored in the file.
+   */
+  lines?: ReviewLine[]
+}
+
+/** A line the server printed for the manager, as it printed it. */
+export interface ReviewLine {
+  at: string
+  line: string
 }
 
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {

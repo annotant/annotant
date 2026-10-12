@@ -1,11 +1,14 @@
-// A tool call as Claude Code recorded it in its transcripts, for the dev
-// widget's debug panel: what the agent sent and what it got back.
+// What Claude Code recorded in its transcripts, for the dev widget's debug
+// panel: a tool call, what the agent sent and got back, and the first message
+// an agent received.
 import { readdir, readFile, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
 /** A Claude Code tool_use_id: nothing else reaches the file system. */
 export const TOOL_ID = /^toolu_[A-Za-z0-9]{8,64}$/
+/** A Claude Code subagent's id, whose transcript is `agent-<id>.jsonl`. */
+export const AGENT_ID = /^[A-Za-z0-9]{6,64}$/
 
 // Only recent transcripts are read: a comment's runs are hours old, not months.
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
@@ -41,7 +44,7 @@ async function recentTranscripts(dir, since) {
 }
 
 /**
- * A tool result's text: a string, or text blocks.
+ * A message's or a tool result's text: a string, or text blocks.
  * @param {unknown} content
  */
 function textOf(content) {
@@ -97,6 +100,41 @@ export async function findToolCall(
     }
     // A transcript that only quotes the id (the manager's) is not the call's.
     if (call) return { transcript: file, ...call, ...outcome }
+  }
+  return undefined
+}
+
+/**
+ * The first message agent `id` received, from its transcript: the prompt the
+ * session that started it wrote.
+ * @param {string} id
+ * @param {{ dir?: string, now?: number }} [options]
+ * @returns {Promise<{ transcript: string, prompt: string } | undefined>}
+ */
+export async function findAgentPrompt(
+  id,
+  { dir = transcriptsDir(), now = Date.now() } = {},
+) {
+  if (!AGENT_ID.test(id)) return undefined
+  const name = `agent-${id}.jsonl`
+  const transcript = (await recentTranscripts(dir, now - RECENT_MS))
+    .filter(({ file }) => path.basename(file) === name)
+    .toSorted((a, b) => b.mtime - a.mtime)[0]?.file
+  if (!transcript) return undefined
+  const text = await readFile(transcript, 'utf8').catch(() => '')
+  for (const line of text.split('\n')) {
+    let message
+    try {
+      message = JSON.parse(line).message
+    } catch {
+      continue
+    }
+    if (message?.role !== 'user') continue
+    const prompt = textOf(message.content)
+    return {
+      transcript,
+      prompt: prompt.length > MAX_RESULT ? `${prompt.slice(0, MAX_RESULT)}\n…` : prompt,
+    }
   }
   return undefined
 }

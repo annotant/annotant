@@ -52,6 +52,8 @@ const DEBUG_CSS = `
 .cb-debug-runs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--cb-muted); }
 .cb-debug-run { border: 0; cursor: pointer; font-size: inherit; }
 .cb-debug-run[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent-strong); }
+.cb-debug-prompt { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.cb-debug-prompt .cb-debug-call { align-self: stretch; }
 `
 
 // Shown or not, and the raw JSON unfolded or not: shared by the header's toggle
@@ -228,6 +230,9 @@ export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[
   for (const message of comment.messages) {
     events.push({ kind: 'message', at: time(message.at), message })
   }
+  for (const { at, line } of comment.lines ?? []) {
+    events.push({ kind: 'status', at: time(at), label: 'server line', detail: line })
+  }
   const cancellation = comment.cancellation
   if (cancellation) {
     events.push({
@@ -340,21 +345,100 @@ interface ToolCall {
   error?: boolean
 }
 
+interface AgentPrompt {
+  transcript: string
+  prompt: string
+}
+
 /** A comment's step files, every run's, as the server has them on disk. */
 const stepsUrl = (id: string) =>
   new URL(`api/debug/steps/${id}`, new URL('.', import.meta.url)).href
 
-/** The call as the server read it in Claude Code's transcripts; null when it could not. */
-async function fetchToolCall(id: string): Promise<ToolCall | null> {
+/** What the server read in Claude Code's transcripts; null when it could not. */
+async function fetchDebug<T>(path: string): Promise<T | null> {
   try {
-    const url = new URL(`api/debug/tool/${id}`, new URL('.', import.meta.url))
+    const url = new URL(`api/debug/${path}`, new URL('.', import.meta.url))
     const response = await fetch(url.href)
     // The server's JSON has the shape it answers with.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return response.ok ? ((await response.json()) as ToolCall) : null
+    return response.ok ? ((await response.json()) as T) : null
   } catch {
     return null
   }
+}
+
+/** The lines that start an agent: the manager passes them on in its prompt. */
+const STARTING_LINE = /^(OPEN|NEW|FOLLOWUP) /
+
+/**
+ * The last line the server printed to start an agent on the comment before
+ * `run` began: what that run's agent should have been sent.
+ */
+export function lineBefore(comment: ReviewComment, run: string): string | undefined {
+  const started = time(comment.events.find((event) => event.run === run)?.at)
+  return comment.lines?.findLast(
+    ({ at, line }) => STARTING_LINE.test(line) && time(at) <= started,
+  )?.line
+}
+
+/**
+ * The first message an agent received, unfolded on a click, compared with
+ * `line`, the server line it should hold as printed.
+ */
+function FirstMessage({ agent, line }: { agent: string; line: string | undefined }) {
+  const [open, setOpen] = useState(false)
+  const [found, setFound] = useState<AgentPrompt | null>()
+  const toggle = () => {
+    setOpen(!open)
+    if (found === undefined) {
+      void fetchDebug<AgentPrompt>(`agent/${agent}`).then(setFound)
+    }
+  }
+  return (
+    <>
+      <button
+        type="button"
+        className="cb-debug-tag cb-debug-id"
+        aria-expanded={open}
+        title="Show the prompt the agent was started with"
+        onClick={toggle}
+      >
+        First message
+      </button>
+      {open && (
+        <div className="cb-debug-call">
+          {found === undefined ? (
+            <span className="cb-debug-empty">Reading the transcripts…</span>
+          ) : found === null ? (
+            <span className="cb-debug-empty">
+              Not in Claude Code's transcripts of the last 7 days.
+            </span>
+          ) : (
+            <>
+              <span className="cb-debug-empty" title={found.transcript}>
+                {found.transcript.split('/').at(-1)}
+              </span>
+              <pre>{found.prompt}</pre>
+              {line === undefined ? (
+                <span className="cb-debug-empty">
+                  No server line since the server started to compare it with.
+                </span>
+              ) : found.prompt.includes(line) ? (
+                <span className="cb-debug-empty">Holds the server line as printed.</span>
+              ) : (
+                <>
+                  <span className="cb-debug-error">
+                    Does not hold the server line as printed:
+                  </span>
+                  <pre>{line}</pre>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </>
+  )
 }
 
 /** A tool call's id: a click unfolds what the agent sent and got back. */
@@ -363,7 +447,7 @@ function ToolId({ id }: { id: string }) {
   const [call, setCall] = useState<ToolCall | null>()
   const toggle = () => {
     setOpen(!open)
-    if (call === undefined) void fetchToolCall(id).then(setCall)
+    if (call === undefined) void fetchDebug<ToolCall>(`tool/${id}`).then(setCall)
   }
   return (
     <>
@@ -449,7 +533,18 @@ function Timeline({
           (event, index) =>
             event.kind === 'separator' ? (
               // oxlint-disable-next-line react/no-array-index-key -- rebuilt on every change, like the rows
-              <SeparatorRow key={index} separator={event} />
+              <Fragment key={index}>
+                <SeparatorRow separator={event} />
+                {/* A new agent's prompt; the main session's is the user's. */}
+                {event.newAgent && event.agent && event.agent !== 'main' && (
+                  <li className="cb-debug-prompt">
+                    <FirstMessage
+                      agent={event.agent}
+                      line={lineBefore(comment, event.run)}
+                    />
+                  </li>
+                )}
+              </Fragment>
             ) : (
               <li
                 // The timeline is rebuilt from the comment on every change: its order is its identity.
