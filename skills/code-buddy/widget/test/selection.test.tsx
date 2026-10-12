@@ -77,9 +77,7 @@ test('a bubble above the start of a commented text opens its thread', async () =
   })
   expect([bubble.style.left, bubble.style.top]).toEqual(['120px', '100px'])
   fireEvent.click(bubble)
-  expect((await screen.findByTestId('cb-working')).textContent).toBe(
-    'Waiting for Claude…',
-  )
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
 })
 
 /** happy-dom lays nothing out: every range starts where `at` says. */

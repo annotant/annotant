@@ -24,18 +24,16 @@ test('a claimed comment shows what Claude is doing, and can be cancelled', async
   )
 })
 
-test('an open comment waits for Claude while a session watches', async () => {
+test('an open comment the server has not handed over yet says it was sent', async () => {
   fakeServer([comment()])
   openThread('c1')
   renderWidget()
 
-  expect((await screen.findByTestId('cb-working')).textContent).toBe(
-    'Waiting for Claude…',
-  )
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
   expect(screen.queryByTestId('cb-unwatched')).toBeNull()
 })
 
-test('an open comment says Claude is busy once the manager has had it a while', async () => {
+test('an open comment says each step while no agent claims it', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => {
     vi.useRealTimers()
@@ -45,16 +43,44 @@ test('an open comment says Claude is busy once the manager has had it a while', 
   renderWidget()
 
   const waiting = await screen.findByTestId('cb-working')
-  expect(waiting.textContent).toBe('Waiting for Claude…')
+  expect(waiting.textContent).toBe('Claude has your comment, an agent is starting…')
   await act(async () => {
     await vi.advanceTimersByTimeAsync(15_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
     'Claude has your comment but is busy…',
   )
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(45_000)
+  })
+  expect(screen.getByTestId('cb-working').textContent).toBe(
+    'No agent has started. Is the /code-buddy session busy?',
+  )
 })
 
-test('an open comment the manager was not sent yet only waits', async () => {
+test('a sent comment says Claude has it once a poll brings the hand-over', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const served = [comment()]
+  fakeServer(served)
+  openThread('c1')
+  renderWidget()
+
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
+  served[0] = comment({ notifiedAt: new Date().toISOString() })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5_000)
+  })
+  await waitFor(() =>
+    expect(screen.getByTestId('cb-working').textContent).toBe(
+      'Claude has your comment, an agent is starting…',
+    ),
+  )
+})
+
+test('an open comment the manager was not sent yet stays sent', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => {
     vi.useRealTimers()
@@ -67,17 +93,17 @@ test('an open comment the manager was not sent yet only waits', async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_000)
   })
-  expect(screen.getByTestId('cb-working').textContent).toBe('Waiting for Claude…')
+  expect(screen.getByTestId('cb-working').textContent).toBe('Sent…')
 })
 
-test('an open comment sent to the manager long ago says Claude is busy at once', async () => {
+test('an open comment handed over long ago says no agent has started at once', async () => {
   fakeServer([comment({ notifiedAt: '2020-01-01T10:00:00.000Z' })])
   openThread('c1')
   renderWidget()
 
   await waitFor(() =>
     expect(screen.getByTestId('cb-working').textContent).toBe(
-      'Claude has your comment but is busy…',
+      'No agent has started. Is the /code-buddy session busy?',
     ),
   )
 })
