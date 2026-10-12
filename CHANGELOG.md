@@ -102,6 +102,11 @@ released to the `stable` branch.
 
 ### Fixed
 
+- While pointing at an element, a press on it also reached the page: a menu
+  that opens on `pointerdown` opened, a popover's click-outside handler closed
+  it, a drag handle started dragging, an input took the focus. The page now
+  gets no `pointerdown`, `mousedown`, `pointerup`, `mouseup` or `click` on the
+  element being picked; the click only picks.
 - Pointing at one of several elements that share a `data-testid` or an `id`
   (the items of a list) anchored the comment to the first of them: its
   outline, *center on element* and the agent's selector. The selector now
