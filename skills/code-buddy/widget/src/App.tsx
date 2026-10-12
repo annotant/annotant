@@ -449,8 +449,10 @@ export default function App({ root }: { root: Element }) {
     writeSession(UI_KEY, { open, docked, width, view, threadId, statusFilter })
   }, [open, docked, width, view, threadId, statusFilter])
 
-  // The quote of the comment being written stays marked once the selection is gone.
-  const draftQuote = view === 'page' ? draft?.quote : undefined
+  // The quote of the comment being written stays marked once the selection is gone,
+  // on its own page only: the app may navigate before it is saved.
+  const draftHere = draft?.route === route
+  const draftQuote = view === 'page' && draftHere ? draft.quote : undefined
   const draftOccurrence = draft?.occurrence ?? 0
   useEffect(() => {
     const drafted = draftQuote
@@ -773,7 +775,9 @@ export default function App({ root }: { root: Element }) {
 
   // The element the comment being written is about stays outlined, as its text would.
   const outlined =
-    target ?? flash ?? (drafting ? elementFromAnchor(root, draft) : undefined)
+    target ??
+    flash ??
+    (drafting && draftHere ? elementFromAnchor(root, draft) : undefined)
 
   const centerOn = (anchor: ReviewAnchor, id?: string) => {
     const element = elementFromAnchor(root, anchor)

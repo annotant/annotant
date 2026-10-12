@@ -183,3 +183,18 @@ test('a comment is filed on the page where it was started, not where it is saved
     { route: '/', url: startedOn },
   ])
 })
+
+test('the quote being written is not marked on another page', async () => {
+  const highlights = stubHighlights()
+  const startedOn = window.location.href
+  const { selection, button } = await selectAcrossBlocks()
+  fireEvent.click(button)
+  selection.removeAllRanges()
+  await waitFor(() => expect(highlights.get('code-buddy-draft')?.size).toBe(1))
+
+  history.pushState(null, '', '/docs')
+  onTestFinished(() => history.pushState(null, '', startedOn))
+  window.dispatchEvent(new PopStateEvent('popstate'))
+
+  await waitFor(() => expect(highlights.get('code-buddy-draft')?.size ?? 0).toBe(0))
+})
