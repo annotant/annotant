@@ -213,13 +213,18 @@ history first, which the debug panel opens in a tab.
 On an open comment, the server also serves `notifiedAt`, an ISO date: when it
 printed that opening's line (`OPEN`, `NEW` or `FOLLOWUP`) for the manager. It
 lives in the server's memory, never in `comments.json`: a restart prints the
-line again and dates it anew. The widget reads "Claude has your comment but is
-busy…" when no agent has claimed the comment 15 seconds later.
+line again and dates it anew. The widget reads "Sent…" until then, "Claude
+has your comment, an agent is starting…" once it is, "Claude has your comment
+but is busy…" when no agent has claimed the comment 15 seconds later, and "No
+agent has started. Is the /code-buddy session busy?" after 60 seconds. Each
+return to `open` (an answer, a follow-up, a re-send) starts again.
 
 With `history=1` (the debug panel), every comment the server printed a line
 about since it started also has `lines`: `{ at, line }` objects, oldest first,
 each line as printed (the last 50). They live in its memory too, and go when
-the comment is deleted. With a dev widget, `GET /api/debug/agent/<agent>`
+the comment is deleted. The debug panel marks the `OPEN`, `NEW` and
+`FOLLOWUP` lines as hand-overs, dated from their opening, and dates each claim
+from the hand-over of its opening. With a dev widget, `GET /api/debug/agent/<agent>`
 serves what the agent of a `working` event was given: its first message,
 exactly the prompt the manager wrote, read in Claude Code's transcripts of
 the last 7 days, and its type (`agentType`, from the `.meta.json` next to the

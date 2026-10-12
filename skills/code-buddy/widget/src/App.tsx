@@ -109,6 +109,11 @@ const SLIDE_MS = 250
  * between two turns, and a start alone often takes ten seconds.
  */
 const BUSY_AFTER_MS = 15_000
+/**
+ * How long before the widget says no agent has started: the manager may not
+ * read its lines at all (its Monitor stopped while the server still runs).
+ */
+const NO_AGENT_AFTER_MS = 60_000
 
 function StepLine({
   step,
@@ -182,15 +187,36 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
   )
 }
 
+/** What an open comment says, by how long ago the manager was sent it. */
+const WAITS = [
+  { after: 0, text: 'Claude has your comment, an agent is starting…' },
+  {
+    after: BUSY_AFTER_MS,
+    text: 'Claude has your comment but is busy…',
+    title:
+      'The Claude session watching this app is answering something else, or already runs three agents; it starts on your comment once it is free.',
+  },
+  {
+    after: NO_AGENT_AFTER_MS,
+    text: 'No agent has started. Is the /code-buddy session busy?',
+    title:
+      'The server handed your comment over a minute ago and no agent claimed it: check the terminal running /code-buddy:code-buddy, or run it again.',
+  },
+]
+
 /**
- * An open comment while a session watches. Once the manager has had it for a
- * while without starting an agent, it is busy (answering something else, or
- * running three agents already): say so rather than wait in silence.
+ * An open comment while a session watches: sent, then handed over to the
+ * manager, then, while no agent claims it, busy, then not started at all.
+ * Each return to `open` starts again, with its own `notifiedAt`.
  */
 function Waiting({ notifiedAt }: { notifiedAt: string | undefined }) {
-  const due = notifiedAt ? Date.parse(notifiedAt) + BUSY_AFTER_MS : undefined
+  const since = notifiedAt ? Date.parse(notifiedAt) : undefined
   const [now, setNow] = useState(Date.now)
-  const busy = due !== undefined && now >= due
+  const wait =
+    since === undefined ? undefined : WAITS.findLast(({ after }) => now >= since + after)
+  const next =
+    since === undefined ? undefined : WAITS.find(({ after }) => now < since + after)
+  const due = next && since !== undefined ? since + next.after : undefined
 
   useEffect(() => {
     if (due === undefined) return undefined
@@ -199,17 +225,9 @@ function Waiting({ notifiedAt }: { notifiedAt: string | undefined }) {
   }, [due])
 
   return (
-    <div
-      className="cb-working"
-      data-testid="cb-working"
-      title={
-        busy
-          ? 'The Claude session watching this app is answering something else, or already runs three agents; it starts on your comment once it is free.'
-          : undefined
-      }
-    >
+    <div className="cb-working" data-testid="cb-working" title={wait?.title}>
       <Spinner />
-      <span>{busy ? 'Claude has your comment but is busy…' : 'Waiting for Claude…'}</span>
+      <span>{wait?.text ?? 'Sent…'}</span>
     </div>
   )
 }

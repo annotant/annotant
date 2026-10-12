@@ -231,27 +231,59 @@ const runOf = (event: TimelineEvent) =>
       ? event.message.run
       : event.step.run
 
+/** A line that hands an opening of the comment over to the manager. */
+const HANDOVER = /^(OPEN|NEW|FOLLOWUP) /
+
 /**
  * The whole conversation in order: every move from the comment's events,
  * messages and progress steps. With `run`, only what belongs to that run.
  */
 export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[] {
   const events: TimelineEvent[] = []
+  const handovers = (comment.lines ?? [])
+    .filter(({ line }) => HANDOVER.test(line))
+    .map(({ at }) => time(at))
+  let opened = -Infinity
   for (const event of comment.events) {
+    const at = time(event.at)
+    if (event.state === 'open') opened = at
+    // The gap from the hand-over of this opening to the claim: the time the
+    // manager took to read the line and start an agent.
+    const handover =
+      event.state === 'working'
+        ? handovers.findLast((handed) => handed >= opened && handed <= at)
+        : undefined
+    const gap =
+      handover === undefined
+        ? ''
+        : ` · ${((at - handover) / 1000).toFixed(1)} s after the hand-over`
     events.push({
       kind: 'status',
-      at: time(event.at),
+      at,
       label: event.state,
       state: event.state,
-      detail: `by ${event.by}`,
+      detail: `by ${event.by}${gap}`,
       ...(event.run ? { run: event.run } : {}),
     })
   }
   for (const message of comment.messages) {
     events.push({ kind: 'message', at: time(message.at), message })
   }
+  const openings = comment.events
+    .filter((event) => event.state === 'open')
+    .map((event) => time(event.at))
   for (const { at, line } of comment.lines ?? []) {
-    events.push({ kind: 'status', at: time(at), label: 'server line', detail: line })
+    const printed = time(at)
+    // The gap from the opening to its hand-over: the server's poll.
+    const opening = HANDOVER.test(line)
+      ? openings.findLast((open) => open <= printed)
+      : undefined
+    const label = !HANDOVER.test(line)
+      ? 'server line'
+      : opening === undefined
+        ? 'handed over'
+        : `handed over · ${((printed - opening) / 1000).toFixed(1)} s after the opening`
+    events.push({ kind: 'status', at: printed, label, detail: line })
   }
   const cancellation = comment.cancellation
   if (cancellation) {
