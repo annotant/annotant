@@ -145,6 +145,15 @@ type Lifecycle = Pick<ReviewComment, 'state'>
 export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
   comment.events.some((event) => event.state === 'resolved')
 
+/**
+ * Open again on the reader's reply: the thread ends on their message after
+ * the comment, which the server sends the manager as `FOLLOWUP`, for the
+ * thread's agent when it still has one. A comment re-sent with only the
+ * reader's comment in its thread is `NEW`.
+ */
+export const isReply = (comment: Pick<ReviewComment, 'messages'>) =>
+  comment.messages.length > 1 && comment.messages.at(-1)?.author === 'reader'
+
 /** Waiting for an agent, or worked on by one. */
 export function isActive(comment: Lifecycle) {
   return comment.state === 'open' || comment.state === 'working'
