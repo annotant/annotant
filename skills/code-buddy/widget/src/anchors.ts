@@ -361,7 +361,8 @@ export function elementFromAnchor(
   }
   const sameTag = matches.filter((match) => match.tagName.toLowerCase() === tag)
   if (sameTag.length === 1) return sameTag[0]
-  return sameTag.find(
+  const sameText = sameTag.filter(
     (match) => normaliseQuote(match.textContent ?? '').slice(0, 200) === text,
   )
+  return sameText.length === 1 ? sameText[0] : undefined
 }

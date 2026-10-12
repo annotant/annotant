@@ -182,6 +182,24 @@ test('a unique test id is the selector', () => {
   expect(anchorFromElement(root, picked).element?.selector).toBe('[data-testid="todos"]')
 })
 
+test('a repeated test id climbs to the unique one above it', () => {
+  const root = page(`<section data-testid="todos">${TODOS}</section>`)
+  const picked = root.querySelectorAll('li')[4]
+  if (!picked) throw new Error('no fifth todo')
+  expect(anchorFromElement(root, picked).element?.selector).toBe(
+    '[data-testid="todos"] > ul > li:nth-of-type(5)',
+  )
+})
+
+test('a repeated id is not the selector', () => {
+  const root = page('<p id="note">One</p><p id="note">Two</p>')
+  const picked = root.querySelectorAll('p')[1]
+  if (!picked) throw new Error('no second p')
+  const anchor = anchorFromElement(root, picked)
+  expect(anchor.element?.selector).toBe('p:nth-of-type(2)')
+  expect(elementFromAnchor(root, anchor)).toBe(picked)
+})
+
 test('a test id with a quote is found again', () => {
   const root = page('<p data-testid=\'say "hi"\'>Hi</p><p>Other</p>')
   const picked = root.querySelector('p')
@@ -204,6 +222,11 @@ test('an ambiguous selector finds the element with the saved text', () => {
   // None has the saved text: no element rather than the wrong one.
   expect(
     elementFromAnchor(root, { ...anchor, element: { ...element, text: 'Gone' } }),
+  ).toBeUndefined()
+  // Several with the saved text: none is surely the one.
+  root.querySelectorAll('span').forEach((span) => (span.textContent = 'Same'))
+  expect(
+    elementFromAnchor(root, { ...anchor, element: { ...element, text: 'Same' } }),
   ).toBeUndefined()
   // Another tag than the one saved: not that element.
   expect(
