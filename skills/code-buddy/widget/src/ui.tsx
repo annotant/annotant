@@ -3,6 +3,7 @@ import {
   type FormEvent,
   type ReactNode,
   type TextareaHTMLAttributes,
+  Component,
   forwardRef,
   useLayoutEffect,
   useRef,
@@ -313,4 +314,29 @@ export function Toasts() {
       ))}
     </div>
   )
+}
+
+/**
+ * Draws `children()`, or `fallback` once that throws: one comment the widget
+ * cannot draw never takes the whole widget down. Given a new `key`, it tries
+ * again.
+ */
+export class Boundary extends Component<
+  { fallback: ReactNode; children: () => ReactNode },
+  { failed: boolean }
+> {
+  override state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  override render() {
+    return this.state.failed ? this.props.fallback : <Draw render={this.props.children} />
+  }
+}
+
+/** Calls `render` in a component of its own, for the boundary above to catch what it throws. */
+function Draw({ render }: { render: () => ReactNode }) {
+  return render()
 }

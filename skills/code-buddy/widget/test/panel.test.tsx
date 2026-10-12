@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { fakeServer } from './server'
+import type { ReviewComment } from '../src/domain'
+import { comment, fakeServer, openPanel } from './server'
 import { renderWidget } from './widget'
 
 function renderOpenPanel() {
@@ -84,4 +85,31 @@ test('the page makes room at once when motion is reduced', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
   expect(document.body.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
   expect(animate).not.toHaveBeenCalled()
+})
+
+test('a comment with an invalid url shows its route, in the list and its thread', async () => {
+  fakeServer([comment({ url: 'x' })])
+  openPanel('all')
+  renderWidget()
+
+  const page = await screen.findByRole('link', { name: '/' })
+  expect(page.getAttribute('href')).toBe('/')
+  fireEvent.click(screen.getByText('Make the title bigger'))
+  expect((await screen.findByText('Whole page · /')).isConnected).toBe(true)
+})
+
+test('a comment that cannot be shown leaves the rest of the panel working', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  // No thread at all: not a comment the server writes.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a comment broken on purpose
+  fakeServer([{ ...comment(), messages: undefined } as unknown as ReviewComment])
+  openPanel('all')
+  renderWidget()
+
+  expect((await screen.findByTestId('code-buddy-error')).textContent).toContain(
+    'could not be shown',
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'New comment' }))
+  expect(screen.queryByTestId('code-buddy-error')).toBeNull()
+  expect(screen.getByRole('heading', { name: 'New comment' }).isConnected).toBe(true)
 })

@@ -60,7 +60,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | --- | --- | --- |
 | `id` | string | A UUID. |
 | `route` | string | The page's path, or `*` for the whole app. |
-| `url` | string, optional | Up to 2000 characters. |
+| `url` | string, optional | An `http` or `https` URL, up to 2000 characters; the server drops any other. |
 | `anchor.section` | string | Up to 300 characters. |
 | `anchor.quote` | string | Whitespace-collapsed, up to 2000 characters. |
 | `anchor.occurrence` | integer ≥ 0 | |

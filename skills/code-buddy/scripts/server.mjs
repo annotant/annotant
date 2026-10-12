@@ -127,6 +127,16 @@ function sanitiseElement(element) {
   }
 }
 
+/**
+ * The page of a new comment, when it is one: an http or https URL, up to 2000
+ * characters. Anything else is dropped, and the comment keeps its route.
+ * @param {unknown} url
+ */
+function sanitiseUrl(url) {
+  if (typeof url !== 'string' || url.length > 2000 || !URL.canParse(url)) return undefined
+  return /^https?:$/.test(new URL(url).protocol) ? url : undefined
+}
+
 /** The anchor of a new comment: where on the page it is. */
 function sanitiseAnchor(anchor = {}) {
   const element = sanitiseElement(anchor.element)
@@ -271,7 +281,7 @@ async function handle(req, res) {
       }
       const comment = await store.create({
         route: input.route.slice(0, 500),
-        url: typeof input.url === 'string' ? input.url.slice(0, 2000) : undefined,
+        url: sanitiseUrl(input.url),
         body,
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},

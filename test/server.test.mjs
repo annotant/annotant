@@ -178,6 +178,15 @@ test('creates a comment and lists it for its page', async () => {
   assert.ok(listed.some((c) => c.messages[0].body === 'Typo here' && c.state === 'open'))
 })
 
+test('keeps a comment without a url that is not a web page', async () => {
+  for (const url of ['x', 'javascript:alert(1)', '/about']) {
+    const created = await json(
+      await post(JSON.stringify({ route: '/about', url, body: 'Odd url' })),
+    )
+    assert.equal(created.url, undefined, url)
+  }
+})
+
 test("takes the reader's choice among the options Claude asked with", async () => {
   const created = await json(
     await post(JSON.stringify({ route: '/cards', body: 'Rework the cards' })),
