@@ -7,7 +7,7 @@
 // It watches the comments file's folder and the step files' folder, and pushes
 // `changed` to the widgets on /api/events: they reload only then.
 // Only runs while /code-buddy is active: no server, no widget.
-import { existsSync, watch } from 'node:fs'
+import { existsSync, statSync, watch } from 'node:fs'
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
@@ -399,10 +399,12 @@ function describe(comment) {
   return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}`
 }
 
+/** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
+
 /**
  * Prints the lines for the manager about what changed in `comments` since the
  * last read.
- * @param {Awaited<ReturnType<typeof store.readAll>>} comments
+ * @param {Comments} comments
  * @param {boolean} first
  */
 function tick(comments, first) {
@@ -414,7 +416,7 @@ function tick(comments, first) {
     const text = `${latest?.id} ${latest?.body}`
     const opened = comment.events.findLastIndex((event) => event.state === 'open')
     const previous = seen.get(comment.id)
-    // Stopped, asked or resolved, then opened again between two polls: the
+    // Stopped, asked or resolved, then opened again between two reads: the
     // manager hears both, as if it had seen each.
     if (previous && previous.opened !== opened) {
       print(comment.id, goneLine(comment.id, comment.events[opened - 1]?.state))
@@ -451,7 +453,7 @@ const listeners = new Set()
  * comments that changed, each time the comments file or a step file changes.
  * @param {http.IncomingMessage} req
  * @param {http.ServerResponse} res
- * @param {Record<string, string>} cors
+ * @param {ReturnType<typeof corsHeaders>} cors
  */
 function listen(req, res, cors) {
   res.writeHead(200, {
@@ -476,7 +478,7 @@ const fingerprints = new Map()
 /**
  * The ids of the comments that changed since the last read, the deleted ones
  * included.
- * @param {Awaited<ReturnType<typeof store.readAll>>} comments
+ * @param {Comments} comments
  */
 async function changedIds(comments) {
   const read = await Promise.all(
@@ -529,34 +531,57 @@ let refreshing = Promise.resolve()
 const refreshNext = (first = false) =>
   (refreshing = refreshing.then(() => refresh(first)).catch(() => undefined))
 
-/** One write fires several watch events: a refresh once they stop. */
-const DEBOUNCE_MS = 50
+/**
+ * One write fires several watch events: one refresh for all those of the
+ * next 50 ms. Not reset by each: steady writes would put it off.
+ */
+const BATCH_MS = 50
 /** @type {NodeJS.Timeout | undefined} */
-let debounce
+let batch
 
 function changeSeen() {
-  clearTimeout(debounce)
-  debounce = setTimeout(() => void refreshNext(), DEBOUNCE_MS)
+  batch ??= setTimeout(() => {
+    batch = undefined
+    void refreshNext()
+  }, BATCH_MS)
 }
 
 /**
- * By folder, its watch. The folders, not the files: the store writes a temp
- * file and renames it over the comments file, which a watch on the file loses.
- * @type {Map<string, import('node:fs').FSWatcher>}
+ * By folder, its watch and the folder's inode. The folders, not the files:
+ * the store writes a temp file and renames it over the comments file, which a
+ * watch on the file loses.
+ * @type {Map<string, { watcher: import('node:fs').FSWatcher, ino: number }>}
  */
 const watchers = new Map()
 
-/** Watches the folders not watched yet: one removed since waits for the next re-read. */
+/** The inode of folder `dir`, or undefined when it is gone. */
+const inodeOf = (/** @type {string} */ dir) => {
+  try {
+    return statSync(dir).ino
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Watches the folders not watched yet. A folder removed, or removed and made
+ * again, is watched anew: a watch on the old one hears nothing more.
+ */
 function watchFolders() {
   for (const dir of [path.dirname(project.commentsFile), project.progressDir]) {
-    if (watchers.has(dir)) continue
+    const ino = inodeOf(dir)
+    const known = watchers.get(dir)
+    if (known && known.ino === ino) continue
+    known?.watcher.close()
+    watchers.delete(dir)
+    if (ino === undefined) continue
     try {
       const watcher = watch(dir, changeSeen)
       watcher.on('error', () => {
         watcher.close()
-        watchers.delete(dir)
+        if (watchers.get(dir)?.watcher === watcher) watchers.delete(dir)
       })
-      watchers.set(dir, watcher)
+      watchers.set(dir, { watcher, ino })
     } catch {}
   }
 }

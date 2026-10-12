@@ -1,12 +1,15 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { comment, fakeServer, openThread } from './server'
+import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
 /** Stands in for the server's event stream: the test sends its events. */
 function fakeEvents() {
   const streams: FakeEventSource[] = []
   class FakeEventSource extends EventTarget {
+    static readonly CLOSED = 2
+    /** Connecting or open: the browser retries by itself. */
+    readyState = 0
     closed = false
     constructor(readonly url: string) {
       super()
@@ -78,9 +81,14 @@ test('the widget asks for nothing while nothing changes', async () => {
     await vi.advanceTimersByTimeAsync(20_000)
   })
   expect(listed(server.fetch)).toBe(before)
+  // Then the slow reload, for what a dropped stream missed.
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(11_000)
+  })
+  expect(listed(server.fetch)).toBe(before + 1)
 })
 
-test('the widget reloads once its stream comes back after a drop', async () => {
+test('the widget reloads each time its stream opens, the first time included', async () => {
   const events = fakeEvents()
   const server = fakeServer([comment()])
   openThread('c1')
@@ -88,23 +96,72 @@ test('the widget reloads once its stream comes back after a drop', async () => {
   await screen.findByTestId('cb-working')
   const before = listed(server.fetch)
 
-  // The first opening reloads nothing: the lists just loaded.
+  // A change made before the server knew this tab is in this reload.
   events.send('open')
-  expect(listed(server.fetch)).toBe(before)
-  events.send('error')
   await waitFor(() => expect(listed(server.fetch)).toBe(before + 1))
-  events.send('open')
+  events.send('error')
   await waitFor(() => expect(listed(server.fetch)).toBe(before + 2))
+  events.send('open')
+  await waitFor(() => expect(listed(server.fetch)).toBe(before + 3))
 })
 
-test('one stream for the tab, closed with the widget', async () => {
+test('one stream for the tab whatever the number of lists, closed with the widget', async () => {
   const events = fakeEvents()
   fakeServer([comment()])
-  openThread('c1')
+  // The page's list and the whole app's.
+  openPanel('all')
   const widget = renderWidget()
-  await screen.findByTestId('cb-working')
+  await screen.findAllByTestId('cb-summary')
   expect(events.streams).toHaveLength(1)
 
   widget.unmount()
   expect(events.streams[0]?.closed).toBe(true)
+})
+
+test('a hidden tab closes its stream, and opens a new one once shown', async () => {
+  const events = fakeEvents()
+  const server = fakeServer([comment()])
+  openThread('c1')
+  renderWidget()
+  await screen.findByTestId('cb-working')
+  let hidden = true
+  const visibility = vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
+  onTestFinished(() => visibility.mockRestore())
+
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  expect(events.streams[0]?.closed).toBe(true)
+
+  hidden = false
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  expect(events.streams).toHaveLength(2)
+  const before = listed(server.fetch)
+  events.send('open')
+  await waitFor(() => expect(listed(server.fetch)).toBe(before + 1))
+})
+
+test('a stream the browser gave up on is opened again', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const events = fakeEvents()
+  fakeServer([comment()])
+  openThread('c1')
+  renderWidget()
+  await screen.findByTestId('cb-working')
+
+  // Something else answered on the server's port: no retry of the browser's own.
+  const given = events.streams[0]!
+  given.readyState = 2
+  events.send('error')
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000)
+  })
+  expect(given.closed).toBe(true)
+  expect(events.streams).toHaveLength(2)
+  expect(events.streams[1]?.closed).toBe(false)
 })

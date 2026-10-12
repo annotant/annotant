@@ -111,23 +111,35 @@ async function listen(headers = {}) {
   return {
     response,
     /**
-     * The next `changed` event naming comment `id`.
+     * The next `changed` event naming comment `id`, within 3 s.
      * @param {string} id
      */
     async changed(id) {
-      for (;;) {
-        const events = received.split('\n\n')
-        received = events.pop() ?? ''
-        for (const event of events) {
-          const data = /^event: changed\ndata: (.*)$/m.exec(event)?.[1]
-          if (data && JSON.parse(data).ids.includes(id)) return event
-        }
-        const { value, done } = await reader.read()
-        if (done) throw new Error(`no changed event for ${id}`)
-        received += value
+      const deadline = setTimeout(() => controller.abort(), 3000)
+      try {
+        return await nextEvent(id)
+      } catch (error) {
+        throw controller.signal.aborted ? new Error(`no changed event for ${id}`) : error
+      } finally {
+        clearTimeout(deadline)
       }
     },
     close: () => controller.abort(),
+  }
+
+  /** @param {string} id */
+  async function nextEvent(id) {
+    for (;;) {
+      const events = received.split('\n\n')
+      received = events.pop() ?? ''
+      for (const event of events) {
+        const data = /^event: changed\ndata: (.*)$/m.exec(event)?.[1]
+        if (data && JSON.parse(data).ids.includes(id)) return event
+      }
+      const { value, done } = await reader.read()
+      if (done) throw new Error(`no changed event for ${id}`)
+      received += value
+    }
   }
 }
 
@@ -443,11 +455,14 @@ test('tells the widgets which comment changed, as soon as it changes', async () 
 })
 
 test("tells the widgets when an agent writes a comment's step", async () => {
-  const created = await json(
-    await post(JSON.stringify({ route: '/events', body: 'Show the steps' })),
-  )
   const events = await listen()
   try {
+    const created = await json(
+      await post(JSON.stringify({ route: '/events', body: 'Show the steps' })),
+    )
+    // The event for the comment itself, then a quiet moment: the next is the step's.
+    await events.changed(created.id)
+    await new Promise((resolve) => setTimeout(resolve, 200))
     const progress = path.join(
       state,
       createHash('sha1').update(root).digest('hex').slice(0, 12),
@@ -457,6 +472,23 @@ test("tells the widgets when an agent writes a comment's step", async () => {
       path.join(progress, `${created.id}.jsonl`),
       `${JSON.stringify({ at: 1, kind: 'read', label: 'src/App.tsx', state: 'running' })}\n`,
     )
+    await events.changed(created.id)
+  } finally {
+    events.close()
+  }
+})
+
+test('tells the widgets when a comment is deleted', async () => {
+  const events = await listen()
+  try {
+    const created = await json(
+      await post(JSON.stringify({ route: '/events', body: 'Delete me' })),
+    )
+    await events.changed(created.id)
+    const deleted = await fetch(`${base}/api/comments/${created.id}`, {
+      method: 'DELETE',
+    })
+    assert.equal(deleted.status, 204)
     await events.changed(created.id)
   } finally {
     events.close()

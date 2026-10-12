@@ -37,11 +37,51 @@ async function failure(response: Response): Promise<string> {
 
 const changed = () => window.dispatchEvent(new Event(CHANGED))
 
-/** The server's changes, one stream per tab whatever the number of lists. */
+/** The server's changes: one stream per tab, whatever the number of lists. */
 let stream: EventSource | undefined
 let streamUsers = 0
-/** Whether the stream dropped since it last opened. */
-let dropped = false
+/** The reconnection planned after the browser gave the stream up. */
+let retry: ReturnType<typeof setTimeout> | undefined
+const RETRY_MS = 5000
+
+/**
+ * Opens the stream. Each opening reloads the lists: the first, for the
+ * changes made before the server knew this tab; the next, for those made
+ * while it was away.
+ */
+function connect() {
+  const source = new EventSource(EVENTS)
+  source.addEventListener('changed', changed)
+  source.addEventListener('open', changed)
+  source.addEventListener('error', () => {
+    // Dropped: the lists say whether the server is still there. The browser
+    // reconnects by itself, unless something else answered: then we do.
+    changed()
+    if (source.readyState !== EventSource.CLOSED || retry) return
+    retry = setTimeout(() => {
+      retry = undefined
+      disconnect()
+      if (streamUsers > 0 && !document.hidden) connect()
+    }, RETRY_MS)
+  })
+  stream = source
+}
+
+function disconnect() {
+  clearTimeout(retry)
+  retry = undefined
+  stream?.close()
+  stream = undefined
+}
+
+/**
+ * Closed while the tab is hidden: each stream holds one of the few
+ * connections a browser opens to the server, which every tab shares.
+ */
+function onVisibility() {
+  disconnect()
+  if (!document.hidden) connect()
+}
 
 /**
  * Reloads the lists each time the server says a comment changed, until the
@@ -51,31 +91,17 @@ function listen(): () => void {
   // An older browser, or a test without it: the slow reload alone.
   if (typeof EventSource === 'undefined') return () => undefined
   if (streamUsers++ === 0) {
-    const source = new EventSource(EVENTS)
-    source.addEventListener('changed', changed)
-    // Dropped (the server stopped): the lists say it is unreachable. Opened
-    // again: the changes made meanwhile were missed.
-    source.addEventListener('error', () => {
-      if (dropped) return
-      dropped = true
-      changed()
-    })
-    source.addEventListener('open', () => {
-      if (!dropped) return
-      dropped = false
-      changed()
-    })
-    stream = source
+    if (!document.hidden) connect()
+    document.addEventListener('visibilitychange', onVisibility)
   }
   return () => {
     if (--streamUsers > 0) return
-    stream?.close()
-    stream = undefined
-    dropped = false
+    document.removeEventListener('visibilitychange', onVisibility)
+    disconnect()
   }
 }
 
-function usePolledComments(url: string | undefined) {
+function useCommentList(url: string | undefined) {
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [loaded, setLoaded] = useState(false)
   const [reachable, setReachable] = useState(true)
@@ -111,16 +137,16 @@ function usePolledComments(url: string | undefined) {
 }
 
 export function useComments(route: string) {
-  return usePolledComments(`${API}?route=${encodeURIComponent(route)}`)
+  return useCommentList(`${API}?route=${encodeURIComponent(route)}`)
 }
 
 export function useAllComments(enabled: boolean) {
-  return usePolledComments(enabled ? `${API}?all=1` : undefined)
+  return useCommentList(enabled ? `${API}?all=1` : undefined)
 }
 
 /** Every comment with every step of every run: the debug panel's list. */
 export function useCommentHistory(enabled: boolean) {
-  return usePolledComments(enabled ? `${API}?all=1&history=1` : undefined)
+  return useCommentList(enabled ? `${API}?all=1&history=1` : undefined)
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {

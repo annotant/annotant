@@ -139,7 +139,7 @@ const time = (at: string | undefined) => (at ? Date.parse(at) : NaN)
 const stepKeyOf = (step: ReviewProgress) => step.id ?? `${step.at}:${step.kind}`
 
 /**
- * Every step of every run, from the history the panel polls, updated by the
+ * Every step of every run, from the history the panel loads, updated by the
  * live run's steps the widget may have received since.
  */
 function stepsOf(comment: ReviewComment): ReviewProgress[] {
@@ -750,7 +750,7 @@ export function DebugPanel({
   }, [])
 
   if (!open) return null
-  // The history poll's copy also has the server's lines: the widget's own polls do not.
+  // The history's copy also has the server's lines: the widget's own lists do not.
   const polled = new Map(others.comments.map((entry) => [entry.id, entry]))
   const comments = [...held, ...others.comments]
     .filter(
