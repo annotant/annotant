@@ -102,6 +102,11 @@ released to the `stable` branch.
 
 ### Fixed
 
+- While pointing at an element, a press on it also reached the page: a menu
+  that opens on `pointerdown` opened, a popover's click-outside handler closed
+  it, a drag handle started dragging, an input took the focus. The page now
+  gets no `pointerdown`, `mousedown`, `pointerup`, `mouseup` or `click` on the
+  element being picked; the click only picks.
 - A comment whose `url` was not a full URL (a hand-edited comments file, or
   another client) made the widget vanish as soon as the panel drew it, and it
   stayed gone in that tab until the comment was deleted. The widget now shows
