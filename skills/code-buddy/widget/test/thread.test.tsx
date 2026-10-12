@@ -58,7 +58,7 @@ test('an open comment says each step while no agent claims it', async () => {
   )
 })
 
-test('a reply on a thread an agent worked on says an agent is picking it up', async () => {
+test("the reader's reply says an agent is picking it up, at each step", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => {
     vi.useRealTimers()
@@ -67,13 +67,20 @@ test('a reply on a thread an agent worked on says an agent is picking it up', as
   fakeServer([
     comment({
       messages: [
-        { author: 'claude', body: 'Which title?', at },
+        {
+          author: 'claude',
+          body: 'Which title?',
+          at,
+          run: 'r1',
+          question: true,
+          options: [{ label: 'Fresh coffee, every week' }],
+        },
         { author: 'reader', body: 'Fresh coffee, every week', at },
       ],
       events: [
         { at, state: 'open', by: 'reader' },
-        { at, state: 'working', by: 'agent' },
-        { at, state: 'asking', by: 'agent' },
+        { at, state: 'working', by: 'agent', run: 'r1' },
+        { at, state: 'asking', by: 'agent', run: 'r1' },
         { at, state: 'open', by: 'reader' },
       ],
       notifiedAt: new Date().toISOString(),
@@ -82,20 +89,47 @@ test('a reply on a thread an agent worked on says an agent is picking it up', as
   openThread('c1')
   renderWidget()
 
-  expect((await screen.findByTestId('cb-working')).textContent).toBe(
-    'Claude has your reply, an agent is picking it up…',
-  )
+  const waiting = await screen.findByTestId('cb-working')
+  expect(waiting.textContent).toBe('Claude has your reply, an agent is picking it up…')
   await act(async () => {
     await vi.advanceTimersByTimeAsync(15_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
     'Claude has your reply but is busy…',
   )
+  expect(screen.getByTestId('cb-working').getAttribute('title')).toMatch(
+    /picks up your reply once it is free/,
+  )
   await act(async () => {
     await vi.advanceTimersByTimeAsync(45_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
     'No agent has picked up your reply. Is the /code-buddy session busy?',
+  )
+  expect(screen.getByTestId('cb-working').getAttribute('title')).toMatch(
+    /handed your reply over a minute ago/,
+  )
+})
+
+test('a comment sent again after its run was stopped waits for a new agent', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      events: [
+        { at, state: 'open', by: 'reader' },
+        { at, state: 'working', by: 'agent', run: 'r1' },
+        { at, state: 'stopped', by: 'reader', run: 'r1' },
+        { at, state: 'open', by: 'reader' },
+      ],
+      notifiedAt: new Date().toISOString(),
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  // No reply in the thread: the server sends it as NEW, and a new agent starts.
+  expect((await screen.findByTestId('cb-working')).textContent).toBe(
+    'Claude has your comment, an agent is starting…',
   )
 })
 

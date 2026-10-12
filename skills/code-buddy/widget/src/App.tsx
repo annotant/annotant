@@ -29,9 +29,9 @@ import {
   type ReviewMessage,
   type ReviewProgress,
   answered,
-  hadRun,
   isActive,
   isAsking,
+  isReply,
   latestText,
   paused,
   statusOf,
@@ -205,7 +205,7 @@ const WAITS = [
   },
 ]
 
-/** The same, for a reply on a thread an agent already worked on. */
+/** The same, for the reader's reply in the thread. */
 const REPLY_WAITS = [
   { after: 0, text: 'Claude has your reply, an agent is picking it up…' },
   {
@@ -226,7 +226,7 @@ const REPLY_WAITS = [
  * An open comment while a session watches: sent, then handed over to the
  * manager, then, while no agent claims it, busy, then not started at all.
  * Each return to `open` starts again, with its own `notifiedAt`; `reply` when
- * an agent worked on the thread before.
+ * it is the reader's reply.
  */
 function Waiting({
   notifiedAt,
@@ -867,7 +867,7 @@ export default function App({ root }: { root: Element }) {
             <CurrentStep step={comment.progress?.at(-1)} />
           </div>
         ) : watching ? (
-          <Waiting notifiedAt={comment.notifiedAt} reply={hadRun(comment)} />
+          <Waiting notifiedAt={comment.notifiedAt} reply={isReply(comment)} />
         ) : (
           <div className="cb-idle" data-testid="cb-unwatched">
             No Claude session is watching. Run /code-buddy:code-buddy.

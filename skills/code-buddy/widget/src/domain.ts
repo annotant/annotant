@@ -146,13 +146,12 @@ export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
   comment.events.some((event) => event.state === 'resolved')
 
 /**
- * Back to `open` after an agent worked on it: the manager hands the reply to
- * that agent, when it still has it, rather than starting one.
+ * Open again on the reader's reply: the thread ends on their message after
+ * the comment, which the server sends the manager as `FOLLOWUP`, for the
+ * thread's agent when it still has one. A re-sent comment is `NEW`.
  */
-export function hadRun(comment: Pick<ReviewComment, 'events'>) {
-  const opened = comment.events.findLastIndex((event) => event.state === 'open')
-  return comment.events.slice(0, opened).some((event) => event.state === 'working')
-}
+export const isReply = (comment: Pick<ReviewComment, 'messages'>) =>
+  comment.messages.length > 1 && comment.messages.at(-1)?.author === 'reader'
 
 /** Waiting for an agent, or worked on by one. */
 export function isActive(comment: Lifecycle) {

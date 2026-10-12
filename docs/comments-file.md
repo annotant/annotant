@@ -216,8 +216,12 @@ lives in the server's memory, never in `comments.json`: a restart prints the
 line again and dates it anew. The widget reads "Sent…" until then, "Claude
 has your comment, an agent is starting…" once it is, "Claude has your comment
 but is busy…" when no agent has claimed the comment 15 seconds later, and "No
-agent has started. Is the /code-buddy session busy?" after 60 seconds. Each
-return to `open` (an answer, a follow-up, a re-send) starts again.
+agent has started. Is the /code-buddy session busy?" after 60 seconds. On
+the reader's reply (an answer or a follow-up: `FOLLOWUP`), they read "Claude
+has your reply, an agent is picking it up…", "Claude has your reply but is
+busy…" and "No agent has picked up your reply. Is the /code-buddy session
+busy?". Each return to `open` (an answer, a follow-up, a re-send) starts
+again.
 
 With `history=1` (the debug panel), every comment the server printed a line
 about since it started also has `lines`: `{ at, line }` objects, oldest first,
