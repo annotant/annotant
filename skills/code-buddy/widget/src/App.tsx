@@ -428,6 +428,10 @@ export default function App({ root }: { root: Element }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
   const [below, setBelow] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
+  // Whether the open conversation follows what arrives: the reader is at its
+  // end, or just sent a message.
+  const following = useRef(true)
+  const inThread = useRef(false)
   const hintRow = useRef<HTMLDivElement>(null)
   // The hint row's height with the gap above it, as last measured under the box.
   const hintHeight = useRef(0)
@@ -696,13 +700,16 @@ export default function App({ root }: { root: Element }) {
       })
       if (text) setFollowUp(undefined)
       setPicked(undefined)
+      following.current = true
     })
 
   // A conversation opens on its latest message; any other view, at its top.
   const screen = openedId ? `thread:${openedId}` : drafting ? 'draft' : view
   useLayoutEffect(() => {
     if (!scroller) return
-    scroller.scrollTo({ top: screen.startsWith('thread:') ? scroller.scrollHeight : 0 })
+    inThread.current = screen.startsWith('thread:')
+    scroller.scrollTo({ top: inThread.current ? scroller.scrollHeight : 0 })
+    following.current = true
   }, [scroller, screen])
 
   // Measured once per frame at most: on scroll, on resize of the body or of
@@ -710,8 +717,30 @@ export default function App({ root }: { root: Element }) {
   // grows the content without resizing either.
   useEffect(() => {
     if (!scroller) return undefined
+    // At the end before the content grows, it follows; scrolled up past the
+    // threshold, it stays. Only the reader scrolls up: following never does.
+    let last = scroller.scrollTop
+    // Where a smooth scroll already heads: asked again each frame, it would restart.
+    let aimed = -1
+    const track = () => {
+      const left = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      if (left <= 1) aimed = -1
+      if (left <= 40) following.current = true
+      else if (scroller.scrollTop < last) following.current = false
+      last = scroller.scrollTop
+    }
     const check = () => {
-      setBelow(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 40)
+      const follows = inThread.current && following.current
+      const top = scroller.scrollHeight - scroller.clientHeight
+      if (follows && top - scroller.scrollTop > 1 && top !== aimed) {
+        aimed = top
+        scroller.scrollTo({
+          top,
+          behavior: matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth',
+        })
+      }
+      // On its way down, the view needs no button to get there.
+      setBelow(!follows && top - scroller.scrollTop > 40)
       const end = scroller.querySelector<HTMLElement>('.cb-body-end')
       if (!end) return
       const row = hintRow.current
@@ -738,8 +767,12 @@ export default function App({ root }: { root: Element }) {
         check()
       })
     }
+    const onScroll = () => {
+      track()
+      schedule()
+    }
     check()
-    scroller.addEventListener('scroll', schedule, { passive: true })
+    scroller.addEventListener('scroll', onScroll, { passive: true })
     const resizes = new ResizeObserver(schedule)
     resizes.observe(scroller)
     const end = scroller.querySelector('.cb-body-end')
@@ -748,7 +781,7 @@ export default function App({ root }: { root: Element }) {
     mutations.observe(scroller, { childList: true, subtree: true, characterData: true })
     return () => {
       cancelAnimationFrame(frame)
-      scroller.removeEventListener('scroll', schedule)
+      scroller.removeEventListener('scroll', onScroll)
       resizes.disconnect()
       mutations.disconnect()
     }
@@ -944,6 +977,7 @@ export default function App({ root }: { root: Element }) {
             void run(async () => {
               await updateComment(comment.id, { text: body, cancelled: false })
               setResend(undefined)
+              following.current = true
             })
           }}
         >
