@@ -32,7 +32,12 @@ export type Complexity = 'trivial' | 'standard' | 'hard'
  * The model a comment's agent was started on, as Claude Code resolved it, and
  * the classifier's label when it ran; claim.mjs records both on the run.
  */
-export type Route = { model: string; complexity?: Complexity }
+export type Route = {
+  model: string
+  complexity?: Complexity
+  /** The agent started for the comment: only its claims carry the route. */
+  agent?: string
+}
 
 /** A file lock: the comment whose agent holds it, and since when. */
 export type Lock = { owner: string; at: number }

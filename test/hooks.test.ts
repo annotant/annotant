@@ -104,12 +104,13 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
       agentId: `a${spawned.length}`,
     }
   })
-  // The classifier: its label, or a failed request.
-  let label: string | Error = 'standard'
+  // The classifier: its label, a failed request, or one that never answers.
+  let label: string | Error | Promise<string> = 'standard'
   const classified: string[] = []
   on('model.classify', (_$, e) => {
     classified.push(e.text)
     if (label instanceof Error) throw label
+    if (label instanceof Promise) return label.then((value) => ({ value }))
     return { value: label }
   })
   mock.env(on, { HOME: '/home/u' })
@@ -122,7 +123,7 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
     commands,
     spawned,
     classified,
-    classifyAs: (next: string | Error) => {
+    classifyAs: (next: string | Error | Promise<string>) => {
       label = next
     },
     write: (path: string, text: string) => files.set(path, text),
@@ -596,4 +597,50 @@ test('other agents start as they were asked', async ($, on) => {
   await $.agent.spawn({ prompt: workerPrompt('c1'), subagentType: 'Explore' })
   expect(w.classified).toEqual([])
   expect(w.spawned[0]?.model).toBeUndefined()
+})
+
+test("only the agent started for a comment claims it with that comment's model", async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('trivial')
+  await spawnWorker($, 'c1')
+  // Another agent, the main loop say, claims the comment later.
+  await $.tool.call(bash('main', claim('c1')))
+  expect(w.commands[0]).toBe(`export CODE_BUDDY_AGENT=main; ${claim('c1')}`)
+  expect(w.progress('c1')[0]).not.toHaveProperty('model')
+})
+
+test('a classifier that does not answer in time leaves the agent on the parent model', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs(new Promise<string>(() => {}))
+  const started = spawnWorker($, 'c1')
+  for (let i = 0; i < 30; i++) await w.clock.advance(200)
+  expect((await started).model).toBe('claude-sonnet-5-5')
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toBe(
+    `export CODE_BUDDY_AGENT=a1 CODE_BUDDY_MODEL='claude-sonnet-5-5'; ${claim('c1')}`,
+  )
+})
+
+test('a label the classifier makes up routes nothing', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('epic')
+  expect((await spawnWorker($, 'c1')).model).toBe('claude-sonnet-5-5')
+  expect(w.spawned[0]?.model).toBeUndefined()
+})
+
+test('a model name reaches claim.mjs quoted for the shell', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.code-buddy.json`,
+    JSON.stringify({
+      commentsFile: '.code-buddy/comments.json',
+      models: { trivial: "it's" },
+    }),
+  )
+  w.classifyAs('trivial')
+  await spawnWorker($, 'c1')
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toMatch(
+    /CODE_BUDDY_MODEL='it'\\''s' CODE_BUDDY_COMPLEXITY=trivial;/,
+  )
 })

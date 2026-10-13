@@ -389,3 +389,40 @@ test('a thread started before routing names no model', async () => {
   await screen.findByTestId('cb-progress')
   expect(screen.queryByTestId('cb-model')).toBeNull()
 })
+
+const run = (model?: string) => ({
+  at: '2026-01-01T10:00:05.000Z',
+  state: 'working' as const,
+  by: 'agent' as const,
+  ...(model && { model }),
+})
+const reopened = {
+  at: '2026-01-01T10:01:00.000Z',
+  state: 'open' as const,
+  by: 'reader' as const,
+}
+
+test("a thread names its latest run's model", async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      events: [reopened, run('claude-haiku-5-5'), reopened, run('claude-opus-5-5')],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+  expect((await screen.findByTestId('cb-model')).textContent).toBe('opus')
+})
+
+test('a thread whose latest run recorded no model names none', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      events: [reopened, run('claude-haiku-5-5'), reopened, run()],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+  await screen.findByTestId('cb-progress')
+  expect(screen.queryByTestId('cb-model')).toBeNull()
+})

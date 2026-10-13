@@ -381,7 +381,6 @@ interface UiState {
 
 const PAGE_LEVEL: ReviewAnchor = { quote: '', occurrence: 0, section: '' }
 
-/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
 /** The model Claude worked on the comment with, and the classifier's label. */
 function ModelLabel({ comment }: { comment: ReviewComment }) {
   const model = modelOf(comment)
@@ -401,6 +400,7 @@ function ModelLabel({ comment }: { comment: ReviewComment }) {
   )
 }
 
+/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
 function pagePath(url: string | undefined): string {
   if (!url) return ''
   try {

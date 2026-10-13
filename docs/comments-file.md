@@ -203,7 +203,8 @@ asked. A classifier that fails or takes more than 5 seconds leaves the agent
 on the session's model. Either way the hooks keep the model the agent runs
 on and pass it to `claim.mjs` (`CODE_BUDDY_MODEL`, `CODE_BUDDY_COMPLEXITY`),
 which records it on the `working` event. A follow-up resumes the same agent,
-with no new start: it keeps its model.
+with no new start: it keeps its model. Another agent's claim of the comment
+(the main loop's, say) records no model: it runs on its own.
 
 ## The step files
 

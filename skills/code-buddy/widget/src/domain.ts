@@ -200,9 +200,12 @@ export function normaliseQuote(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-/** The model of the comment's latest run that recorded one, and why it was picked. */
+/**
+ * The model of the comment's latest run, and why it was picked; none when
+ * that run recorded none: an earlier run's would name a model not at work.
+ */
 export function modelOf(comment: Pick<ReviewComment, 'events'>) {
-  const event = comment.events.findLast((one) => one.state === 'working' && one.model)
+  const event = comment.events.findLast((one) => one.state === 'working')
   return event?.model
     ? { id: event.model, name: modelName(event.model), complexity: event.complexity }
     : undefined

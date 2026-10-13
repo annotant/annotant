@@ -496,10 +496,15 @@ async function routeComment($: $, project: Project, id: string) {
   return { complexity, model: model && model !== INHERIT ? model : undefined }
 }
 
-/** The route of the comment a claim.mjs command claims, once its agent started. */
-async function routeOfClaim($: $, command: string) {
+/**
+ * The route of the comment a claim.mjs command claims, when `agent` is the one
+ * started for it: resumed for a follow-up, it keeps its model; any other
+ * agent's claim names none it does not run on.
+ */
+async function routeOfClaim($: $, command: string, agent: string) {
   const id = CLAIM.exec(command)?.[1]
-  return id ? (await read($, routes))[unquote(id)] : undefined
+  const route = id ? (await read($, routes))[unquote(id)] : undefined
+  return route?.agent === agent ? route : undefined
 }
 
 /** claim.mjs's environment: the agent, and the model it runs on. */
@@ -758,7 +763,7 @@ export const register: Register = (on) => {
       if (typeof value === 'string') args[key] = value
     }
     const isClaim = e.tool === 'Bash' && CLAIM.test(args.command ?? '')
-    const route = isClaim ? await routeOfClaim($, args.command ?? '') : undefined
+    const route = isClaim ? await routeOfClaim($, args.command ?? '', agent) : undefined
     // The Started step says which model the agent runs on.
     const routed = route && {
       model: route.model,
@@ -848,7 +853,11 @@ export const register: Register = (on) => {
     if (started.deny !== undefined) return started
     await update($, routes, (all) => ({
       ...all,
-      [task.comment]: { model: started.model, ...(complexity && { complexity }) },
+      [task.comment]: {
+        model: started.model,
+        ...(complexity && { complexity }),
+        ...(started.agentId && { agent: started.agentId }),
+      },
     }))
     await debug(
       $,
