@@ -691,6 +691,16 @@ export default function App({ root }: { root: Element }) {
    * `withText` is false. One click on a single answer sends it alone: a draft
    * the reader was still writing stays in the box.
    */
+  // To the conversation's end, and following it from there: the reader's own
+  // message may not grow the body, as it takes the place of the message box.
+  const toLatest = () => {
+    following.current = true
+    scroller?.scrollTo({
+      top: scroller.scrollHeight,
+      behavior: matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth',
+    })
+  }
+
   const sendReply = (comment: ReviewComment, choices: string[], withText = true) =>
     void run(async () => {
       const text = withText && followUp?.id === comment.id ? followUp.body.trim() : ''
@@ -700,7 +710,7 @@ export default function App({ root }: { root: Element }) {
       })
       if (text) setFollowUp(undefined)
       setPicked(undefined)
-      following.current = true
+      toLatest()
     })
 
   // A conversation opens on its latest message; any other view, at its top.
@@ -983,7 +993,7 @@ export default function App({ root }: { root: Element }) {
             void run(async () => {
               await updateComment(comment.id, { text: body, cancelled: false })
               setResend(undefined)
-              following.current = true
+              toLatest()
             })
           }}
         >
@@ -1264,9 +1274,7 @@ export default function App({ root }: { root: Element }) {
                   className="cb-scroll-down"
                   aria-label="Scroll to the latest message"
                   title="Scroll to the latest message"
-                  onClick={() =>
-                    scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-                  }
+                  onClick={toLatest}
                 >
                   <Icon name="chevron-down" />
                 </button>

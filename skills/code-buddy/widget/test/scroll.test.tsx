@@ -23,13 +23,14 @@ function answered(count: number): ReviewComment {
 
 /**
  * Lays out the panel's body as a browser would, which happy-dom does not: each
- * message 200 px tall in a view of 300, scrolled as far as it goes.
+ * message and the message box 200 px tall in a view of 300, scrolled as far as
+ * it goes. A sent reply swaps the box for the message: the body does not grow.
  */
 async function layOut() {
   await screen.findByText('Answer 1')
   const body = document.querySelector<HTMLElement>('.cb-body')
   if (!body) throw new Error('No panel body')
-  const height = () => body.querySelectorAll('.cb-msg').length * 200
+  const height = () => body.querySelectorAll('.cb-msg, textarea').length * 200
   let top = 0
   Object.defineProperties(body, {
     clientHeight: { get: () => VIEW },
