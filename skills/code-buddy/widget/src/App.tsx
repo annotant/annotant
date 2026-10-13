@@ -720,19 +720,25 @@ export default function App({ root }: { root: Element }) {
     // At the end before the content grows, it follows; scrolled up past the
     // threshold, it stays. Only the reader scrolls up: following never does.
     let last = scroller.scrollTop
-    // Where a smooth scroll already heads: asked again each frame, it would restart.
+    // How far the body scrolls, as last measured: it follows only when that grows.
+    let extent = scroller.scrollHeight - scroller.clientHeight
+    // Where a scroll it started heads, until it gets there or the reader takes over.
     let aimed = -1
     const track = () => {
       const left = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
       if (left <= 1) aimed = -1
       if (left <= 40) following.current = true
-      else if (scroller.scrollTop < last) following.current = false
+      else if (scroller.scrollTop < last) {
+        following.current = false
+        aimed = -1
+      }
       last = scroller.scrollTop
     }
     const check = () => {
-      const follows = inThread.current && following.current
       const top = scroller.scrollHeight - scroller.clientHeight
-      if (follows && top - scroller.scrollTop > 1 && top !== aimed) {
+      const grew = top > extent
+      extent = top
+      if (inThread.current && following.current && grew && top - scroller.scrollTop > 1) {
         aimed = top
         scroller.scrollTo({
           top,
@@ -740,7 +746,7 @@ export default function App({ root }: { root: Element }) {
         })
       }
       // On its way down, the view needs no button to get there.
-      setBelow(!follows && top - scroller.scrollTop > 40)
+      setBelow(aimed < 0 && top - scroller.scrollTop > 40)
       const end = scroller.querySelector<HTMLElement>('.cb-body-end')
       if (!end) return
       const row = hintRow.current

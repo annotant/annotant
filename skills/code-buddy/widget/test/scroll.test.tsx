@@ -7,16 +7,18 @@ import { renderWidget } from './widget'
 const AT = '2026-01-01T10:00:00.000Z'
 const VIEW = 300
 
-function answered(replies: number): ReviewComment {
-  return comment({
-    state: 'answered',
-    messages: Array.from({ length: replies }, (_, index) => ({
-      author: 'claude' as const,
-      body: `Answer ${index + 1}`,
-      at: AT,
-      run: 'r1',
-    })),
-  })
+const replies = (count: number) =>
+  Array.from({ length: count }, (_, index) => ({
+    author: 'claude' as const,
+    body: `Answer ${index + 1}`,
+    at: AT,
+    run: 'r1',
+  }))
+
+const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+
+function answered(count: number): ReviewComment {
+  return comment({ state: 'answered', messages: replies(count) })
 }
 
 /**
@@ -48,6 +50,9 @@ async function layOut() {
     body.scrollTop = to
     fireEvent.scroll(body)
   }
+  // The widget measures the new layout before the test scrolls it.
+  fireEvent.scroll(body)
+  await frame()
   return { body, height, scroll }
 }
 
@@ -79,11 +84,25 @@ test('a thread scrolled up keeps its place when a message arrives', async () => 
   served[0] = answered(4)
   events.send('changed')
   await screen.findByText('Answer 4')
-  await new Promise((resolve) => requestAnimationFrame(resolve))
+  await frame()
   expect(body.scrollTop).toBe(100)
   expect(
     screen.getByRole('button', { name: 'Scroll to the latest message' }),
   ).toBeTruthy()
+})
+
+test('a thread read to its end lets the reader scroll up a little', async () => {
+  fakeEvents()
+  fakeServer([answered(3)])
+  openThread('c1')
+  renderWidget()
+  const { body, height, scroll } = await layOut()
+  scroll(height())
+  scroll(height() - VIEW - 20)
+
+  await frame()
+  await frame()
+  expect(body.scrollTop).toBe(height() - VIEW - 20)
 })
 
 test("the reader's own message brings a thread scrolled up to its end", async () => {
@@ -93,20 +112,36 @@ test("the reader's own message brings a thread scrolled up to its end", async ()
   openThread('c1')
   renderWidget()
   const { body, height, scroll } = await layOut()
+  scroll(height())
   scroll(0)
 
   const box = screen.getByPlaceholderText('Follow up, clarify, ask for a change…')
   fireEvent.change(box, { target: { value: 'Bolder too' } })
   fireEvent.keyDown(box, { key: 'Enter' })
   served[0] = comment({
-    ...answered(3),
-    state: 'open',
-    messages: [
-      ...answered(3).messages.slice(1),
-      { author: 'reader', body: 'Bolder too', at: AT },
-    ],
+    messages: [...replies(3), { author: 'reader', body: 'Bolder too', at: AT }],
   })
   events.send('changed')
   await screen.findByText('Bolder too')
+  await waitFor(() => expect(body.scrollTop).toBe(height() - VIEW))
+})
+
+test('a comment sent again brings a thread scrolled up to its end', async () => {
+  const events = fakeEvents()
+  const cancellation = { at: AT, changed: [], steps: 1 }
+  const served = [comment({ state: 'stopped', cancellation, messages: replies(3) })]
+  fakeServer(served)
+  openThread('c1')
+  renderWidget()
+  const { body, height, scroll } = await layOut()
+  scroll(height())
+  scroll(0)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send again' }))
+  served[0] = comment({
+    messages: [...replies(3), { author: 'reader', body: 'Make it bigger again', at: AT }],
+  })
+  events.send('changed')
+  await screen.findByText('Make it bigger again')
   await waitFor(() => expect(body.scrollTop).toBe(height() - VIEW))
 })
