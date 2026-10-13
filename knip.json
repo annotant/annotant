@@ -10,12 +10,20 @@
         // Run by the /playground skill.
         ".claude/skills/playground/scripts/*.mjs",
         // The plugin's types, named by .claude-plugin/plugin.json.
-        "types/index.d.ts"
+        "types/index.d.ts",
+        // The suites, not every file under test/ (the Node.js plugin's default would hide an unused helper).
+        "test/**/*.test.mjs",
+        "test/hooks.test.ts"
       ],
+      "node": false,
       // `typecheck` runs the TypeScript the workspaces install, hoisted to the root.
       "ignoreBinaries": ["tsc"],
       // claude-code and claude-code/testing: modules Claude Code provides to the hooks, not packages.
       "ignoreDependencies": ["claude-code"]
+    },
+    "skills/code-buddy/widget": {
+      // Its Vitest suites (vitest.config.ts), not every file under test/.
+      "node": false
     }
   }
 }
