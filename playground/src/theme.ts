@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export type Theme = 'system' | 'light' | 'dark'
+type Theme = 'system' | 'light' | 'dark'
 
 const KEY = 'northwind-theme'
 const ORDER: Theme[] = ['system', 'light', 'dark']
