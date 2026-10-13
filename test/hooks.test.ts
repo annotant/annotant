@@ -22,7 +22,16 @@ const commentsFile = (comments: Comment[]) => JSON.stringify({ version: 2, comme
 
 /** The disk, processes and tools beneath the mod, in memory. */
 /** `gitRoot`: the repository the project is in, as `git rev-parse` answers. */
-function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = {}) {
+/** `cwd`: the session's folder; `mainCheckout`: the repository's, from a worktree. */
+function world(
+  on: On,
+  comments: Comment[],
+  {
+    gitRoot,
+    cwd = `${ROOT}/src`,
+    mainCheckout,
+  }: { gitRoot?: string; cwd?: string; mainCheckout?: string } = {},
+) {
   const files = new Map<string, string>([
     [
       `${ROOT}/.code-buddy.json`,
@@ -43,7 +52,7 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
   on('fs.exists', (_$, e) => ({ value: files.has(e.path) }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('tool.register', (_$, e) => ({ value: { tool: `mcp__code-buddy__${e.name}` } }))
-  on('session.cwd', () => ({ value: `${ROOT}/src` }))
+  on('session.cwd', () => ({ value: cwd }))
   const toasts: string[] = []
   const logged: string[] = []
   on('ui.toast', (_$, e) => {
@@ -55,12 +64,26 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
     return { value: undefined }
   })
   const sent: { to: string; text: string }[] = []
+  let delivering = true
   on('session.send', (_$, e) => {
     sent.push({ to: e.to, text: e.text })
-    return { isDelivered: true }
+    return delivering
+      ? { isDelivered: true as const }
+      : { isDelivered: false as const, reason: 'no agent by that id' }
   })
   on('session.version', () => ({ value: { version: '2.1.287' } }))
   on('process.run', (_$, e) => {
+    if (e.argv.includes('--git-common-dir') && mainCheckout) {
+      return {
+        value: {
+          exitCode: 0,
+          stdout: `${mainCheckout}/.git\n`,
+          stderr: '',
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      }
+    }
     if (e.argv.includes('--show-toplevel')) {
       return {
         value: {
@@ -125,7 +148,11 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
       status: 'running' as const,
     })),
   }))
-  on('agent.spawn', (_$, e) => {
+  // Held, a spawn answers only once released: an agent slow to start.
+  let held: Promise<void> | undefined
+  let release = ignore
+  on('agent.spawn', async (_$, e) => {
+    await held
     // A plugin's spawn reaches here as the Agent tool's input.
     const input: Record<string, unknown> = { ...e }
     spawned.push({
@@ -181,6 +208,17 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
     spawned,
     servers,
     print,
+    refuseSends: () => {
+      delivering = false
+    },
+    holdSpawns: () => {
+      held = new Promise<void>((done) => (release = done))
+    },
+    releaseSpawns: async () => {
+      held = undefined
+      release()
+      await clock.settle()
+    },
     exit: async (code: number) => {
       exitCode = code
       wake()
@@ -565,9 +603,9 @@ test('logs why an agent is not bound, or no longer', async ($, on) => {
   )
 })
 
-/** The prompt the manager writes for a comment's agent (SKILL.md). */
+/** The prompt the hooks write for a comment's agent (startWorker). */
 const workerPrompt = (id: string) =>
-  `${id}\nNEW ${id} / "make the title bigger"\nSKILL=/s\nPROJECT=${ROOT}`
+  `${id}\nSKILL=/s\nPROJECT=${ROOT}\nNEW ${id} / "make the title bigger"`
 const spawnWorker = ($: Parameters<Parameters<typeof test>[1]>[0], id: string) =>
   $.agent.spawn({
     prompt: workerPrompt(id),
@@ -784,7 +822,7 @@ test('each comment starts its agent at once, three at a time', async ($, on) => 
   expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c2', 'cb-c3'])
   expect(w.spawned[0]?.type).toBe('code-buddy:worker')
   expect(w.spawned[0]?.prompt).toMatch(
-    /^c1\nNEW c1 route=\/ page-level body="make the title bigger"\nSKILL=\/.+\/skills\/code-buddy\nPROJECT=\/repo\/web$/,
+    /^c1\nSKILL=\/.+\/skills\/code-buddy\nPROJECT=\/repo\/web\nNEW c1 route=\/ page-level body="make the title bigger"$/,
   )
 
   // An agent ends: its line for the person, and the comment in line starts.
@@ -897,5 +935,112 @@ test('/code-buddy stop ends the watch', async ($, on) => {
   expect((await $.command.run(watchCommand('stop'))).text).toMatch(
     /not watching any project/,
   )
+  await w.exit(0)
+})
+
+test('a follow-up waits its turn when three agents already work', async ($, on) => {
+  const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
+  await watch($, w)
+  await w.print(newLine('c1'))
+  await $.turn.complete(ended('a1', 'Done.'))
+  await w.print(newLine('c2'), newLine('c3'), newLine('c4'), followUpLine('c1'))
+  // c1's agent finished: resuming it would make a fourth.
+  expect(w.sent).toEqual([])
+
+  await $.turn.complete(ended('a2', 'Done.'))
+  await w.clock.settle()
+  expect(w.sent).toEqual([
+    { to: 'a1', text: expect.stringMatching(/^The reader followed up on comment c1/) },
+  ])
+  expect(w.spawned).toHaveLength(4)
+  await w.exit(0)
+})
+
+test('an edit or a stop while the agent starts reaches it once started', async ($, on) => {
+  const w = world(on, ['c1', 'c2', 'c3', 'c4', 'c5'].map(open))
+  await watch($, w)
+  await w.print(newLine('c1'), newLine('c2'), newLine('c3'), newLine('c4'), newLine('c5'))
+  // An agent ends: c4's starts, slowly, while the reader edits it.
+  w.holdSpawns()
+  await $.turn.complete(ended('a1', 'Done.'))
+  await w.clock.settle()
+  await w.print(`EDIT c4 route=/ page-level body="make it red"`)
+  await w.releaseSpawns()
+  expect(w.spawned.map((agent) => agent.name)).toEqual([
+    'cb-c1',
+    'cb-c2',
+    'cb-c3',
+    'cb-c4',
+  ])
+  expect(w.sent).toEqual([
+    { to: 'a4', text: expect.stringMatching(/^The reader edited comment c4 /) },
+  ])
+
+  // c5's starts the same way, and the reader stops it.
+  w.holdSpawns()
+  await $.turn.complete(ended('a2', 'Done.'))
+  await w.clock.settle()
+  await w.print('CANCELLED c5')
+  await w.releaseSpawns()
+  expect(w.stopped).toEqual(['a5'])
+  expect(w.spawned).toHaveLength(5)
+  await w.exit(0)
+})
+
+test('a comment reopened right after the reader resolved it keeps its agent', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(newLine('c1'))
+  await $.tool.call(bash('a1', claim('c1')))
+  await w.print('RESOLVED c1', followUpLine('c1'))
+  await w.clock.advance(3_000)
+  expect(w.stopped).toEqual([])
+  await w.exit(0)
+})
+
+test('an agent that cannot take a message gives way to a new one', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(newLine('c1'))
+  w.refuseSends()
+  await w.print(`EDIT c1 route=/ page-level body="make it red"`)
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  await w.exit(0)
+})
+
+test('a server that stops after it started says so', async ($, on) => {
+  const w = world(on, [])
+  await watch($, w)
+  await w.exit(1)
+  expect(w.toasts.at(-1)).toMatch(
+    /^Code Buddy stopped watching web: the server exited \(code 1\)\. \/code-buddy starts it again\.$/,
+  )
+  // Not watching any more: the command starts a new server.
+  void $.command.run(watchCommand())
+  await w.clock.settle()
+  expect(w.servers).toHaveLength(2)
+})
+
+test('the skill watches only a project of its session', async ($, on) => {
+  const w = world(on, [])
+  const ran = await $.tool.call({
+    tool: 'mcp__code-buddy__watch',
+    project: '/tmp/elsewhere',
+    tool_use_id: 'w2',
+  })
+  expect(ran.deny ?? ran.text).toMatch(/outside this session's folder and repository/)
+  expect(w.servers).toEqual([])
+})
+
+test("/code-buddy in a git worktree watches the main checkout's project", async ($, on) => {
+  const w = world(on, [], {
+    cwd: '/wt/feature/web/src',
+    gitRoot: '/wt/feature',
+    mainCheckout: '/repo',
+  })
+  const answer = $.command.run(watchCommand())
+  await w.print(READY)
+  expect((await answer).text).toMatch(/watching \/repo\/web/)
+  expect(w.servers[0]?.[3]).toBe(ROOT)
   await w.exit(0)
 })

@@ -17,8 +17,8 @@ released to the `stable` branch.
   Follow-ups and edits go to the comment's agent, a stopped comment stops it,
   three run at a time; an agent's one-line answer shows in the transcript, its
   question as a notification too. `/code-buddy stop` ends the watch;
-  `/code-buddy:code-buddy` without a mode starts it through the skill, which
-  lost its whole dispatch section. A busy comment now reads "waiting for a
+  `/code-buddy:code-buddy` without a mode starts it through the skill, whose
+  dispatch instructions are gone. A busy comment now reads "waiting for a
   free agent". (#103)
 - **Changes show in the widget at once.** The server watches the comments
   file's and the step files' folders, and pushes each change to the widget on

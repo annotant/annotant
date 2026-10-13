@@ -352,6 +352,9 @@ const printed = new Map()
  * @param {string} line
  */
 function print(id, line) {
+  // One event a line: a line break in what the reader sent (a route, a tag)
+  // would forge another event for the hooks.
+  line = line.replaceAll(/[\r\n\u2028\u2029]/g, ' ')
   console.log(line)
   const lines = [...(printed.get(id) ?? []), { at: new Date().toISOString(), line }]
   printed.set(id, lines.slice(-LINES_KEPT))

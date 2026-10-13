@@ -45,8 +45,9 @@ export type Lock = { owner: string; at: number }
 /**
  * The agent the hooks started for a comment: a follow-up or an edit goes to
  * it, a stop ends it. `running` until its turn completes; a message resumes it.
+ * Route.agent is the same agent, kept for its claims' model.
  */
-export type Worker = { agent: string; root: string; running: boolean }
+export type Worker = { agent: string; running: boolean }
 
 declare module 'claude-code' {
   interface McpToolInputs {

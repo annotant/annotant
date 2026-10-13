@@ -234,6 +234,23 @@ async function debugCommand($: $, args: string): Promise<string> {
 
 const projects = new Map<string, Promise<Project>>()
 
+/** What `git rev-parse <flags>` answers in `dir`, or undefined outside a repository. */
+async function gitPath($: $, dir: string, flags: string[]) {
+  const git = await $.process
+    .run(['git', '-C', dir, 'rev-parse', ...flags])
+    .catch(() => undefined)
+  const said = git?.exitCode === 0 ? git.stdout.trim() : ''
+  return said.startsWith('/') ? normalize(said) : undefined
+}
+
+const gitTop = ($: $, dir: string) => gitPath($, dir, ['--show-toplevel'])
+
+/** The main checkout of the repository `dir` is in: a worktree's lacks untracked files. */
+async function mainCheckout($: $, dir: string) {
+  const common = await gitPath($, dir, ['--path-format=absolute', '--git-common-dir'])
+  return common?.endsWith('/.git') ? common.slice(0, -'/.git'.length) : undefined
+}
+
 async function loadProjectOnce($: $, root: string): Promise<Project> {
   const config: { commentsFile?: string; models?: unknown } = JSON.parse(
     await $.fs.read(`${root}/.code-buddy.json`),
@@ -249,10 +266,7 @@ async function loadProjectOnce($: $, root: string): Promise<Project> {
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
     .slice(0, 12)
-  const git = await $.process
-    .run(['git', '-C', root, 'rev-parse', '--show-toplevel'])
-    .catch(() => undefined)
-  const top = git?.exitCode === 0 ? normalize(git.stdout.trim()) : ''
+  const top = await gitTop($, root)
   return {
     root,
     lockRoot: top && relative(top, root) !== undefined ? top : root,
@@ -357,7 +371,7 @@ async function record(
 }
 
 /**
- * AskUserQuestion would reach the manager's terminal, never the reader, who is
+ * AskUserQuestion would reach the session's terminal, never the reader, who is
  * on the page: the agent asks in the comment's thread instead.
  */
 const askInThread = ({ root, comment, scripts }: Binding) =>
@@ -770,18 +784,29 @@ const SERVER_ERRORS = new Set([
 ])
 const WATCH_TOOL = 'mcp__code-buddy__watch'
 
+type Kind = 'new' | 'followup' | 'edit'
+/** A comment waiting for a free agent, with the latest line about it. */
+type Queued = { id: string; line: string; kind: Kind }
+
 type Watch = {
   root: string
   /** The server's first line: `READY`, an error line, or `ENDED <why>`. */
   started: Promise<string>
-  /** Comments waiting for a free agent, oldest first, with their latest line. */
-  queue: { id: string; line: string }[]
+  /** Comments waiting for a free agent, oldest first. */
+  queue: Queued[]
+  /** By comment, how many lines came about it: a later one supersedes a wait. */
+  heard: Map<string, number>
   stopped: boolean
   stop: () => void
 }
 
 /** The servers this module runs, by project root: they die with it. */
 const watches = new Map<string, Watch>()
+/**
+ * Comments whose agent is starting, and what came for them meanwhile: a stop,
+ * or the reader's latest edit or follow-up, handed over once it started.
+ */
+const starting = new Map<string, { stop: boolean; message?: Queued }>()
 let rearmed = false
 let dispatching: Promise<void> = Promise.resolve()
 
@@ -809,14 +834,18 @@ async function workerOf($: $, agent: string) {
   return found && { id: found[0], worker: found[1] }
 }
 
+/** Agents at work, and those starting: the three the cap counts. */
+async function busy($: $) {
+  const all = Object.values(await read($, workers))
+  return all.filter((one) => one.running).length + starting.size
+}
+
 async function startQueued($: $) {
-  for (;;) {
-    const all = await read($, workers)
-    if (Object.values(all).filter((one) => one.running).length >= MAX_RUNNING) return
+  while ((await busy($)) < MAX_RUNNING) {
     const watched = [...watches.values()].find((one) => one.queue.length)
     const next = watched?.queue.shift()
     if (!watched || !next) return
-    await startWorker($, watched, next.id, next.line)
+    await handOver($, watched, next)
   }
 }
 
@@ -826,14 +855,47 @@ function pump($: $) {
   return dispatching
 }
 
+/** Sends the reader's edit or follow-up to the comment's agent, which a message resumes. */
+async function send($: $, worker: Worker, { id, line, kind }: Queued) {
+  const sent = await $.session
+    .send({
+      to: { agentId: worker.agent },
+      text: kind === 'edit' ? edited(id, line) : followUp(id, line),
+    })
+    .catch(() => undefined)
+  await debug(
+    $,
+    worker.agent,
+    id,
+    sent?.isDelivered
+      ? `sent the ${kind === 'edit' ? 'edit' : 'follow-up'}`
+      : `could not send: ${sent?.reason ?? 'refused'}`,
+  )
+  if (sent?.isDelivered) await setWorker($, id, { ...worker, running: true })
+  return Boolean(sent?.isDelivered)
+}
+
+/**
+ * A queued comment's turn: a follow-up resumes the agent that had it, which
+ * keeps its model; anything else, or a follow-up it cannot take, a new agent.
+ */
+async function handOver($: $, watched: Watch, next: Queued) {
+  const worker = (await read($, workers))[next.id]
+  if (worker?.running) return
+  if (worker && next.kind === 'followup' && (await send($, worker, next))) return
+  await startWorker($, watched, next.id, next.line)
+}
+
 async function startWorker($: $, watched: Watch, id: string, line: string) {
   const name = `cb-${tag(id)}`
+  starting.set(id, { stop: false })
   const started = await $.agent
     .spawn({
       subagentType: WORKER,
       name,
       description: `Code Buddy comment ${tag(id)}`,
-      prompt: [id, line, `SKILL=${skillDir($)}`, `PROJECT=${watched.root}`].join('\n'),
+      // The paths first: the reader's line is data, and comes last.
+      prompt: [id, `SKILL=${skillDir($)}`, `PROJECT=${watched.root}`, line].join('\n'),
     })
     .catch((error: unknown) => ({
       deny: error instanceof Error ? error.message : String(error),
@@ -843,64 +905,57 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
   const agent =
     started.agentId ??
     (started.deny === undefined
-      ? (await $.agent.list().catch(() => [])).findLast(
-          (one) => one.name === name && one.type === WORKER,
-        )?.id
+      ? (await $.agent.list().catch(() => [])).findLast((one) => one.name === name)?.id
       : undefined)
+  const meanwhile = starting.get(id)
+  starting.delete(id)
   if (!agent) {
     const why = started.deny ?? 'no agent started'
     $.ui.toast(`Code Buddy could not start an agent for comment ${tag(id)}: ${why}`)
     await debug($, 'main', id, `could not start an agent: ${short(why, 160)}`)
     return
   }
-  await setWorker($, id, { agent, root: watched.root, running: true })
+  const worker = { agent, running: true }
+  await setWorker($, id, worker)
   await debug($, agent, id, `started for ${line.split(' ')[0]}`)
+  if (meanwhile?.stop) await stopWorker($, watched, id)
+  else if (meanwhile?.message) await send($, worker, meanwhile.message)
 }
 
 /**
  * A comment needs an agent: a new one, or the reader's follow-up or edit,
- * which goes to the agent already started for it when there is one.
+ * which goes to the agent at work on it when there is one.
  */
-async function dispatch(
-  $: $,
-  watched: Watch,
-  id: string,
-  line: string,
-  kind: 'new' | 'followup' | 'edit',
-) {
-  const queued = watched.queue.find((one) => one.id === id)
-  if (queued) {
-    queued.line = line
+async function dispatch($: $, watched: Watch, next: Queued) {
+  const pending = starting.get(next.id)
+  if (pending) {
+    if (next.kind !== 'new') pending.message = next
     return
   }
-  const worker = (await read($, workers))[id]
-  if (worker && (kind === 'followup' || (kind === 'edit' && worker.running))) {
-    // A finished agent is resumed with the message, and keeps its model.
-    const sent = await $.session
-      .send({
-        to: { agentId: worker.agent },
-        text: kind === 'followup' ? followUp(id, line) : edited(id, line),
-      })
-      .catch(() => undefined)
-    if (sent?.isDelivered) {
-      await setWorker($, id, { ...worker, running: true })
-      await debug(
-        $,
-        worker.agent,
-        id,
-        `sent the ${kind === 'edit' ? 'edit' : 'follow-up'}`,
-      )
-      return
-    }
-    await debug($, worker.agent, id, `could not send: ${sent?.reason ?? 'refused'}`)
-  } else if (worker?.running) return
-  watched.queue.push({ id, line })
+  const queued = watched.queue.find((one) => one.id === next.id)
+  if (queued) {
+    queued.line = next.line
+    return
+  }
+  const worker = (await read($, workers))[next.id]
+  if (worker?.running) {
+    if (next.kind === 'new' || (await send($, worker, next))) return
+    // Gone without a word: a new agent takes the comment.
+    await setWorker($, next.id, { ...worker, running: false })
+    watched.queue.push({ ...next, kind: 'new' })
+  } else watched.queue.push(next)
   await pump($)
 }
 
 /** Ends the comment's agent; `ifBound`: only while it still works on it. */
 async function stopWorker($: $, watched: Watch, id: string, ifBound = false) {
   watched.queue = watched.queue.filter((one) => one.id !== id)
+  const pending = starting.get(id)
+  if (pending) {
+    // A resolved comment's claim fails: its agent stops on its own.
+    if (!ifBound) pending.stop = true
+    return
+  }
   const worker = (await read($, workers))[id]
   if (!worker?.running) return
   if (ifBound && (await bindingOf($, worker.agent))?.comment !== id) return
@@ -927,21 +982,26 @@ async function onLine(
     return
   }
   if (!/^[\w-]+$/.test(id)) return
+  const heard = (watched.heard.get(id) ?? 0) + 1
+  watched.heard.set(id, heard)
   switch (kind) {
     case 'OPEN':
     case 'NEW':
-      return dispatch($, watched, id, line, 'new')
+      return dispatch($, watched, { id, line, kind: 'new' })
     case 'FOLLOWUP':
-      return dispatch($, watched, id, line, 'followup')
+      return dispatch($, watched, { id, line, kind: 'followup' })
     case 'EDIT':
-      return dispatch($, watched, id, line, 'edit')
+      return dispatch($, watched, { id, line, kind: 'edit' })
     case 'CANCELLED':
     case 'DELETED':
       return stopWorker($, watched, id)
     case 'RESOLVED':
+      // Unless the reader opened it again meanwhile.
       void $.clock
         .sleep(RESOLVED_GRACE_MS)
-        .then(() => stopWorker($, watched, id, true))
+        .then(() =>
+          watched.heard.get(id) === heard ? stopWorker($, watched, id, true) : undefined,
+        )
         .catch(() => undefined)
       return
     default:
@@ -965,6 +1025,7 @@ function serve($: $, root: string): Watch {
     root,
     started,
     queue: [],
+    heard: new Map(),
     stopped: false,
     stop: () => {
       watched.stopped = true
@@ -1049,7 +1110,7 @@ async function startedText(
 }
 
 async function startWatch($: $, root: string) {
-  if (!(await $.fs.exists(`${root}/.code-buddy.json`).catch(() => false)))
+  if (!(await hasConfig($, root)))
     return `No .code-buddy.json in ${root}: run /code-buddy:code-buddy init there first.`
   const known = watches.get(root)
   const watched = known ?? serve($, root)
@@ -1077,28 +1138,52 @@ async function stopWatching($: $) {
 const hasConfig = ($: $, dir: string) =>
   $.fs.exists(`${dir}/.code-buddy.json`).catch(() => false)
 
+const parent = (dir: string) => dir.slice(0, dir.lastIndexOf('/')) || '/'
+
+/** The nearest folder from `dir` up to `last` that holds `.code-buddy.json`. */
+async function nearest($: $, dir: string, last = '/') {
+  for (let at = dir; ; at = parent(at)) {
+    if (await hasConfig($, at)) return at
+    if (at === last || at === '/') return undefined
+  }
+}
+
 /**
- * The project `/code-buddy [dir]` means: `dir` from the session's directory,
- * else from the git toplevel; without one, the nearest folder up that holds
- * `.code-buddy.json`.
+ * The project `/code-buddy [dir]` means, as the skill finds it: `dir` from the
+ * session's directory, else from the git toplevel; without one, the nearest
+ * folder up that holds `.code-buddy.json`. In a git worktree, where that file
+ * is often untracked, the same place in the main checkout.
  */
 async function findProject($: $, dir: string) {
   const cwd = normalize(await $.session.cwd())
+  const top = await gitTop($, cwd)
+  const main = top && (await mainCheckout($, cwd))
+  const inMain = main && main !== top && `${main}/${relative(top, cwd) ?? ''}`
   if (dir) {
-    const git = await $.process
-      .run(['git', '-C', cwd, 'rev-parse', '--show-toplevel'])
-      .catch(() => undefined)
-    const top = git?.exitCode === 0 ? normalize(git.stdout.trim()) : undefined
-    for (const base of [cwd, top]) {
+    for (const base of [cwd, top, inMain]) {
       const candidate = base && resolve(base, dir)
       if (candidate && (await hasConfig($, candidate))) return candidate
     }
     return undefined
   }
-  for (let at = cwd; ; at = at.slice(0, at.lastIndexOf('/')) || '/') {
-    if (await hasConfig($, at)) return at
-    if (at === '/') return undefined
-  }
+  return (
+    (await nearest($, cwd)) ??
+    (inMain && main ? nearest($, normalize(inMain), main) : undefined)
+  )
+}
+
+/**
+ * The tool's project, when the session may watch it: in the session's folder,
+ * its repository or that one's main checkout, or a folder above the session.
+ */
+async function mayWatch($: $, project: string) {
+  const cwd = normalize(await $.session.cwd())
+  const top = await gitTop($, cwd)
+  const main = top && (await mainCheckout($, cwd))
+  return (
+    relative(project, cwd) !== undefined ||
+    [cwd, top, main].some((place) => place && relative(place, project) !== undefined)
+  )
 }
 
 /** `/code-buddy [dir|stop]`: the answer the person reads. */
@@ -1113,21 +1198,33 @@ async function watchCommand($: $, args: string) {
   )
 }
 
+// After a reload, the old module's server may hold the port a moment longer.
+const REARM_TRIES = 3
+const REARM_WAIT_MS = 1_000
+
+/** The project's server again, after a reload; a port still busy is tried again. */
+async function serveAgain($: $, root: string) {
+  for (let tries = 1; ; tries++) {
+    const line = await serve($, root).started
+    await showStatus($)
+    if (line.startsWith('PORT_BUSY') && tries < REARM_TRIES) {
+      await $.clock.sleep(REARM_WAIT_MS)
+      continue
+    }
+    if (line.startsWith('READY')) {
+      await update($, watching, (all) => ({ ...all, [root]: true as const }))
+      $.ui.toast(`Code Buddy is watching ${basename(root)} again.`)
+    } else $.ui.toast(`Code Buddy could not watch ${basename(root)} again: ${line}`)
+    return
+  }
+}
+
 /** After a reload of the module, the servers it ran start again. */
 async function rearm($: $) {
   if (rearmed) return
   rearmed = true
   for (const root of Object.keys(await read($, watching))) {
-    if (watches.has(root)) continue
-    const watched = serve($, root)
-    await showStatus($)
-    void watched.started.then((line) =>
-      $.ui.toast(
-        line.startsWith('READY')
-          ? `Code Buddy is watching ${basename(root)} again.`
-          : `Code Buddy could not watch ${basename(root)} again: ${line}`,
-      ),
-    )
+    if (!watches.has(root)) void serveAgain($, root).catch(() => undefined)
   }
 }
 
@@ -1202,6 +1299,10 @@ export const register: Register = (on) => {
     const { project } = e
     if (typeof project !== 'string' || !project.startsWith('/'))
       return { deny: 'Give the project root as an absolute path.' }
+    if (!(await mayWatch($, normalize(project))))
+      return {
+        deny: `${project} is outside this session's folder and repository: the user runs /code-buddy there to watch it.`,
+      }
     return { result: await startWatch($, normalize(project)) }
   })
 

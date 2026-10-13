@@ -100,7 +100,8 @@ Then, in your frontend project:
 Plugin skills are prefixed with the plugin name, hence `/code-buddy:code-buddy`;
 `/code-buddy` is a command of the plugin's hooks, and runs at once, even while
 Claude is answering. `/code-buddy:code-buddy` with no mode watches too, through
-the skill, which also finds the project from a git worktree.
+the skill. Both find the project of a git worktree in the main checkout when
+the worktree lacks `.code-buddy.json`.
 
 Work on in the same session: the comments go straight to their agents, never
 through your conversation. When an agent ends, its one-line answer shows in

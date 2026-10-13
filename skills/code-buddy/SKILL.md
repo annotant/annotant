@@ -5,8 +5,9 @@ description:
   The user comments directly on the dev app in the browser (select text, point
   at an element, or write about the page or the whole app); one background
   agent per comment makes the change and answers in the same thread.
-  "/code-buddy:code-buddy [dir]" starts watching the app (the widget only
-  exists while it runs); "/code-buddy:code-buddy init [dir]" installs it in the
+  "/code-buddy [dir]" or "/code-buddy:code-buddy [dir]" starts watching the
+  app (the widget only exists while it runs; "/code-buddy stop" ends it);
+  "/code-buddy:code-buddy init [dir]" installs it in the
   current project or in its folder `dir` (e.g. `web`), "update" and
   "uninstall" maintain it. Use when the user wants to give feedback on the app
   in the browser, to follow or answer that feedback, to install or remove the

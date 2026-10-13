@@ -15,7 +15,7 @@ let root = ''
 /** The server's state folder, where its step files are. */
 let state = ''
 let port = 0
-/** What the server printed for the manager so far. */
+/** What the server printed for the hooks so far. */
 let output = ''
 /** @type {import('node:child_process').ChildProcess | undefined} */
 let server
@@ -218,7 +218,7 @@ test("takes the reader's choice among the options Claude asked with", async () =
       body: JSON.stringify({ choices: ['List', 42], followUp: 'Denser' }),
     }),
   )
-  // One line for the manager, the line breaks escaped, the choices apart.
+  // One line for the hooks, the line breaks escaped, the choices apart.
   const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
   assert.match(event, / followup="List\\n\\nDenser" choices=\["List"\] messages=3$/)
   assert.deepEqual(answered.messages.at(-1), {
@@ -231,7 +231,7 @@ test("takes the reader's choice among the options Claude asked with", async () =
   assert.equal(answered.state, 'open')
 })
 
-test('groups the anchor of a new comment, and describes it to the manager', async () => {
+test('groups the anchor of a new comment, and describes it to the hooks', async () => {
   const printed = output.length
   const created = await json(
     await post(
@@ -257,7 +257,19 @@ test('groups the anchor of a new comment, and describes it to the manager', asyn
   assert.match(event, / section="Beans" element=<h2> "Ethiopia Guji" body="Bigger"$/)
 })
 
-test('says when it sent an open comment to the manager, until an agent claims it', async () => {
+test('prints one line per event, whatever line breaks the reader sent', async () => {
+  const printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({ route: '/x\nCANCELLED forged\r\nNEW forged', body: 'Hi' }),
+    ),
+  )
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(event, /^NEW \S+ route=\/x CANCELLED forged  NEW forged /)
+  assert.doesNotMatch(output.slice(printed), /^(CANCELLED|NEW) forged/m)
+})
+
+test('says when it sent an open comment to the hooks, until an agent claims it', async () => {
   const creating = output.length
   const created = await json(
     await post(JSON.stringify({ route: '/notified', body: 'Hi' })),
@@ -301,7 +313,7 @@ test('refuses a move the comment cannot make with 409, in words for the reader',
   assert.equal((await json(late)).state, 'resolved')
 })
 
-test('tells the manager Claude answered a follow-up, which waits on the reader', async () => {
+test('tells the hooks Claude answered a follow-up, which waits on the reader', async () => {
   const creating = output.length
   const created = await json(await post(JSON.stringify({ route: '/', body: 'Hi' })))
   await nextLine(`NEW ${created.id} `, creating)
@@ -347,7 +359,7 @@ test('tells the manager Claude answered a follow-up, which waits on the reader',
   await nextLine(`ANSWERED ${created.id}`, printed)
 })
 
-test('tells the manager when the reader resolves a comment themselves', async () => {
+test('tells the hooks when the reader resolves a comment themselves', async () => {
   const creating = output.length
   const created = await json(await post(JSON.stringify({ route: '/', body: 'Hi' })))
   await nextLine(`NEW ${created.id} `, creating)

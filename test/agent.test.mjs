@@ -19,7 +19,10 @@ test('the hooks start the agent the plugin ships', () => {
 })
 
 test('the hooks pass the agent its paths, not its steps', () => {
-  assert.match(hooks, /`SKILL=\$\{skillDir\(\$\)\}`, `PROJECT=\$\{watched\.root\}`/)
+  assert.match(
+    hooks,
+    /`SKILL=\$\{skillDir\(\$\)\}`, `PROJECT=\$\{watched\.root\}`, line\]/,
+  )
   assert.doesNotMatch(skill, /claim\.mjs/)
 })
 
