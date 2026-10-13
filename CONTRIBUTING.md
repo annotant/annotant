@@ -125,6 +125,7 @@ It runs, in order:
 | ---------------------- | -------------------------------------------------------------------- |
 | `npm run format:check` | [Prettier](https://prettier.io); `npm run format` fixes it           |
 | `npm run lint`         | [Oxlint](https://oxc.rs/docs/guide/usage/linter), type-aware         |
+| `npm run lint:unused`  | [knip](https://knip.dev): unused files, exports, types and dependencies, across the scripts, the hooks, the tests, the widget and the playground |
 | `npm run typecheck`    | [TypeScript](https://www.typescriptlang.org) 7, strict, on the widget and the scripts |
 | `npm run build`        | Type-checks and bundles the widget into `widget/dist/widget.js`, with the licenses of the packages it bundles in `THIRD_PARTY_LICENSES.txt` |
 | `npm run build:dev`    | The same, with the debug panel: the build `/playground` uses          |
@@ -157,6 +158,12 @@ Rules that go with them:
   with the reason:
   `// oxlint-disable-next-line <rule> -- <why this line is right>`. Unused
   directives fail the lint.
+- **Nothing unused stays.** knip fails on a file nothing reaches, an export
+  nothing imports, or a dependency nothing uses: delete it, or drop the
+  `export` when only its own file uses it. A new entry point (a script the
+  skill runs, a file a tool loads) goes in `knip.json`'s `entry`. An
+  intentional exception goes in `knip.json` too (`ignoreDependencies`,
+  `ignoreBinaries`…), with a comment saying why.
 - **`SKILL.md` is a prompt.** Every sentence costs tokens in every user's
   session and changes how Claude behaves: keep it short and precise, and test
   the modes you touch in a real session.

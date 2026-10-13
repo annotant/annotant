@@ -22,7 +22,7 @@ export function Router({ children }: { children: ReactNode }) {
 
 export const usePath = () => useContext(PathContext)
 
-export function navigate(to: string) {
+function navigate(to: string) {
   window.history.pushState(null, '', to)
   window.dispatchEvent(new PopStateEvent('popstate'))
   window.scrollTo(0, 0)

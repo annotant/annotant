@@ -8,7 +8,7 @@ import type {
   ReviewMessage,
 } from '../src/domain'
 
-export const PAGE = '/'
+const PAGE = '/'
 
 type Fields = Partial<Omit<ReviewComment, 'anchor' | 'messages'>> &
   Partial<ReviewAnchor> & {

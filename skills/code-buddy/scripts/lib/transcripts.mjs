@@ -19,7 +19,7 @@ const MAX_TEXT = 20_000
 const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}\n…` : text)
 
 /** Where Claude Code keeps its transcripts: CLAUDE_CONFIG_DIR, else ~/.claude. */
-export function transcriptsDir() {
+function transcriptsDir() {
   const config = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude')
   return path.join(config, 'projects')
 }
