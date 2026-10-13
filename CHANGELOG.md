@@ -102,6 +102,11 @@ released to the `stable` branch.
 
 ### Fixed
 
+- An open conversation did not scroll when a message arrived: Claude's
+  answer, its steps or the reader's own message landed below the fold. Read
+  to its end, the conversation now follows what arrives; scrolled up, it keeps
+  its place and its button to the latest message; a message the reader sends
+  always brings it to the end.
 - A comment started on one page and saved after following an in-app link was
   filed on the new page, with a quote or an element from the first: the agent
   went to the wrong page and its mark showed nowhere. A comment is now filed
