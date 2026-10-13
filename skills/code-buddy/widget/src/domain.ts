@@ -1,3 +1,5 @@
+import { modelName } from './activity'
+
 /** Route of a comment about the whole app; it is listed on every page. */
 export const APP_ROUTE = '*'
 
@@ -26,6 +28,9 @@ export interface ReviewAnchor {
   element?: ReviewElement
 }
 
+/** How much work a comment needs, as the hooks' classifier sorts it. */
+export type ReviewComplexity = 'trivial' | 'standard' | 'hard'
+
 export interface ReviewProgress {
   at: number
   /** A tool (read, edit, bash, search, mcp…), or the agent's thinking or message. */
@@ -40,6 +45,9 @@ export interface ReviewProgress {
   run?: string
   /** The Claude Code agent that called the tool. */
   agent?: string
+  /** `start` only: the model the agent runs on, and the classifier's label. */
+  model?: string
+  complexity?: ReviewComplexity
 }
 
 export interface ReviewOption {
@@ -83,6 +91,10 @@ export interface ReviewEvent {
   run?: string
   /** `working` only: the Claude Code agent that claimed it. */
   agent?: string
+  /** `working` only: the model its agent runs on (`claude-haiku-5-5`). */
+  model?: string
+  /** `working` only: how the classifier sorted the comment, which picked `model`. */
+  complexity?: ReviewComplexity
 }
 
 export interface ReviewComment {
@@ -186,4 +198,12 @@ export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
 
 export function normaliseQuote(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
+}
+
+/** The model of the comment's latest run that recorded one, and why it was picked. */
+export function modelOf(comment: Pick<ReviewComment, 'events'>) {
+  const event = comment.events.findLast((one) => one.state === 'working' && one.model)
+  return event?.model
+    ? { id: event.model, name: modelName(event.model), complexity: event.complexity }
+    : undefined
 }

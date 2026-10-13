@@ -35,6 +35,18 @@ export const TRANSITIONS = {
 /** @typedef {'reader' | 'agent' | 'server'} Actor */
 
 /**
+ * How much work a comment needs, as the hooks' classifier sorts it before
+ * its agent starts: `trivial` (copy, spacing, colour, a visible property of
+ * one element), `standard` (a component's behaviour, a new element, a small
+ * feature) or `hard` (several components or pages, data or API changes, or a
+ * product decision). `.code-buddy.json`'s `models` maps each to a model.
+ * @typedef {'trivial' | 'standard' | 'hard'} Complexity
+ */
+
+/** @type {readonly Complexity[]} */
+export const COMPLEXITIES = ['trivial', 'standard', 'hard']
+
+/**
  * @typedef {object} Element
  * @property {string} selector From `body`, unique when it was recorded.
  * @property {string} tag
@@ -80,6 +92,10 @@ export const TRANSITIONS = {
  * @property {string} [run] The run it belongs to: started by `working`.
  * @property {string} [agent] `working` only: the Claude Code agent that
  *   claimed it (`main` for a session's main loop), when the hooks ran.
+ * @property {string} [model] `working` only: the model its agent runs on, as
+ *   Claude Code resolved it (`claude-haiku-5-5`), when the hooks ran.
+ * @property {Complexity} [complexity] `working` only: how the hooks'
+ *   classifier sorted the comment, which picked `model`.
  */
 
 /**
@@ -118,6 +134,8 @@ export const TRANSITIONS = {
  * @property {string} [error] Why it failed.
  * @property {string} [run] The run it belongs to.
  * @property {string} [agent] The Claude Code agent that called the tool.
+ * @property {string} [model] `start` only: the model the agent runs on.
+ * @property {Complexity} [complexity] `start` only: the classifier's label.
  */
 
 /**

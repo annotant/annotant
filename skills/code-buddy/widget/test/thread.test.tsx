@@ -333,3 +333,59 @@ test("Claude's answer to a follow-up waits on the reader, who resolves it", asyn
     expect(server.patches).toEqual([{ id: 'c1', patch: { status: 'resolved' } }]),
   )
 })
+
+/** A comment its agent works on, started on `model` for a `complexity` label. */
+const routed = (complexity?: 'trivial' | 'hard') =>
+  comment({
+    state: 'working',
+    events: [
+      { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+      {
+        at: '2026-01-01T10:00:05.000Z',
+        state: 'working',
+        by: 'agent',
+        run: 'r1',
+        model: 'claude-haiku-5-5',
+        ...(complexity && { complexity }),
+      },
+    ],
+    progress: [
+      {
+        at: 1,
+        kind: 'start',
+        label: 'Started',
+        state: 'done',
+        model: 'claude-haiku-5-5',
+      },
+    ],
+  })
+
+test('a thread names the model Claude works on, and why it was picked', async () => {
+  fakeServer([routed('trivial')])
+  openThread('c1')
+  renderWidget()
+
+  const model = await screen.findByTestId('cb-model')
+  expect(model.textContent).toBe('haiku · trivial')
+  expect(model.getAttribute('title')).toBe(
+    'Claude works on claude-haiku-5-5: the comment was sorted trivial',
+  )
+  expect(screen.getByTestId('cb-progress').textContent).toContain('Started on haiku')
+})
+
+test('a thread with no label names the model alone', async () => {
+  fakeServer([routed()])
+  openThread('c1')
+  renderWidget()
+
+  expect((await screen.findByTestId('cb-model')).textContent).toBe('haiku')
+})
+
+test('a thread started before routing names no model', async () => {
+  fakeServer([comment({ state: 'working' })])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByTestId('cb-progress')
+  expect(screen.queryByTestId('cb-model')).toBeNull()
+})

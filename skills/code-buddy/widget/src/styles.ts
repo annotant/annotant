@@ -169,7 +169,7 @@ code { font-family: var(--cb-mono); }
 .cb-empty { display: flex; justify-content: center; padding: 32px 0; }
 .cb-idle { font-size: 13px; color: var(--cb-muted); }
 
-.cb-section, .cb-author, .cb-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-muted); }
+.cb-section, .cb-author, .cb-label, .cb-model { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-muted); }
 .cb-author { display: block; }
 .cb-quote { margin: 0; padding-left: 8px; border-left: 3px solid var(--cb-yellow); font-size: 13px; color: var(--cb-muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 

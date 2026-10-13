@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   activityOf,
   isOngoing,
+  modelName,
   stepKey,
 } from '../skills/code-buddy/widget/src/activity.ts'
 
@@ -30,6 +31,14 @@ test('words the claim itself as starting, not as a tool', () => {
     activityOf(step({ kind: 'start', label: 'Started', state: 'failed' })),
     'Started',
   )
+})
+
+test('names the model the agent started on, by its family', () => {
+  const start = { kind: 'start', label: 'Started', model: 'claude-haiku-5-5' }
+  assert.equal(activityOf(step({ ...start, state: 'running' })), 'Starting on haiku')
+  assert.equal(activityOf(step({ ...start, state: 'done' })), 'Started on haiku')
+  assert.equal(modelName('claude-opus-5-5[1m]'), 'opus')
+  assert.equal(modelName('my-proxy-model'), 'my-proxy-model')
 })
 
 test('marks a failed step as failed and over', () => {

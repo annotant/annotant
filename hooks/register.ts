@@ -4,13 +4,18 @@
 // other comments never edit the same file at once, and record its steps for
 // the widget in the progress file the server reads.
 //
+// Before a comment's agent starts, they pick its model: a classifier sorts the
+// comment (trivial, standard, hard) and `.code-buddy.json`'s `models` maps the
+// label to a model, which claim.mjs records on the run for the widget.
+//
 // Loaded once per session, they start no process per tool call. The bindings
-// (agent to comment) and the locks live in $.state, so they survive a reload
-// of the module and vanish with the session, like the agents themselves.
+// (agent to comment), the locks and the routes live in $.state, so they
+// survive a reload of the module and vanish with the session, like the agents
+// themselves.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Binding, CommentsFile, Lock } from '../types'
+import type { Binding, CommentsFile, Complexity, Lock, Route } from '../types'
 
 type $ = EngineInterface
 /**
@@ -23,13 +28,39 @@ type Project = {
   lockRoot: string
   commentsFile: string
   progressDir: string
+  /** A model (`haiku`, an id, or `inherit`) per label. */
+  models: Partial<Record<Complexity, string>>
 }
 type Step = Record<string, unknown>
 
 const noBindings: Record<string, Binding> = {}
 const noLocks: Record<string, Lock> = {}
+const noRoutes: Record<string, Route> = {}
 const bindings = atom({ plugin: 'code-buddy', key: 'bindings' } as const, noBindings)
 const locks = atom({ plugin: 'code-buddy', key: 'locks' } as const, noLocks)
+const routes = atom({ plugin: 'code-buddy', key: 'routes' } as const, noRoutes)
+
+const WORKER = 'code-buddy:worker'
+const COMPLEXITIES: readonly Complexity[] = ['trivial', 'standard', 'hard']
+/** The parent's model: today's behaviour, no routing. */
+const INHERIT = 'inherit'
+/** Without `models` in `.code-buddy.json`. */
+const DEFAULT_MODELS: Project['models'] = {
+  trivial: 'haiku',
+  standard: INHERIT,
+  hard: 'opus',
+}
+// What the classifier reads before the comment, so its labels mean the same
+// every time. The comment itself is data: the engine's classifier prompt says so.
+const GUIDE = [
+  'Feedback a reader left on their web app, for a coding agent. How much work does it need?',
+  '- trivial: copy, spacing, colour, a visible property of one element.',
+  "- standard: a component's behaviour, a new element, a small feature.",
+  '- hard: anything across several components or pages, data or API changes, or a question that needs a product decision.',
+].join('\n')
+// A hook's own time is bounded: past this, the agent starts on its own model.
+const CLASSIFY_MS = 5_000
+const MAX_CLASSIFIED = 2_000
 
 // A hook's own time is bounded (10 s, waits included).
 const LOCK_WAIT_MS = 6_000
@@ -84,6 +115,7 @@ const relative = (root: string, file: string) =>
       : undefined
 /** An agent id as a shell word: Claude Code's ids are letters and digits. */
 const shellWord = (value: string) => value.replace(/[^\w-]/g, '')
+const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
 const unquote = (value: string) => value.replace(/^["']|["']$/g, '')
 const basename = (file: string) => file.slice(file.lastIndexOf('/') + 1)
 /** `file` as seen from `root`, `../` included. */
@@ -194,7 +226,7 @@ async function debugCommand($: $, args: string): Promise<string> {
 const projects = new Map<string, Promise<Project>>()
 
 async function loadProjectOnce($: $, root: string): Promise<Project> {
-  const config: { commentsFile?: string } = JSON.parse(
+  const config: { commentsFile?: string; models?: unknown } = JSON.parse(
     await $.fs.read(`${root}/.code-buddy.json`),
   )
   const stateRoot = await stateDir($)
@@ -217,7 +249,22 @@ async function loadProjectOnce($: $, root: string): Promise<Project> {
     lockRoot: top && relative(top, root) !== undefined ? top : root,
     commentsFile: resolve(root, commentsFile),
     progressDir: `${stateRoot}/${hash}/progress`,
+    models: modelsOf(config.models),
   }
+}
+
+/**
+ * `.code-buddy.json`'s `models`, whole: a label it leaves out inherits, so
+ * `{ "trivial": "inherit" }` turns routing off. Absent: the default.
+ */
+function modelsOf(value: unknown): Project['models'] {
+  if (typeof value !== 'object' || value === null) return DEFAULT_MODELS
+  const models: Project['models'] = {}
+  for (const [label, model] of Object.entries(value)) {
+    const known = COMPLEXITIES.find((one) => one === label)
+    if (known && typeof model === 'string' && model.trim()) models[known] = model.trim()
+  }
+  return models
 }
 
 function loadProject($: $, root: string): Promise<Project> {
@@ -388,6 +435,79 @@ function describe(
     default:
       return { kind: 'tool', label: tool }
   }
+}
+
+/** The comment and project a worker's prompt names: `<id>` first, then `PROJECT=<dir>`. */
+function workerTask(prompt: string) {
+  const lines = prompt.split('\n').map((line) => line.trim())
+  const comment = lines[0] ?? ''
+  const root = lines.find((line) => line.startsWith('PROJECT='))?.slice('PROJECT='.length)
+  return /^[\w-]+$/.test(comment) && root?.startsWith('/')
+    ? { comment, root: normalize(root) }
+    : undefined
+}
+
+async function readComment($: $, project: Project, id: string) {
+  try {
+    const file: CommentsFile = JSON.parse(await $.fs.read(project.commentsFile))
+    return Array.isArray(file.comments)
+      ? file.comments.find((comment) => comment.id === id)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** What the classifier reads: the reader's last message, what it is about, and the page. */
+function classifiedText(comment: CommentsFile['comments'][number]) {
+  const said = comment.messages?.findLast((message) => message.author === 'reader')
+  if (!said?.body.trim()) return undefined
+  const { quote, element } = comment.anchor ?? {}
+  return [
+    GUIDE,
+    '',
+    `Page: ${comment.route === '*' ? 'the whole app' : (comment.route ?? '')}`,
+    ...(quote ? [`Selected text: "${short(quote, 300)}"`] : []),
+    ...(element?.tag
+      ? [`Element: <${element.tag}> ${short(element.text ?? '', 200)}`]
+      : []),
+    `Comment: ${short(said.body.trim(), MAX_CLASSIFIED)}`,
+  ].join('\n')
+}
+
+/** The comment's label, or undefined: routing never blocks a comment. */
+async function classify($: $, text: string): Promise<Complexity | undefined> {
+  const label = await Promise.race([
+    $.model.classify(text, COMPLEXITIES).catch(() => undefined),
+    $.clock.sleep(CLASSIFY_MS).then(() => undefined),
+  ])
+  return COMPLEXITIES.find((known) => known === label)
+}
+
+/** The model a comment's agent is to start on, and why; none to keep the caller's. */
+async function routeComment($: $, project: Project, id: string) {
+  const routing = COMPLEXITIES.some(
+    (label) => (project.models[label] ?? INHERIT) !== INHERIT,
+  )
+  const comment = routing ? await readComment($, project, id) : undefined
+  const text = comment && classifiedText(comment)
+  const complexity = text ? await classify($, text) : undefined
+  const model = complexity && project.models[complexity]
+  return { complexity, model: model && model !== INHERIT ? model : undefined }
+}
+
+/** The route of the comment a claim.mjs command claims, once its agent started. */
+async function routeOfClaim($: $, command: string) {
+  const id = CLAIM.exec(command)?.[1]
+  return id ? (await read($, routes))[unquote(id)] : undefined
+}
+
+/** claim.mjs's environment: the agent, and the model it runs on. */
+function claimEnv(agent: string, route: Route | undefined) {
+  const env = [`CODE_BUDDY_AGENT=${shellWord(agent)}`]
+  if (route) env.push(`CODE_BUDDY_MODEL=${shellQuote(route.model)}`)
+  if (route?.complexity) env.push(`CODE_BUDDY_COMPLEXITY=${route.complexity}`)
+  return `export ${env.join(' ')};`
 }
 
 const lockKey = (root: string, target: string) => `${root}\n${target}`
@@ -637,6 +757,13 @@ export const register: Register = (on) => {
     for (const [key, value] of Object.entries(e)) {
       if (typeof value === 'string') args[key] = value
     }
+    const isClaim = e.tool === 'Bash' && CLAIM.test(args.command ?? '')
+    const route = isClaim ? await routeOfClaim($, args.command ?? '') : undefined
+    // The Started step says which model the agent runs on.
+    const routed = route && {
+      model: route.model,
+      ...(route.complexity && { complexity: route.complexity }),
+    }
     const binding = await bindingOf($, agent)
     const project = binding && (await projectOf($, agent, binding))
     if (binding && project && e.tool === 'AskUserQuestion') {
@@ -648,6 +775,7 @@ export const register: Register = (on) => {
         at: Date.now(),
         id: e.tool_use_id,
         ...describe(project, e.tool, args),
+        ...routed,
       }
       if (e.tool === 'Bash' && writesFromBash(args.command ?? '', project)) {
         await debug(
@@ -677,14 +805,10 @@ export const register: Register = (on) => {
       await record($, agent, project, binding.comment, [{ ...step, state: 'running' }])
     }
 
-    // claim.mjs records which agent opened the run: the hooks alone know it.
+    // claim.mjs records which agent opened the run, and its model: the hooks
+    // alone know them.
     const ran = await next(
-      e.tool === 'Bash' && CLAIM.test(args.command ?? '')
-        ? {
-            ...e,
-            command: `export CODE_BUDDY_AGENT=${shellWord(agent)}; ${args.command}`,
-          }
-        : e,
+      isClaim ? { ...e, command: `${claimEnv(agent, route)} ${args.command}` } : e,
     )
     if (ran.deny !== undefined) return ran
 
@@ -693,6 +817,7 @@ export const register: Register = (on) => {
       at: Date.now(),
       id: e.tool_use_id,
       ...describe(where, e.tool, args),
+      ...routed,
       state: ran.isError ? 'failed' : 'done',
     })
     if (await followScripts($, agent, command, ran.text ?? '', done)) return ran
@@ -709,6 +834,29 @@ export const register: Register = (on) => {
     if (ran.isError) step.error = short((ran.text ?? '').trim().split('\n')[0] ?? '', 160)
     await record($, agent, boundProject, bound.comment, [step])
     return ran
+  })
+
+  // A comment's agent is about to start: the classifier sorts the comment, and
+  // `.code-buddy.json`'s `models` picks the model for its label. Whatever the
+  // agent ends up on is kept for its claim, which records it on the run.
+  on('agent.spawn', { subagentType: WORKER }, async ($, e, next) => {
+    const task = workerTask(e.prompt)
+    const project = task && (await loadProject($, task.root).catch(() => undefined))
+    if (!task || !project) return next(e)
+    const { model, complexity } = await routeComment($, project, task.comment)
+    const started = await next(model && !e.fork ? { ...e, model } : e)
+    if (started.deny !== undefined) return started
+    await update($, routes, (all) => ({
+      ...all,
+      [task.comment]: { model: started.model, ...(complexity && { complexity }) },
+    }))
+    await debug(
+      $,
+      started.agentId ?? '-',
+      task.comment,
+      `started on ${started.model}${complexity ? `, the comment classified ${complexity}` : ''}`,
+    )
+    return started
   })
 
   // The agent's thinking (often redacted, then an empty label) and the

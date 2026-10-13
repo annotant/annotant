@@ -58,6 +58,20 @@ released to the `stable` branch.
 
 ### Added
 
+- **Each comment gets a model that fits it.** Before a comment's agent
+  starts, the hooks ask Claude Code's small fast model to sort the comment:
+  `trivial` (copy, spacing, colour, one element), `standard` (a component's
+  behaviour, a new element, a small feature) or `hard` (several components or
+  pages, data or API changes, a product decision). `models` in
+  `.code-buddy.json` maps each label to a model, by default
+  `{ "trivial": "haiku", "standard": "inherit", "hard": "opus" }`; `inherit`
+  keeps the managing session's model, and `{ "trivial": "inherit" }` turns
+  routing off. A failed classifier never holds a comment back: its agent
+  starts on the session's model. A follow-up keeps the thread's model.
+- **The widget names the model.** A thread and its line in the list show the
+  model its agent works on and the classifier's label ("haiku · trivial"),
+  and its Started step says "Started on haiku". The comments file records
+  them on the run's `working` event (`model`, `complexity`).
 - **The widget says when Claude is busy.** A comment the managing session has
   had for 15 seconds without an agent claiming it now reads "Claude has your
   comment but is busy…" instead of "Waiting for Claude…": that session only

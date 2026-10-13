@@ -57,6 +57,11 @@ to stop it.
   [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/), loaded
   once per session: they start no process per tool call, and act only for an
   agent working on a comment.
+- **Each comment gets a model that fits it.** Before its agent starts, a
+  classifier sorts the comment as `trivial`, `standard` or `hard`, and
+  `models` in `.code-buddy.json` picks the model for it (by default Haiku,
+  the session's own model, and Opus). The widget names it on the thread
+  ("haiku · trivial"). See [Models](docs/comments-file.md#models).
 
 ## Install
 

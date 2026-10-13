@@ -79,3 +79,44 @@ test('refuses a comment that waits on the reader, and says to stop', async (t) =
     `comment ${comment.id} is waiting on the reader's answer; stop working on it\n`,
   )
 })
+
+test('records the model the hooks routed the comment to, and its label', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Make it blue',
+  })
+  const claimed = await run(
+    process.execPath,
+    [path.join(SCRIPTS, 'claim.mjs'), comment.id, '--project', root],
+    {
+      env: {
+        CODE_BUDDY_AGENT: 'a1b2c3',
+        CODE_BUDDY_MODEL: 'claude-haiku-5-5',
+        CODE_BUDDY_COMPLEXITY: 'trivial',
+      },
+    },
+  )
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const [saved] = await comments.readAll()
+  const working = saved.events[saved.events.length - 1]
+  assert.equal(working.model, 'claude-haiku-5-5')
+  assert.equal(working.complexity, 'trivial')
+})
+
+test('drops a label the classifier does not give', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Make it blue',
+  })
+  await comments.claim(comment.id, { model: 'claude-opus-5-5', complexity: 'epic' })
+  const [saved] = await comments.readAll()
+  const working = saved.events[saved.events.length - 1]
+  assert.equal(working.model, 'claude-opus-5-5')
+  assert.equal('complexity' in working, false)
+})
