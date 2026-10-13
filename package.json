@@ -24,9 +24,9 @@
     "test:hooks": "claude plugin validate .claude-plugin/plugin.json && claude plugin test ."
   },
   "devDependencies": {
-    "@types/node": "26.6.3",
+    "@types/node": "26.6.4",
     "knip": "6.41.0",
-    "oxlint": "1.86.0",
+    "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2003",
     "prettier": "3.9.9"
   }
