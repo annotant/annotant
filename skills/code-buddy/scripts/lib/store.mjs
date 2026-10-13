@@ -4,6 +4,7 @@ import path from 'node:path'
 import { errorCode } from './errors.mjs'
 import { withFileLock } from './filelock.mjs'
 import {
+  COMPLEXITIES,
   FORMAT_VERSION,
   FormatError,
   canMove,
@@ -17,6 +18,7 @@ import { isDevWidget } from './project.mjs'
 
 /** @typedef {import('./format.mjs').Actor} Actor */
 /** @typedef {import('./format.mjs').CommentV2} CommentV2 */
+/** @typedef {import('./format.mjs').Complexity} Complexity */
 /** @typedef {import('./format.mjs').MessageV2} MessageV2 */
 /** @typedef {import('./format.mjs').State} State */
 
@@ -38,6 +40,9 @@ export const isAsking = (comment) => comment.state === 'asking'
 /** A refusal a script reports to the agent and exits on, with nothing written. */
 export class StoreRefusal extends Error {}
 
+/** A model id is short (`claude-haiku-5-5`): the hooks' value, kept bounded. */
+const MAX_MODEL = 100
+
 /** @type {Record<State, string>} */
 const STATE_WORDS = {
   open: 'open',
@@ -57,10 +62,10 @@ export const stateOf = (comment) => STATE_WORDS[comment.state] ?? String(comment
  * change goes through it.
  * @param {CommentV2} comment
  * @param {State} to
- * @param {{ by: Actor, run?: string, agent?: string, message?: Omit<MessageV2, 'id' | 'at'> }} how
+ * @param {{ by: Actor, run?: string, agent?: string, model?: string, complexity?: Complexity, message?: Omit<MessageV2, 'id' | 'at'> }} how
  * @returns {string} When it moved.
  */
-function move(comment, to, { by, run, agent, message }) {
+function move(comment, to, { by, run, agent, model, complexity, message }) {
   if (!canMove(comment.state, to)) {
     throw new StoreRefusal(`comment ${comment.id} is ${stateOf(comment)}`)
   }
@@ -71,6 +76,8 @@ function move(comment, to, { by, run, agent, message }) {
     by,
     ...(run ? { run } : {}),
     ...(agent ? { agent } : {}),
+    ...(model ? { model } : {}),
+    ...(complexity ? { complexity } : {}),
   })
   comment.state = to
   if (message) comment.messages.push({ id: nextMessageId(comment), ...message, at })
@@ -293,13 +300,14 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
 
     /**
      * An agent starts working on the comment: a new run, which records the
-     * agent's id when the hooks gave it. Claimed again while working, it
-     * stays in the run it is in.
+     * agent's id, the model it runs on and the classifier's label when the
+     * hooks gave them. Claimed again while working, it stays in the run it is
+     * in.
      * @param {string} id
-     * @param {{ agent?: string }} [options]
+     * @param {{ agent?: string, model?: string, complexity?: string }} [options]
      * @returns {Promise<{ comment: CommentV2, run: string }>}
      */
-    claim(id, { agent } = {}) {
+    claim(id, { agent, model, complexity } = {}) {
       return changeOne(id, (comment) => {
         const working = currentRun(comment)
         if (working) return { comment, run: working }
@@ -307,7 +315,13 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           throw new StoreRefusal(`comment ${id} is ${stateOf(comment)}`)
         }
         const run = nextRunId(comment)
-        move(comment, 'working', { by: 'agent', run, agent })
+        move(comment, 'working', {
+          by: 'agent',
+          run,
+          agent,
+          model: model?.slice(0, MAX_MODEL),
+          complexity: COMPLEXITIES.find((known) => known === complexity),
+        })
         return { comment, run }
       })
     },

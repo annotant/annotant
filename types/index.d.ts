@@ -16,7 +16,27 @@ export type Binding = {
  */
 export type CommentsFile = {
   version: number
-  comments: { id: string; state: string }[]
+  comments: {
+    id: string
+    state: string
+    route?: string
+    anchor?: { quote?: string; element?: { tag?: string; text?: string } }
+    messages?: { author: string; body: string }[]
+  }[]
+}
+
+/** lib/format.mjs's Complexity: how the classifier sorts a comment. */
+export type Complexity = 'trivial' | 'standard' | 'hard'
+
+/**
+ * The model a comment's agent was started on, as Claude Code resolved it, and
+ * the classifier's label when it ran; claim.mjs records both on the run.
+ */
+export type Route = {
+  model: string
+  complexity?: Complexity
+  /** The agent started for the comment: only its claims carry the route. */
+  agent?: string
 }
 
 /** A file lock: the comment whose agent holds it, and since when. */
@@ -29,6 +49,8 @@ declare module 'claude-code' {
       bindings: Record<string, Binding>
       /** By `<project root>\n<path relative to it, or @build>`. */
       locks: Record<string, Lock>
+      /** By comment id: kept for a follow-up, which resumes the same agent. */
+      routes: Record<string, Route>
     }
   }
 }

@@ -99,7 +99,8 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 ### An event
 
 ```jsonc
-{ "at": "2026-10-10T15:44:57.469Z", "state": "working", "by": "agent", "run": "r1", "agent": "a3fbb6e8bc0e856d1" }
+{ "at": "2026-10-10T15:44:57.469Z", "state": "working", "by": "agent", "run": "r1", "agent": "a3fbb6e8bc0e856d1",
+  "model": "claude-haiku-5-5", "complexity": "trivial" }
 ```
 
 | Field | Type | Notes |
@@ -109,6 +110,8 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `by` | `reader`, `agent` (`server` is reserved) | Who moved it. |
 | `run` | `r1`, `r2`…, optional | The run it belongs to. Each `working` event starts one. |
 | `agent` | string, optional, `working` only | The Claude Code agent that claimed it (`main` for a session's main loop), which the hooks pass to `claim.mjs`. |
+| `model` | string, optional, `working` only | The model its agent runs on, as Claude Code resolved it when the hooks started it (`claude-haiku-5-5`); the widget names its family (`haiku`). |
+| `complexity` | `trivial`, `standard` or `hard`, optional, `working` only | How the hooks' classifier sorted the comment, which picked `model` through `.code-buddy.json`'s `models` (see [Models](#models)). Absent when the classifier did not run or failed. |
 
 ### A cancellation
 
@@ -173,6 +176,36 @@ first (`open → working`).
 The page marks a comment's anchor (an element's outline, a text's rainbow)
 until its thread is first resolved: a follow-up does not bring it back.
 
+### Models
+
+When the managing session starts a comment's agent (`code-buddy:worker`),
+the hooks' `agent.spawn` hook reads the comment (the reader's last message,
+the selected text or the element's tag and text, the route) and asks Claude
+Code's small fast model for one label:
+
+| Label | For |
+| --- | --- |
+| `trivial` | Copy, spacing, colour, a visible property of one element. |
+| `standard` | A component's behaviour, a new element, a small feature. |
+| `hard` | Anything across several components or pages, data or API changes, or a question that needs a product decision. |
+
+`models` in `.code-buddy.json` maps each label to a model alias (`haiku`,
+`sonnet`, `opus`) or id; `inherit` keeps the managing session's model. Without
+it, the default is:
+
+```json
+"models": { "trivial": "haiku", "standard": "inherit", "hard": "opus" }
+```
+
+A `models` object is read whole: a label it leaves out inherits, so
+`{ "trivial": "inherit" }` turns routing off, and the classifier is not
+asked. A classifier that fails or takes more than 5 seconds leaves the agent
+on the session's model. Either way the hooks keep the model the agent runs
+on and pass it to `claim.mjs` (`CODE_BUDDY_MODEL`, `CODE_BUDDY_COMPLEXITY`),
+which records it on the `working` event. A follow-up resumes the same agent,
+with no new start: it keeps its model. Another agent's claim of the comment
+(the main loop's, say) records no model: it runs on its own.
+
 ## The step files
 
 One JSON object per line. A tool writes one line when it starts and one when
@@ -196,6 +229,7 @@ one line each.
 | `error` | string, optional | Why it failed: the first line of the tool's error, or the hooks' reason (a lock held by another comment's agent, a write from Bash). |
 | `run` | `r1`, `r2`… | The run it belongs to: the hooks write it from `claim.mjs`'s output, and the store adds it to untagged steps when it archives them. |
 | `agent` | string | The Claude Code agent that called the tool (`main` for a session's main loop). Runs of one comment may have different agents. |
+| `model`, `complexity` | `start` only, optional | As on the `working` event: the widget reads "Started on haiku". |
 
 `<id>.jsonl` exists only while a run is in progress. When the run ends
 (`ask.mjs`, `resolve.mjs`, a stop, the reader resolving), the store moves its

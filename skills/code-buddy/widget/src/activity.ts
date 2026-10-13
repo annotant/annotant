@@ -1,6 +1,13 @@
 // How the widget words the agent's latest step. Pure, so it is tested alone.
 import type { ReviewProgress } from './domain'
 
+/**
+ * A model as the reader names it: its family (`claude-haiku-5-5` is
+ * `haiku`), else the id as it is.
+ */
+export const modelName = (model: string) =>
+  /opus|sonnet|haiku|fable/i.exec(model)?.[0].toLowerCase() ?? model
+
 const RUNNING: Record<string, string> = {
   read: 'Reading',
   edit: 'Editing',
@@ -21,8 +28,11 @@ export function stepText(step: ReviewProgress): string {
 /** What the agent is doing now, in words; the widget draws the dots. */
 export function activityOf(step: ReviewProgress | undefined): string {
   if (!step) return 'Claude is working on it'
-  // The claim itself: "Using Started" said nothing.
-  if (step.kind === 'start') return step.state === 'running' ? 'Starting' : 'Started'
+  // The claim itself: "Using Started" said nothing. It names the agent's model.
+  if (step.kind === 'start') {
+    const started = step.state === 'running' ? 'Starting' : 'Started'
+    return step.model ? `${started} on ${modelName(step.model)}` : started
+  }
   if (step.state === 'running') return `${RUNNING[step.kind] ?? 'Using'} ${step.label}`
   if (step.state === 'failed') return `${stepText(step)} failed`
   return stepText(step).replace(/…$/, '')

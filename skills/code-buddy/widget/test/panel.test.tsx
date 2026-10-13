@@ -123,3 +123,26 @@ test('a comment that cannot be shown leaves the others, until the server sends i
   expect((await screen.findByText('Make the title bigger')).isConnected).toBe(true)
   expect(screen.queryByTestId('code-buddy-error')).toBeNull()
 })
+
+test('the list names the model each comment was worked on with', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      events: [
+        { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+        {
+          at: '2026-01-01T10:00:05.000Z',
+          state: 'working',
+          by: 'agent',
+          run: 'r1',
+          model: 'claude-opus-5-5',
+          complexity: 'hard',
+        },
+      ],
+    }),
+  ])
+  openPanel('all')
+  renderWidget()
+
+  expect((await screen.findByTestId('cb-model')).textContent).toBe('opus · hard')
+})

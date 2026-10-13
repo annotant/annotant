@@ -9,7 +9,13 @@ const claim = (id: string) => `node ${SCRIPTS}/claim.mjs ${id} --project ${ROOT}
 const resolveCmd = (id: string) =>
   `node ${SCRIPTS}/resolve.mjs ${id} --project ${ROOT} "done"`
 
-type Comment = { id: string; state: string }
+type Comment = {
+  id: string
+  state: string
+  route?: string
+  anchor?: { quote: string; element?: { tag: string; text: string } }
+  messages?: { author: string; body: string }[]
+}
 
 /** The comments file, as lib/format.mjs writes it. */
 const commentsFile = (comments: Comment[]) => JSON.stringify({ version: 2, comments })
@@ -88,6 +94,25 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
       : { result: 'ok' }
   })
   on('turn.complete', () => ({ text: '' }))
+  // Claude Code starts the agent on the model asked for, else the parent's.
+  const spawned: { model?: string; prompt: string }[] = []
+  on('agent.spawn', (_$, e) => {
+    spawned.push({ model: e.model, prompt: e.prompt })
+    const model = { haiku: 'claude-haiku-5-5', opus: 'claude-opus-5-5' }[e.model ?? '']
+    return {
+      model: model ?? e.model ?? 'claude-sonnet-5-5',
+      agentId: `a${spawned.length}`,
+    }
+  })
+  // The classifier: its label, a failed request, or one that never answers.
+  let label: string | Error | Promise<string> = 'standard'
+  const classified: string[] = []
+  on('model.classify', (_$, e) => {
+    classified.push(e.text)
+    if (label instanceof Error) throw label
+    if (label instanceof Promise) return label.then((value) => ({ value }))
+    return { value: label }
+  })
   mock.env(on, { HOME: '/home/u' })
   const clock = mock.clock(on, { now: 1_000 })
 
@@ -96,6 +121,11 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
   return {
     file: (path: string) => files.get(path),
     commands,
+    spawned,
+    classified,
+    classifyAs: (next: string | Error | Promise<string>) => {
+      label = next
+    },
     write: (path: string, text: string) => files.set(path, text),
     env,
     clock,
@@ -462,5 +492,155 @@ test('logs why an agent is not bound, or no longer', async ($, on) => {
   )
   expect(log).toMatch(
     / a2 moved cannot read \/nowhere\/\.code-buddy\.json.*: binding dropped\n/,
+  )
+})
+
+/** The prompt the manager writes for a comment's agent (SKILL.md). */
+const workerPrompt = (id: string) =>
+  `${id}\nNEW ${id} / "make the title bigger"\nSKILL=/s\nPROJECT=${ROOT}`
+const spawnWorker = ($: Parameters<Parameters<typeof test>[1]>[0], id: string) =>
+  $.agent.spawn({
+    prompt: workerPrompt(id),
+    subagentType: 'code-buddy:worker',
+    description: 'comment',
+  })
+const titleComment: Comment = {
+  id: 'c1',
+  state: 'open',
+  route: '/pricing',
+  anchor: { quote: '', element: { tag: 'h1', text: 'Plans' } },
+  messages: [{ author: 'reader', body: 'make the title bigger' }],
+}
+
+test("starts a comment's agent on the model its label maps to, and claim.mjs records it", async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('trivial')
+
+  const started = await spawnWorker($, 'c1')
+  expect(started.model).toBe('claude-haiku-5-5')
+  expect(w.spawned[0]?.model).toBe('haiku')
+  // The reader's words, what they point at and the page, after the labels' meaning.
+  expect(w.classified[0]).toMatch(/- trivial: copy, spacing/)
+  expect(w.classified[0]).toMatch(
+    /Page: \/pricing\nElement: <h1> Plans\nComment: make the title bigger$/,
+  )
+
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toBe(
+    `export CODE_BUDDY_AGENT=a1 CODE_BUDDY_MODEL='claude-haiku-5-5' CODE_BUDDY_COMPLEXITY=trivial; ${claim('c1')}`,
+  )
+  expect(w.progress('c1')[0]).toEqual(
+    expect.objectContaining({
+      kind: 'start',
+      model: 'claude-haiku-5-5',
+      complexity: 'trivial',
+    }),
+  )
+
+  // A follow-up resumes the same agent, with no spawn: it keeps its model.
+  await $.turn.complete({
+    answer: '',
+    durationMs: 1,
+    isAborted: false,
+    turnId: 'turn',
+    agentId: 'a1',
+    reason: 'answer',
+  })
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[1]).toMatch(/CODE_BUDDY_MODEL='claude-haiku-5-5'/)
+})
+
+test('a hard comment goes to opus, a standard one keeps the parent model', async ($, on) => {
+  const w = world(on, [titleComment, { ...titleComment, id: 'c2' }])
+  w.classifyAs('hard')
+  expect((await spawnWorker($, 'c1')).model).toBe('claude-opus-5-5')
+  w.classifyAs('standard')
+  expect((await spawnWorker($, 'c2')).model).toBe('claude-sonnet-5-5')
+  expect(w.spawned[1]?.model).toBeUndefined()
+  await $.tool.call(bash('a2', claim('c2')))
+  expect(w.commands[0]).toMatch(
+    /CODE_BUDDY_MODEL='claude-sonnet-5-5' CODE_BUDDY_COMPLEXITY=standard;/,
+  )
+})
+
+test('a classifier that fails never blocks the comment: its agent starts on the parent model', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs(new Error('overloaded'))
+  const started = await spawnWorker($, 'c1')
+  expect(started.deny).toBeUndefined()
+  expect(started.model).toBe('claude-sonnet-5-5')
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toBe(
+    `export CODE_BUDDY_AGENT=a1 CODE_BUDDY_MODEL='claude-sonnet-5-5'; ${claim('c1')}`,
+  )
+})
+
+test('models set to inherit turn routing off: no classifier, the model still recorded', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.code-buddy.json`,
+    JSON.stringify({
+      commentsFile: '.code-buddy/comments.json',
+      models: { trivial: 'inherit' },
+    }),
+  )
+  w.classifyAs('trivial')
+  expect((await spawnWorker($, 'c1')).model).toBe('claude-sonnet-5-5')
+  expect(w.classified).toEqual([])
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toMatch(/CODE_BUDDY_MODEL='claude-sonnet-5-5';/)
+})
+
+test('other agents start as they were asked', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('trivial')
+  await $.agent.spawn({ prompt: workerPrompt('c1'), subagentType: 'Explore' })
+  expect(w.classified).toEqual([])
+  expect(w.spawned[0]?.model).toBeUndefined()
+})
+
+test("only the agent started for a comment claims it with that comment's model", async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('trivial')
+  await spawnWorker($, 'c1')
+  // Another agent, the main loop say, claims the comment later.
+  await $.tool.call(bash('main', claim('c1')))
+  expect(w.commands[0]).toBe(`export CODE_BUDDY_AGENT=main; ${claim('c1')}`)
+  expect(w.progress('c1')[0]).not.toHaveProperty('model')
+})
+
+test('a classifier that does not answer in time leaves the agent on the parent model', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs(new Promise<string>(() => {}))
+  const started = spawnWorker($, 'c1')
+  for (let i = 0; i < 30; i++) await w.clock.advance(200)
+  expect((await started).model).toBe('claude-sonnet-5-5')
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toBe(
+    `export CODE_BUDDY_AGENT=a1 CODE_BUDDY_MODEL='claude-sonnet-5-5'; ${claim('c1')}`,
+  )
+})
+
+test('a label the classifier makes up routes nothing', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('epic')
+  expect((await spawnWorker($, 'c1')).model).toBe('claude-sonnet-5-5')
+  expect(w.spawned[0]?.model).toBeUndefined()
+})
+
+test('a model name reaches claim.mjs quoted for the shell', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.code-buddy.json`,
+    JSON.stringify({
+      commentsFile: '.code-buddy/comments.json',
+      models: { trivial: "it's" },
+    }),
+  )
+  w.classifyAs('trivial')
+  await spawnWorker($, 'c1')
+  await $.tool.call(bash('a1', claim('c1')))
+  expect(w.commands[0]).toMatch(
+    /CODE_BUDDY_MODEL='it'\\''s' CODE_BUDDY_COMPLEXITY=trivial;/,
   )
 })

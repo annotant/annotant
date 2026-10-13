@@ -34,6 +34,7 @@ import {
   isAsking,
   isReply,
   latestText,
+  modelOf,
   paused,
   statusOf,
 } from './domain'
@@ -379,6 +380,25 @@ interface UiState {
 }
 
 const PAGE_LEVEL: ReviewAnchor = { quote: '', occurrence: 0, section: '' }
+
+/** The model Claude worked on the comment with, and the classifier's label. */
+function ModelLabel({ comment }: { comment: ReviewComment }) {
+  const model = modelOf(comment)
+  if (!model) return null
+  return (
+    <span
+      className="cb-model"
+      data-testid="cb-model"
+      title={
+        model.complexity
+          ? `Claude works on ${model.id}: the comment was sorted ${model.complexity}`
+          : `Claude works on ${model.id}`
+      }
+    >
+      {model.complexity ? `${model.name} · ${model.complexity}` : model.name}
+    </span>
+  )
+}
 
 /** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
 function pagePath(url: string | undefined): string {
@@ -939,7 +959,10 @@ export default function App({ root }: { root: Element }) {
   const renderItem = (comment: ReviewComment) => (
     <article key={comment.id} className="cb-item cb-discussion">
       <div className="cb-item-top">
-        <div>{anchorDetails(comment)}</div>
+        <div>
+          {anchorDetails(comment)}
+          <ModelLabel comment={comment} />
+        </div>
         {deleteButton(comment)}
       </div>
       <div className="cb-chat">
@@ -1068,6 +1091,7 @@ export default function App({ root }: { root: Element }) {
     const href =
       pagePath(comment.url) || (comment.route === APP_ROUTE ? '' : comment.route)
     const messages = comment.messages.length
+    const model = modelOf(comment)
     return (
       <article
         key={comment.id}
@@ -1103,7 +1127,13 @@ export default function App({ root }: { root: Element }) {
           {deleteButton(comment)}
         </div>
         <p>{comment.messages[0]?.body}</p>
-        {messages > 2 && <span className="cb-author">{messages} messages</span>}
+        {(messages > 2 || model) && (
+          <span className="cb-author">
+            <ModelLabel comment={comment} />
+            {model && messages > 2 && ' · '}
+            {messages > 2 && `${messages} messages`}
+          </span>
+        )}
       </article>
     )
   }
