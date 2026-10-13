@@ -68,6 +68,10 @@ const MIN_PANEL_WIDTH = 320
 const MAX_PANEL_RATIO = 0.8
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+// How close to its end, in pixels, a conversation counts as read to the end.
+const NEAR_END = 40
+// How long a smooth scroll to the end may take: the button stays away meanwhile.
+const GLIDE_MS = 800
 
 const clampWidth = (value: number) =>
   Math.round(
@@ -428,10 +432,11 @@ export default function App({ root }: { root: Element }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
   const [below, setBelow] = useState(false)
   const [overflowing, setOverflowing] = useState(false)
-  // Whether the open conversation follows what arrives: the reader is at its
-  // end, or just sent a message.
+  // Whether the open conversation follows what arrives.
   const following = useRef(true)
   const inThread = useRef(false)
+  // Scrolls the body to its end, set while the body is mounted.
+  const scrollToEnd = useRef<() => void>(undefined)
   const hintRow = useRef<HTMLDivElement>(null)
   // The hint row's height with the gap above it, as last measured under the box.
   const hintHeight = useRef(0)
@@ -686,20 +691,20 @@ export default function App({ root }: { root: Element }) {
       }
     })
 
+  // To the conversation's end, and following it from there: the reader's own
+  // message may not grow the body, as it takes the place of the message box.
+  // Only while a conversation is open: a send ends after the reader may have left it.
+  const toLatest = () => {
+    if (!inThread.current) return
+    following.current = true
+    scrollToEnd.current?.()
+  }
+
   /**
    * The reader's answer: the options they chose, then what they typed, unless
    * `withText` is false. One click on a single answer sends it alone: a draft
    * the reader was still writing stays in the box.
    */
-  // To the conversation's end, and following it from there: the reader's own
-  // message may not grow the body, as it takes the place of the message box.
-  const toLatest = () => {
-    following.current = true
-    scroller?.scrollTo({
-      top: scroller.scrollHeight,
-      behavior: matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth',
-    })
-  }
 
   const sendReply = (comment: ReviewComment, choices: string[], withText = true) =>
     void run(async () => {
@@ -728,35 +733,51 @@ export default function App({ root }: { root: Element }) {
   useEffect(() => {
     if (!scroller) return undefined
     // At the end before the content grows, it follows; scrolled up past the
-    // threshold, it stays. Only the reader scrolls up: following never does.
+    // threshold, it stays. Only the reader scrolls up: following never does,
+    // though the browser may nudge it up a little as the content moves.
+    const left = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
     let last = scroller.scrollTop
     // How far the body scrolls, as last measured: it follows only when that grows.
     let extent = scroller.scrollHeight - scroller.clientHeight
-    // Where a scroll it started heads, until it gets there or the reader takes over.
-    let aimed = -1
-    const track = () => {
-      const left = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-      if (left <= 1) aimed = -1
-      if (left <= 40) following.current = true
-      else if (scroller.scrollTop < last) {
-        following.current = false
-        aimed = -1
+    // A scroll to the end under way, until it gets there or has had time to:
+    // short of the end by then, the reader cut it short.
+    let gliding = false
+    let glideTimer: ReturnType<typeof setTimeout> | undefined
+    const stopGliding = () => {
+      gliding = false
+      clearTimeout(glideTimer)
+    }
+    scrollToEnd.current = () => {
+      const smooth = !matchMedia(REDUCED_MOTION).matches
+      if (smooth) {
+        stopGliding()
+        gliding = true
+        glideTimer = setTimeout(() => {
+          gliding = false
+          if (left() > NEAR_END) following.current = false
+          schedule()
+        }, GLIDE_MS)
       }
+      scroller.scrollTo({
+        top: scroller.scrollHeight - scroller.clientHeight,
+        behavior: smooth ? 'smooth' : 'auto',
+      })
+    }
+    const track = () => {
+      if (left() <= 1) stopGliding()
+      if (left() <= NEAR_END) following.current = true
+      else if (!gliding && scroller.scrollTop < last) following.current = false
       last = scroller.scrollTop
     }
     const check = () => {
       const top = scroller.scrollHeight - scroller.clientHeight
       const grew = top > extent
       extent = top
-      if (inThread.current && following.current && grew && top - scroller.scrollTop > 1) {
-        aimed = top
-        scroller.scrollTo({
-          top,
-          behavior: matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth',
-        })
+      if (inThread.current && following.current && grew && left() > 1) {
+        scrollToEnd.current?.()
       }
       // On its way down, the view needs no button to get there.
-      setBelow(aimed < 0 && top - scroller.scrollTop > 40)
+      setBelow(!gliding && left() > NEAR_END)
       const end = scroller.querySelector<HTMLElement>('.cb-body-end')
       if (!end) return
       const row = hintRow.current
@@ -797,6 +818,8 @@ export default function App({ root }: { root: Element }) {
     mutations.observe(scroller, { childList: true, subtree: true, characterData: true })
     return () => {
       cancelAnimationFrame(frame)
+      stopGliding()
+      scrollToEnd.current = undefined
       scroller.removeEventListener('scroll', onScroll)
       resizes.disconnect()
       mutations.disconnect()
