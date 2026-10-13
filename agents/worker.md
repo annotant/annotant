@@ -2,9 +2,9 @@
 name: worker
 description:
   Handles one Code Buddy comment, a reader's feedback on their running app,
-  started by the /code-buddy:code-buddy session. Its prompt gives the comment
-  id, the server line, SKILL and PROJECT. Only that session starts it: do
-  not use it otherwise.
+  started by the plugin's hooks while /code-buddy watches the app. Its prompt
+  gives the comment id, the server line, SKILL and PROJECT. Only the hooks
+  start it, never otherwise.
 ---
 
 You handle one comment a reader left on their running app with Code Buddy.

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // server.mjs --project <dir>
 // Serves the widget and its API to the project's dev app, and prints one line
-// per comment needing attention (the manager reads them through Monitor):
+// per comment needing attention (the plugin's hooks read them and dispatch):
 // OPEN (backlog at start), NEW, FOLLOWUP, EDIT, ASKED, ANSWERED, RESOLVED, CANCELLED,
 // DELETED.
 // It watches the comments file's folder and the step files' folder, and pushes
 // `changed` to the widgets on /api/events: they reload only then.
-// Only runs while /code-buddy is active: no server, no widget.
+// Only runs while a session watches (/code-buddy): no server, no widget.
 import { existsSync, statSync, watch } from 'node:fs'
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import http from 'node:http'
@@ -234,7 +234,7 @@ async function handle(req, res) {
 
   // The dev widget's debug panel, from Claude Code's transcripts: a tool call
   // and its result, or the first message an agent received, the prompt the
-  // manager wrote. A released widget has no panel, and this answers 404.
+  // hooks wrote. A released widget has no panel, and this answers 404.
   const [, kind, id] = /^\/api\/debug\/(tool|agent)\/([^/]+)$/.exec(url.pathname) ?? []
   if (req.method === 'GET' && kind && id) {
     const [pattern, find] = DEBUG_FINDERS[kind]
@@ -315,15 +315,15 @@ async function handle(req, res) {
 /**
  * By comment id, when last seen active: when it last opened (its latest
  * `open` event), its latest reader message, as `<id> <body>`, and when the
- * manager was sent the line for that opening.
+ * hooks were sent the line for that opening.
  * @type {Map<string, { opened: number, text: string, notified: string }>}
  */
 const seen = new Map()
 
 /**
- * An open comment with `notifiedAt`, once the manager was sent its line: the
- * widget tells a manager slow to start it (busy with another turn) from one
- * not told yet. Never stored in the file.
+ * An open comment with `notifiedAt`, once the hooks were sent its line: the
+ * widget tells a comment waiting for a free agent from one not handed over
+ * yet. Never stored in the file.
  * @template {{ id: string, state: string, events: { state: string }[] }} T
  * @param {T} comment
  * @returns {T & { notifiedAt?: string }}
@@ -340,14 +340,14 @@ function withNotified(comment) {
 const LINES_KEPT = 50
 
 /**
- * By comment id, the lines printed about it for the manager, oldest first:
+ * By comment id, the lines printed about it for the hooks, oldest first:
  * what an agent should have been sent, for the debug panel.
  * @type {Map<string, { at: string, line: string }[]>}
  */
 const printed = new Map()
 
 /**
- * Prints `line` about comment `id` for the manager, and keeps it.
+ * Prints `line` about comment `id` for the hooks, and keeps it.
  * @param {string} id
  * @param {string} line
  */
@@ -387,7 +387,7 @@ function latestReply(comment) {
 
 /**
  * A text as a JSON string: quoted, its quotes and line breaks escaped. The
- * manager reads one event per line; a reader's line break used to split one.
+ * hooks read one event per line; a reader's line break used to split one.
  * @param {string} text
  */
 const quoted = (text) => JSON.stringify(text)
@@ -415,7 +415,7 @@ function describe(comment) {
 /** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
 
 /**
- * Prints the lines for the manager about what changed in `comments` since the
+ * Prints the lines for the hooks about what changed in `comments` since the
  * last read.
  * @param {Comments} comments
  * @param {boolean} first
@@ -430,7 +430,7 @@ function tick(comments, first) {
     const opened = comment.events.findLastIndex((event) => event.state === 'open')
     const previous = seen.get(comment.id)
     // Stopped, asked or resolved, then opened again between two reads: the
-    // manager hears both, as if it had seen each.
+    // hooks hear both, as if they had seen each.
     if (previous && previous.opened !== opened) {
       print(comment.id, goneLine(comment.id, comment.events[opened - 1]?.state))
     }
@@ -516,7 +516,7 @@ async function changedIds(comments) {
 }
 
 /**
- * Reads the comments: prints the manager's lines, and tells the widgets which
+ * Reads the comments: prints the hooks' lines, and tells the widgets which
  * comments changed.
  * @param {boolean} first
  */
@@ -642,7 +642,7 @@ server.on('error', async (/** @type {NodeJS.ErrnoException} */ error) => {
   process.exit(3)
 })
 
-// A comments file this version does not read: the manager says what to do.
+// A comments file this version does not read: /code-buddy says what to do.
 try {
   await store.readAll()
 } catch (error) {

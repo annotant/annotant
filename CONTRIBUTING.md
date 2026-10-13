@@ -78,7 +78,7 @@ deleted, and the server serves them with `history=1`; a link in the panel opens 
 holds them. A click on a tool call's id unfolds what the agent sent and got
 back: the server reads it in Claude Code's transcripts of the last 7 days
 (`~/.claude/projects/`), with a dev widget only. The timeline also shows the
-lines the server printed for the manager, and on each agent's first run a
+lines the server printed for the hooks, and on each agent's first run a
 Context link that opens, in a dialog, what it was given: its instructions
 (`agents/worker.md`, as on disk now: Claude Code does not keep them) and its
 first message exactly as it was sent, read in its transcript. `npm run build` leaves the panel out: the released `widget.js`
@@ -97,10 +97,10 @@ What to do after a change, in a running session, is in the README's
 | Path                                  | What                                                                |
 | ------------------------------------- | ------------------------------------------------------------------- |
 | `.claude-plugin/`                     | Plugin and marketplace manifests                                    |
-| `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: file locks and progress, in every agent |
+| `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: `/code-buddy` and the dispatch, file locks and progress, in every agent |
 | `types/index.d.ts`                    | The values the hooks keep for the session (`$.state`)               |
 | `agents/worker.md`                    | The agent that handles one comment (`code-buddy:worker`): its steps and rules |
-| `skills/code-buddy/SKILL.md`          | The skill Claude reads: modes, the manager's dispatch               |
+| `skills/code-buddy/SKILL.md`          | The skill Claude reads: its modes; the watch is the hooks'          |
 | `skills/code-buddy/scripts/`          | Node.js scripts (ES modules, JSDoc types), run by the skill         |
 | `skills/code-buddy/scripts/lib/format.mjs` | The comments file's format: its version, states, moves and types; the reference for every part that reads it |
 | `docs/comments-file.md` | The comments file and the step files: where they live, their schemas, the states diagram |

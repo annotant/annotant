@@ -115,16 +115,16 @@ export interface ReviewComment {
   progress?: ReviewProgress[]
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
-  /** Open only: when the server sent it to the manager; never stored in the file. */
+  /** Open only: when the server sent it to the hooks; never stored in the file. */
   notifiedAt?: string
   /**
    * With `history=1` only: the lines the server printed about it for the
-   * manager since it started, oldest first; never stored in the file.
+   * hooks since it started, oldest first; never stored in the file.
    */
   lines?: ReviewLine[]
 }
 
-/** A line the server printed for the manager, as it printed it. */
+/** A line the server printed for the hooks, as it printed it. */
 export interface ReviewLine {
   at: string
   line: string
@@ -159,7 +159,7 @@ export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
 
 /**
  * Open again on the reader's reply: the thread ends on their message after
- * the comment, which the server sends the manager as `FOLLOWUP`, for the
+ * the comment, which the server sends the hooks as `FOLLOWUP`, for the
  * thread's agent when it still has one. A comment re-sent with only the
  * reader's comment in its thread is `NEW`.
  */

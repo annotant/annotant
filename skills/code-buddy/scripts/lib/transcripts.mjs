@@ -99,7 +99,7 @@ export async function findToolCall(
         }
       }
     }
-    // A transcript that only quotes the id (the manager's) is not the call's.
+    // A transcript that only quotes the id (the main session's) is not the call's.
     if (call) return { transcript: file, ...call, ...outcome }
   }
   return undefined

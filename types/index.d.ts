@@ -42,7 +42,17 @@ export type Route = {
 /** A file lock: the comment whose agent holds it, and since when. */
 export type Lock = { owner: string; at: number }
 
+/**
+ * The agent the hooks started for a comment: a follow-up or an edit goes to
+ * it, a stop ends it. `running` until its turn completes; a message resumes it.
+ */
+export type Worker = { agent: string; root: string; running: boolean }
+
 declare module 'claude-code' {
+  interface McpToolInputs {
+    /** The skill's way in: the project root, absolute. */
+    'mcp__code-buddy__watch': { project: string }
+  }
   interface PluginState {
     'code-buddy': {
       /** By agent id (`main` for the main loop). */
@@ -51,6 +61,13 @@ declare module 'claude-code' {
       locks: Record<string, Lock>
       /** By comment id: kept for a follow-up, which resumes the same agent. */
       routes: Record<string, Route>
+      /** By comment id. */
+      workers: Record<string, Worker>
+      /**
+       * The projects `/code-buddy` watches, by root: their servers die with the
+       * module, and a reload starts them again.
+       */
+      watching: Record<string, true>
     }
   }
 }

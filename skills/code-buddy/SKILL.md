@@ -5,8 +5,8 @@ description:
   The user comments directly on the dev app in the browser (select text, point
   at an element, or write about the page or the whole app); one background
   agent per comment makes the change and answers in the same thread.
-  "/code-buddy:code-buddy [dir]" starts the session (the widget only exists
-  while it runs); "/code-buddy:code-buddy init [dir]" installs it in the
+  "/code-buddy:code-buddy [dir]" starts watching the app (the widget only
+  exists while it runs); "/code-buddy:code-buddy init [dir]" installs it in the
   current project or in its folder `dir` (e.g. `web`), "update" and
   "uninstall" maintain it. Use when the user wants to give feedback on the app
   in the browser, to follow or answer that feedback, to install or remove the
@@ -40,74 +40,17 @@ Everything lives in the skill: the widget is served by the skill's local server
 and its code never enters the project. A project only holds a dev-only loader
 snippet, `.code-buddy.json`, and (usually git-ignored) the comments file.
 
-## Watch: you are the manager
+## Watch
 
-This session only dispatches; one background subagent per comment does the
-work. The server runs only while this session watches: closing the session
-stops it, and the widget disappears on the next page load. Tell the user, in
-one line, that `/code-buddy:code-buddy` (with the same directory, if one was
-given) resumes it and nothing is lost; and in one more, to keep this session
-for Code Buddy and work in another one: a server line only reaches you
-between two turns, so while you answer anything else, new comments wait.
-For the same reason, keep to one line per event.
-
-1. Start the server through the Monitor tool with the maximum timeout, and
-   re-arm it whenever it expires (state lives in files, restarting is safe):
-
-   ```
-   node SKILL/scripts/server.mjs --project PROJECT
-   ```
-
-   It first prints `READY <url>`. On `PORT_BUSY`, report who holds the port
-   and stop: another session may already be watching this project. On
-   `WIDGET_MISSING`, Code Buddy runs from a clone: give the user the command
-   it prints, and stop. On `HOOKS_MISSING`, the plugin's hooks did not load in
-   this session, and agents would work without file locks or progress: run
-   `claude --version`, tell the user Code Buddy needs Claude Code 2.1.287 or
-   later (`claude update`, then a new session) or, if it is already that
-   recent, that mods may be turned off for this session; then stop. On
-   `COMMENTS_REFUSED`, give the user its message and stop: the comments file
-   is in a format this version does not read.
-2. Tell the user to open or reload `devUrl` from `.code-buddy.json`.
-3. React to each line:
-
-| Line | Action |
-|---|---|
-| `OPEN` / `NEW <id> …` | Start a subagent, unless one already runs for `<id>`. |
-| `FOLLOWUP <id> …` | The reader answered a resolved or stopped comment, or Claude's question. If subagent `cb-<first 8 chars of id>` exists in this session (running or finished), SendMessage it the follow-up message below; otherwise start a new subagent. |
-| `EDIT <id> …` | SendMessage the new text to that comment's subagent; start one if none runs. |
-| `ASKED` / `ANSWERED <id>` | The subagent put a question, or its answer to a follow-up, in the thread; the reader resolves it or replies, as `FOLLOWUP`. Nothing to do. |
-| `RESOLVED` / `CANCELLED` / `DELETED <id>` | TaskStop that comment's subagent if it still runs; drop it from the queue. |
-
-Start subagents with the Agent tool: `subagent_type: "code-buddy:worker"`,
-`run_in_background: true`, `name: "cb-<first 8 chars of id>"`, and this
-prompt, filled in and nothing more (the agent holds the steps and reads
-`.code-buddy.json` itself):
-
-```
-<id>
-<server line>
-SKILL=<SKILL>
-PROJECT=<PROJECT>
-```
-
-If the Agent tool does not know `code-buddy:worker`, stop and tell the user
-to run `/reload-plugins` or start a new session; never use another agent type.
-
-Run at most three at once and queue the rest. `CANCELLED` means the reader
-stopped the run: the discussion stays open and comes back as `FOLLOWUP` or
-`NEW` when they send it again.
-
-When a subagent returns, tell the user its one line (nothing for
-`CANCELLED`). If it returned `QUESTION: …`, relay the question in the chat
-too; when the user answers there rather than in the widget, SendMessage the
-answer to the same subagent.
-
-### Follow-up message (to an existing subagent)
-
-> The reader followed up on comment `<id>`: "<followup text>". Claim it again,
-> act on the follow-up, run the checks, then resolve it with your answer, as
-> before.
+Call the tool `mcp__code-buddy__watch` with `{ "project": "<PROJECT>" }` and
+give the user its answer. The plugin's hooks run the server for this
+session's life and start one background agent per comment, with no turn of
+yours: never start or message those agents yourself. `/code-buddy [dir]`,
+typed by the user, does the same; `/code-buddy stop` ends it. If the tool is
+missing, the hooks did not load: run `claude --version`, tell the user Code
+Buddy needs Claude Code 2.1.287 or later (`claude update`, then a new
+session) or, if it is already that recent, that mods may be turned off for
+this session; then stop.
 
 ## Init: install in a project
 

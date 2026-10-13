@@ -8,14 +8,19 @@
 // comment (trivial, standard, hard) and `.code-buddy.json`'s `models` maps the
 // label to a model, which claim.mjs records on the run for the widget.
 //
+// `/code-buddy` (or the skill, through mcp__code-buddy__watch) starts the
+// project's server and reads its lines: each comment starts its agent at once,
+// in the background, with no model turn, so the session stays free for any
+// other work. Follow-ups and edits go to that agent; a stop ends it.
+//
 // Loaded once per session, they start no process per tool call. The bindings
-// (agent to comment), the locks and the routes live in $.state, so they
-// survive a reload of the module and vanish with the session, like the agents
-// themselves.
+// (agent to comment), the locks, the routes, the workers and the projects
+// watched live in $.state, so they survive a reload of the module and vanish
+// with the session, like the agents themselves.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Binding, CommentsFile, Complexity, Lock, Route } from '../types'
+import type { Binding, CommentsFile, Complexity, Lock, Route, Worker } from '../types'
 
 type $ = EngineInterface
 /**
@@ -39,6 +44,10 @@ const noRoutes: Record<string, Route> = {}
 const bindings = atom({ plugin: 'code-buddy', key: 'bindings' } as const, noBindings)
 const locks = atom({ plugin: 'code-buddy', key: 'locks' } as const, noLocks)
 const routes = atom({ plugin: 'code-buddy', key: 'routes' } as const, noRoutes)
+const noWorkers: Record<string, Worker> = {}
+const noWatching: Record<string, true> = {}
+const workers = atom({ plugin: 'code-buddy', key: 'workers' } as const, noWorkers)
+const watching = atom({ plugin: 'code-buddy', key: 'watching' } as const, noWatching)
 
 const WORKER = 'code-buddy:worker'
 const COMPLEXITIES: readonly Complexity[] = ['trivial', 'standard', 'hard']
@@ -626,8 +635,17 @@ async function setBinding($: $, agent: string, binding: Binding | undefined) {
     const { [agent]: _, ...rest } = current
     return binding ? { ...rest, [agent]: binding } : rest
   })
-  const count = Object.keys(all).length
-  $.ui.status(count ? `code-buddy: ${count} agent(s) on comments` : undefined)
+  await showStatus($, Object.keys(all).length)
+}
+
+/** The projects watched, and the agents bound to a comment. */
+async function showStatus($: $, bound?: number) {
+  const count = bound ?? Object.keys(await read($, bindings)).length
+  const parts = [
+    ...(watches.size ? [`watching ${[...watches.keys()].map(basename).join(', ')}`] : []),
+    ...(count ? [`${count} agent(s) on comments`] : []),
+  ]
+  $.ui.status(parts.length ? `code-buddy: ${parts.join(' · ')}` : undefined)
 }
 
 /**
@@ -733,6 +751,402 @@ async function projectOf($: $, agent: string, binding: Binding) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The watch: the project's server, for the session's life, and one agent per
+// comment, started from its lines with no model turn.
+
+const MAX_RUNNING = 3
+// A hook's own time is bounded: past this, the command answers and the server
+// keeps starting.
+const START_MS = 8_000
+// A resolved comment's agent ends on its own: it resolved it, and unbound.
+// Still bound past this, the reader resolved it while the agent worked.
+const RESOLVED_GRACE_MS = 3_000
+const SERVER_ERRORS = new Set([
+  'PORT_BUSY',
+  'WIDGET_MISSING',
+  'HOOKS_MISSING',
+  'COMMENTS_REFUSED',
+])
+const WATCH_TOOL = 'mcp__code-buddy__watch'
+
+type Watch = {
+  root: string
+  /** The server's first line: `READY`, an error line, or `ENDED <why>`. */
+  started: Promise<string>
+  /** Comments waiting for a free agent, oldest first, with their latest line. */
+  queue: { id: string; line: string }[]
+  stopped: boolean
+  stop: () => void
+}
+
+/** The servers this module runs, by project root: they die with it. */
+const watches = new Map<string, Watch>()
+let rearmed = false
+let dispatching: Promise<void> = Promise.resolve()
+
+const ignore = () => undefined
+const skillDir = ($: $) => `${$.plugin.root}/skills/code-buddy`
+/** A comment's short id, as the agent's name carries it. */
+const tag = (id: string) => id.slice(0, 8)
+
+/** The follow-up message, the reader's line in it. */
+const followUp = (id: string, line: string) =>
+  `The reader followed up on comment ${id}: ${line}\n` +
+  'Claim it again, act on the follow-up, run the checks, then resolve it with your answer, as before.'
+const edited = (id: string, line: string) =>
+  `The reader edited comment ${id} while you work on it: ${line}\n` +
+  'Act on the new text instead.'
+
+async function setWorker($: $, id: string, worker: Worker) {
+  await update($, workers, (all) => ({ ...all, [id]: worker }))
+}
+
+async function workerOf($: $, agent: string) {
+  const found = Object.entries(await read($, workers)).find(
+    ([, worker]) => worker.agent === agent,
+  )
+  return found && { id: found[0], worker: found[1] }
+}
+
+async function startQueued($: $) {
+  for (;;) {
+    const all = await read($, workers)
+    if (Object.values(all).filter((one) => one.running).length >= MAX_RUNNING) return
+    const watched = [...watches.values()].find((one) => one.queue.length)
+    const next = watched?.queue.shift()
+    if (!watched || !next) return
+    await startWorker($, watched, next.id, next.line)
+  }
+}
+
+/** Starts the agents the queues hold, three at a time, one start at a time. */
+function pump($: $) {
+  dispatching = dispatching.then(() => startQueued($)).catch(() => undefined)
+  return dispatching
+}
+
+async function startWorker($: $, watched: Watch, id: string, line: string) {
+  const name = `cb-${tag(id)}`
+  const started = await $.agent
+    .spawn({
+      subagentType: WORKER,
+      name,
+      description: `Code Buddy comment ${tag(id)}`,
+      prompt: [id, line, `SKILL=${skillDir($)}`, `PROJECT=${watched.root}`].join('\n'),
+    })
+    .catch((error: unknown) => ({
+      deny: error instanceof Error ? error.message : String(error),
+      agentId: undefined,
+    }))
+  // A spawn a hook answered carries no id: the agent list names it.
+  const agent =
+    started.agentId ??
+    (started.deny === undefined
+      ? (await $.agent.list().catch(() => [])).findLast(
+          (one) => one.name === name && one.type === WORKER,
+        )?.id
+      : undefined)
+  if (!agent) {
+    const why = started.deny ?? 'no agent started'
+    $.ui.toast(`Code Buddy could not start an agent for comment ${tag(id)}: ${why}`)
+    await debug($, 'main', id, `could not start an agent: ${short(why, 160)}`)
+    return
+  }
+  await setWorker($, id, { agent, root: watched.root, running: true })
+  await debug($, agent, id, `started for ${line.split(' ')[0]}`)
+}
+
+/**
+ * A comment needs an agent: a new one, or the reader's follow-up or edit,
+ * which goes to the agent already started for it when there is one.
+ */
+async function dispatch(
+  $: $,
+  watched: Watch,
+  id: string,
+  line: string,
+  kind: 'new' | 'followup' | 'edit',
+) {
+  const queued = watched.queue.find((one) => one.id === id)
+  if (queued) {
+    queued.line = line
+    return
+  }
+  const worker = (await read($, workers))[id]
+  if (worker && (kind === 'followup' || (kind === 'edit' && worker.running))) {
+    // A finished agent is resumed with the message, and keeps its model.
+    const sent = await $.session
+      .send({
+        to: { agentId: worker.agent },
+        text: kind === 'followup' ? followUp(id, line) : edited(id, line),
+      })
+      .catch(() => undefined)
+    if (sent?.isDelivered) {
+      await setWorker($, id, { ...worker, running: true })
+      await debug(
+        $,
+        worker.agent,
+        id,
+        `sent the ${kind === 'edit' ? 'edit' : 'follow-up'}`,
+      )
+      return
+    }
+    await debug($, worker.agent, id, `could not send: ${sent?.reason ?? 'refused'}`)
+  } else if (worker?.running) return
+  watched.queue.push({ id, line })
+  await pump($)
+}
+
+/** Ends the comment's agent; `ifBound`: only while it still works on it. */
+async function stopWorker($: $, watched: Watch, id: string, ifBound = false) {
+  watched.queue = watched.queue.filter((one) => one.id !== id)
+  const worker = (await read($, workers))[id]
+  if (!worker?.running) return
+  if (ifBound && (await bindingOf($, worker.agent))?.comment !== id) return
+  await $.tool.call({ tool: 'TaskStop', task_id: worker.agent }).catch(() => undefined)
+  await setWorker($, id, { ...worker, running: false })
+  await debug($, worker.agent, id, 'stopped: the reader ended the comment')
+  void pump($)
+}
+
+async function onLine(
+  $: $,
+  watched: Watch,
+  line: string,
+  settle: (line: string) => void,
+) {
+  const [kind = '', id = ''] = line.split(' ', 2)
+  if (kind === 'READY') return settle(line)
+  if (SERVER_ERRORS.has(kind)) {
+    settle(line)
+    await update($, watching, (all) => {
+      const { [watched.root]: _, ...rest } = all
+      return rest
+    })
+    return
+  }
+  if (!/^[\w-]+$/.test(id)) return
+  switch (kind) {
+    case 'OPEN':
+    case 'NEW':
+      return dispatch($, watched, id, line, 'new')
+    case 'FOLLOWUP':
+      return dispatch($, watched, id, line, 'followup')
+    case 'EDIT':
+      return dispatch($, watched, id, line, 'edit')
+    case 'CANCELLED':
+    case 'DELETED':
+      return stopWorker($, watched, id)
+    case 'RESOLVED':
+      void $.clock
+        .sleep(RESOLVED_GRACE_MS)
+        .then(() => stopWorker($, watched, id, true))
+        .catch(() => undefined)
+      return
+    default:
+      // ASKED, ANSWERED: the agent's own end; the reader answers in the thread.
+      return
+  }
+}
+
+/** Starts the project's server and reads its lines, until it ends. */
+function serve($: $, root: string): Watch {
+  let settle: (line: string) => void = ignore
+  const started = new Promise<string>((done) => {
+    settle = done
+  })
+  const stream = $.process.spawn({
+    argv: ['node', `${skillDir($)}/scripts/server.mjs`, '--project', root],
+    env: { CODE_BUDDY_HOOKS: '1' },
+  })
+  const pieces = stream[Symbol.asyncIterator]()
+  const watched: Watch = {
+    root,
+    started,
+    queue: [],
+    stopped: false,
+    stop: () => {
+      watched.stopped = true
+      void pieces.return?.({ code: null, signal: null })
+    },
+  }
+  watches.set(root, watched)
+  void (async () => {
+    let pending = ''
+    let errors = ''
+    let ended = 'the server stopped'
+    try {
+      for (;;) {
+        const piece = await pieces.next()
+        if (piece.done) {
+          const { code, signal } = piece.value ?? { code: null, signal: null }
+          ended = `the server exited (${signal ?? `code ${code}`})`
+          break
+        }
+        if (piece.value.stream === 'stderr') {
+          errors = (errors + piece.value.text).slice(-2_000)
+          continue
+        }
+        const lines = (pending + piece.value.text).split('\n')
+        pending = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.trim()) await onLine($, watched, line.trim(), settle)
+        }
+      }
+    } catch (error) {
+      ended = `the server could not run: ${error instanceof Error ? error.message : String(error)}`
+    }
+    const why = errors.trim().split('\n').at(-1)
+    settle(`ENDED ${ended}${why ? `: ${short(why, 300)}` : ''}`)
+    if (watches.get(root) !== watched) return
+    watches.delete(root)
+    await showStatus($)
+    if (!watched.stopped && (await watched.started).startsWith('READY')) {
+      $.ui.toast(
+        `Code Buddy stopped watching ${basename(root)}: ${ended}. /code-buddy starts it again.`,
+      )
+    }
+  })()
+  return watched
+}
+
+/** What the command and the tool answer, from the server's first line. */
+async function startedText(
+  $: $,
+  root: string,
+  first: string | undefined,
+  again: boolean,
+) {
+  if (first === undefined)
+    return `Code Buddy's server for ${root} has not answered yet; it keeps starting in the background.`
+  const [kind, ...rest] = first.split(' ')
+  const said = rest.join(' ')
+  switch (kind) {
+    case 'READY': {
+      const config = await $.fs
+        .read(`${root}/.code-buddy.json`)
+        .then((text): { devUrl?: unknown } => JSON.parse(text))
+        .catch(() => ({ devUrl: undefined }))
+      const app = typeof config.devUrl === 'string' ? config.devUrl : 'the app'
+      return [
+        `Code Buddy is ${again ? 'already ' : ''}watching ${root} (${rest[0] ?? ''}).`,
+        `Open or reload ${app}: each comment starts an agent in the background at once, even while you work with Claude here.`,
+        'The server stops with this session; /code-buddy starts it again, and nothing is lost.',
+      ].join('\n')
+    }
+    case 'PORT_BUSY':
+      return `Code Buddy cannot start: port ${said}. Another session may already watch this project.`
+    case 'WIDGET_MISSING':
+      return `Code Buddy runs from a clone that has no widget built: ${said}, then /code-buddy again.`
+    case 'HOOKS_MISSING':
+      return `Code Buddy cannot start: ${said}.`
+    case 'COMMENTS_REFUSED':
+      return `Code Buddy cannot read the comments file: ${said}`
+    default:
+      return `Code Buddy's server did not start: ${said}`
+  }
+}
+
+async function startWatch($: $, root: string) {
+  if (!(await $.fs.exists(`${root}/.code-buddy.json`).catch(() => false)))
+    return `No .code-buddy.json in ${root}: run /code-buddy:code-buddy init there first.`
+  const known = watches.get(root)
+  const watched = known ?? serve($, root)
+  if (!known) {
+    await update($, watching, (all) => ({ ...all, [root]: true as const }))
+    await showStatus($)
+  }
+  const first = await Promise.race([
+    watched.started,
+    $.clock.sleep(START_MS).then(() => undefined),
+  ])
+  return startedText($, root, first, Boolean(known))
+}
+
+async function stopWatching($: $) {
+  if (!watches.size) return 'Code Buddy is not watching any project in this session.'
+  const roots = [...watches.keys()]
+  for (const watched of watches.values()) watched.stop()
+  watches.clear()
+  await update($, watching, () => noWatching)
+  await showStatus($)
+  return `Code Buddy stopped watching ${roots.join(', ')}. Agents at work finish their comments.`
+}
+
+const hasConfig = ($: $, dir: string) =>
+  $.fs.exists(`${dir}/.code-buddy.json`).catch(() => false)
+
+/**
+ * The project `/code-buddy [dir]` means: `dir` from the session's directory,
+ * else from the git toplevel; without one, the nearest folder up that holds
+ * `.code-buddy.json`.
+ */
+async function findProject($: $, dir: string) {
+  const cwd = normalize(await $.session.cwd())
+  if (dir) {
+    const git = await $.process
+      .run(['git', '-C', cwd, 'rev-parse', '--show-toplevel'])
+      .catch(() => undefined)
+    const top = git?.exitCode === 0 ? normalize(git.stdout.trim()) : undefined
+    for (const base of [cwd, top]) {
+      const candidate = base && resolve(base, dir)
+      if (candidate && (await hasConfig($, candidate))) return candidate
+    }
+    return undefined
+  }
+  for (let at = cwd; ; at = at.slice(0, at.lastIndexOf('/')) || '/') {
+    if (await hasConfig($, at)) return at
+    if (at === '/') return undefined
+  }
+}
+
+/** `/code-buddy [dir|stop]`: the answer the person reads. */
+async function watchCommand($: $, args: string) {
+  const word = args.trim()
+  if (word === 'stop') return stopWatching($)
+  const root = await findProject($, word)
+  if (root) return startWatch($, root)
+  return (
+    `No .code-buddy.json ${word ? `in ${word}` : 'in this folder or above'}: ` +
+    '/code-buddy:code-buddy init installs Code Buddy, and finds the main checkout from a git worktree.'
+  )
+}
+
+/** After a reload of the module, the servers it ran start again. */
+async function rearm($: $) {
+  if (rearmed) return
+  rearmed = true
+  for (const root of Object.keys(await read($, watching))) {
+    if (watches.has(root)) continue
+    const watched = serve($, root)
+    await showStatus($)
+    void watched.started.then((line) =>
+      $.ui.toast(
+        line.startsWith('READY')
+          ? `Code Buddy is watching ${basename(root)} again.`
+          : `Code Buddy could not watch ${basename(root)} again: ${line}`,
+      ),
+    )
+  }
+}
+
+/** A comment's agent ended its run: its one line for the person, and the next in line. */
+async function workerDone($: $, agent: string, answer: string) {
+  const done = await workerOf($, agent)
+  if (!done) return
+  await setWorker($, done.id, { ...done.worker, running: false })
+  const said = answer.trim().split('\n')[0] ?? ''
+  if (said && said !== 'CANCELLED') {
+    $.ui.log(`code-buddy ${tag(done.id)}: ${short(said, 300)}`)
+    if (said.startsWith('QUESTION:'))
+      $.ui.toast(
+        `Code Buddy asks, on comment ${tag(done.id)}: ${short(said.slice(9).trim(), 200)}`,
+      )
+  }
+  void pump($)
+}
+
 export const register: Register = (on) => {
   // Tells server.mjs, started from this session, that the hooks are loaded:
   // without them, agents would work with no locks and no progress.
@@ -745,8 +1159,34 @@ export const register: Register = (on) => {
       argumentHint: '[on|off]',
       immediate: true,
     })
+    // Immediate: it runs mid-turn, and starts no turn of its own.
+    await $.command.register({
+      name: 'code-buddy',
+      description:
+        'Code Buddy: watch the app for comments, one background agent each (a folder, or stop)',
+      argumentHint: '[dir|stop]',
+      immediate: true,
+    })
+    // The skill's way in: it finds the project, then hands it over.
+    await $.tool.register({
+      name: 'watch',
+      description:
+        "Starts Code Buddy's watch on a project: its server, and one background agent per comment the reader leaves. Call it only when the code-buddy skill says so.",
+      inputSchema: {
+        type: 'object',
+        properties: {
+          project: {
+            type: 'string',
+            description:
+              'The project root, absolute: the folder holding .code-buddy.json.',
+          },
+        },
+        required: ['project'],
+      },
+    })
     const { version } = await $.session.version()
     await debug($, 'main', '-', `hooks loaded in a new session (Claude Code ${version})`)
+    await rearm($)
     return next(e)
   })
 
@@ -754,7 +1194,19 @@ export const register: Register = (on) => {
     text: await debugCommand($, e.args),
   }))
 
+  on('command.run', { command: 'code-buddy' }, async ($, e) => ({
+    text: await watchCommand($, e.args),
+  }))
+
+  on('tool.call', { tool: WATCH_TOOL }, async ($, e) => {
+    const { project } = e
+    if (typeof project !== 'string' || !project.startsWith('/'))
+      return { deny: 'Give the project root as an absolute path.' }
+    return { result: await startWatch($, normalize(project)) }
+  })
+
   on('tool.call', async ($, e, next) => {
+    void rearm($)
     if (INTERNAL_TOOLS.has(e.tool)) return next(e)
     const agent = e.agentId ?? 'main'
     // The tool's string arguments, beside the envelope (`e.command` for Bash).
@@ -897,6 +1349,7 @@ export const register: Register = (on) => {
   // SubagentStop: a stopped agent holds nothing; resumed for a follow-up, it
   // claims its comment again.
   on('turn.complete', async ($, e, next) => {
+    void rearm($)
     const binding = e.agentId ? await bindingOf($, e.agentId) : undefined
     if (e.agentId && binding) {
       const project = await projectOf($, e.agentId, binding)
@@ -909,6 +1362,7 @@ export const register: Register = (on) => {
         `turn ended: unbound, released ${released.length} lock(s)`,
       )
     }
+    if (e.agentId) await workerDone($, e.agentId, e.answer)
     return next(e)
   })
 }

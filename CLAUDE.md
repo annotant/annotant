@@ -10,11 +10,13 @@ browser, and one background agent per comment makes the change. See the
 - `hooks/register.ts`: the plugin's hooks, a Claude Code mod (2.1.287 or
   later) declared in `hooks/hooks.json`. They run in every session and
   subagent (a skill's own hooks never fire in subagents) and act only for an
-  agent working on a comment. Their `$.state` values are typed in
+  agent working on a comment, and for the watch: `/code-buddy` (or the
+  skill, through `mcp__code-buddy__watch`) runs the server and starts one
+  agent per comment, with no model turn. Their `$.state` values are typed in
   `types/index.d.ts`.
-- `agents/worker.md`: the plugin agent (`code-buddy:worker`) the manager
-  starts for each comment, with only the comment, `SKILL` and `PROJECT`; it
-  reads `.code-buddy.json` itself.
+- `agents/worker.md`: the plugin agent (`code-buddy:worker`) the hooks start
+  for each comment, with only the comment, `SKILL` and `PROJECT`; it reads
+  `.code-buddy.json` itself.
 - `skills/code-buddy/SKILL.md`: the skill itself, a prompt. Keep it short:
   every line is read in every user's session.
 - `skills/code-buddy/scripts/`: Node.js ES modules with JSDoc types, no

@@ -1,5 +1,5 @@
-// The comment agent ships as a plugin agent: the skill starts it by name, and
-// it reads the project's values and runs the scripts itself.
+// The comment agent ships as a plugin agent: the plugin's hooks start it by
+// name, and it reads the project's values and runs the scripts itself.
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -9,16 +9,17 @@ import { SCRIPTS } from './helpers.mjs'
 const ROOT = new URL('../', import.meta.url).pathname
 const agent = await readFile(path.join(ROOT, 'agents/worker.md'), 'utf8')
 const skill = await readFile(path.join(ROOT, 'skills/code-buddy/SKILL.md'), 'utf8')
+const hooks = await readFile(path.join(ROOT, 'hooks/register.ts'), 'utf8')
 
-test('the skill starts the agent the plugin ships', () => {
+test('the hooks start the agent the plugin ships', () => {
   const name = agent.match(/^---\n[\s\S]*?^name: (\S+)$[\s\S]*?^---$/m)?.[1]
   assert.equal(name, 'worker')
-  assert.match(skill, /subagent_type: "code-buddy:worker"/)
+  assert.match(hooks, /^const WORKER = 'code-buddy:worker'$/m)
+  assert.match(hooks, /subagentType: WORKER,/)
 })
 
-test('the skill passes the agent its paths, not its steps', () => {
-  assert.match(skill, /^SKILL=<SKILL>$/m)
-  assert.match(skill, /^PROJECT=<PROJECT>$/m)
+test('the hooks pass the agent its paths, not its steps', () => {
+  assert.match(hooks, /`SKILL=\$\{skillDir\(\$\)\}`, `PROJECT=\$\{watched\.root\}`/)
   assert.doesNotMatch(skill, /claim\.mjs/)
 })
 
