@@ -178,8 +178,7 @@ until its thread is first resolved: a follow-up does not bring it back.
 
 ### Models
 
-When the managing session starts a comment's agent (`code-buddy:worker`),
-the hooks' `agent.spawn` hook reads the comment (the reader's last message,
+Before the plugin's hooks start a comment's agent, they read the comment (the reader's last message,
 the selected text or the element's tag and text, the route) and asks Claude
 Code's small fast model for one label:
 
@@ -190,7 +189,7 @@ Code's small fast model for one label:
 | `hard` | Anything across several components or pages, data or API changes, or a question that needs a product decision. |
 
 `models` in `.code-buddy.json` maps each label to a model alias (`haiku`,
-`sonnet`, `opus`) or id; `inherit` keeps the managing session's model. Without
+`sonnet`, `opus`) or id; `inherit` keeps the session's model. Without
 it, the default is:
 
 ```json
@@ -200,11 +199,12 @@ it, the default is:
 A `models` object is read whole: a label it leaves out inherits, so
 `{ "trivial": "inherit" }` turns routing off, and the classifier is not
 asked. A classifier that fails or takes more than 5 seconds leaves the agent
-on the session's model. Either way the hooks keep the model the agent runs
-on and pass it to `claim.mjs` (`CODE_BUDDY_MODEL`, `CODE_BUDDY_COMPLEXITY`),
-which records it on the `working` event. A follow-up resumes the same agent,
-with no new start: it keeps its model. Another agent's claim of the comment
-(the main loop's, say) records no model: it runs on its own.
+on the session's model. Either way the hooks write the agent, the model it
+runs on and the label in the state folder (`routes/<id>.json`, beside
+`progress/`), and `claim.mjs` records them on the `working` event
+(`CODE_BUDDY_AGENT`, `CODE_BUDDY_MODEL` and `CODE_BUDDY_COMPLEXITY` override
+them). A follow-up resumes the same agent, with no new start: it keeps its
+model.
 
 ## The step files
 
@@ -245,16 +245,16 @@ history first, which the debug panel opens in a tab.
 ## What the server adds
 
 On an open comment, the server also serves `notifiedAt`, an ISO date: when it
-printed that opening's line (`OPEN`, `NEW` or `FOLLOWUP`) for the manager. It
+printed that opening's line (`OPEN`, `NEW` or `FOLLOWUP`) for the plugin's hooks. It
 lives in the server's memory, never in `comments.json`: a restart prints the
 line again and dates it anew. The widget reads "Sent…" until then, "Claude
-has your comment, an agent is starting…" once it is, "Claude has your comment
-but is busy…" when no agent has claimed the comment 15 seconds later, and "No
-agent has started. Is the /code-buddy session busy?" after 60 seconds. On
-the reader's reply (an answer or a follow-up: `FOLLOWUP`), the widget reads
-"Claude has your reply, an agent is picking it up…", "Claude has your reply
-but is busy…" and "No agent has picked up your reply. Is the /code-buddy
-session busy?". Each return to `open` (an answer, a follow-up, a re-send)
+has your comment, an agent is starting…" once it is, "Claude has your
+comment, waiting for a free agent…" when no agent has claimed the comment 15
+seconds later, and "No agent has started. Check the Claude Code session
+watching." after 60 seconds. On the reader's reply (an answer or a follow-up:
+`FOLLOWUP`), the widget reads "Claude has your reply, an agent is picking it
+up…", "Claude has your reply, waiting for a free agent…" and "No agent has
+picked up your reply. Check the Claude Code session watching." Each return to `open` (an answer, a follow-up, a re-send)
 starts again.
 
 With `history=1` (the debug panel), every comment the server printed a line
@@ -264,7 +264,7 @@ the comment is deleted. The debug panel marks the `OPEN`, `NEW` and
 `FOLLOWUP` lines as hand-overs, dated from their opening, and dates each claim
 from the hand-over of its opening. With a dev widget, `GET /api/debug/agent/<agent>`
 serves what the agent of a `working` event was given: its first message,
-exactly the prompt the manager wrote, read in Claude Code's transcripts of
+exactly the prompt the hooks wrote, read in Claude Code's transcripts of
 the last 7 days, and its type (`agentType`, from the `.meta.json` next to the
 transcript); for one of the plugin's agents, its instructions
 (`instructions`, `agents/<name>.md`), read as it is now: Claude Code does not

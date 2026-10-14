@@ -8,13 +8,16 @@ browser, and one background agent per comment makes the change. See the
 
 - `.claude-plugin/`: plugin and marketplace manifests.
 - `hooks/register.ts`: the plugin's hooks, a Claude Code mod (2.1.287 or
-  later) declared in `hooks/hooks.json`. They run in every session and
-  subagent (a skill's own hooks never fire in subagents) and act only for an
-  agent working on a comment. Their `$.state` values are typed in
-  `types/index.d.ts`.
-- `agents/worker.md`: the plugin agent (`code-buddy:worker`) the manager
-  starts for each comment, with only the comment, `SKILL` and `PROJECT`; it
-  reads `.code-buddy.json` itself.
+  later) declared in `hooks/hooks.json`, for the watch: `/code-buddy` (or the
+  skill, through `mcp__code-buddy__watch`) runs the server and starts one
+  agent per comment, with no model turn. Claude Code runs none of a mod's
+  hooks for an agent the plugin starts: each comment's agent is registered
+  as a type of its own (`code-buddy:cb-<id>`) whose settings hooks run
+  `skills/code-buddy/scripts/hook.mjs` (file locks, steps) around its tools.
+  Their `$.state` values are typed in `types/index.d.ts`.
+- `agents/worker.md`: the instructions of each comment's agent, which the
+  hooks start with only the comment, `SKILL` and `PROJECT`; it reads
+  `.code-buddy.json` itself. Hidden from the model.
 - `skills/code-buddy/SKILL.md`: the skill itself, a prompt. Keep it short:
   every line is read in every user's session.
 - `skills/code-buddy/scripts/`: Node.js ES modules with JSDoc types, no
