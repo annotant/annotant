@@ -18,7 +18,7 @@ test('finds a call and its result in the agent transcript, not where it is quote
   const dir = await tempDir(t)
   const session = path.join(dir, '-repo', 'session')
   await mkdir(path.join(session, 'subagents'), { recursive: true })
-  // The manager's transcript only mentions the id.
+  // The main session's transcript only mentions the id.
   await writeFile(`${session}.jsonl`, line([{ type: 'text', text: `see ${ID}` }]))
   const agent = path.join(session, 'subagents', 'agent-a1.jsonl')
   await writeFile(

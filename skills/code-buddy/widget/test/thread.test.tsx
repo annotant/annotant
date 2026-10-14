@@ -48,13 +48,13 @@ test('an open comment says each step while no agent claims it', async () => {
     await vi.advanceTimersByTimeAsync(15_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
-    'Claude has your comment but is busy…',
+    'Claude has your comment, waiting for a free agent…',
   )
   await act(async () => {
     await vi.advanceTimersByTimeAsync(45_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
-    'No agent has started. Is the /code-buddy session busy?',
+    'No agent has started. Check the Claude Code session watching.',
   )
 })
 
@@ -95,16 +95,16 @@ test("the reader's reply says an agent is picking it up, at each step", async ()
     await vi.advanceTimersByTimeAsync(15_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
-    'Claude has your reply but is busy…',
+    'Claude has your reply, waiting for a free agent…',
   )
   expect(screen.getByTestId('cb-working').getAttribute('title')).toMatch(
-    /picks up your reply once it is free/,
+    /picks up your reply as soon as another ends/,
   )
   await act(async () => {
     await vi.advanceTimersByTimeAsync(45_000)
   })
   expect(screen.getByTestId('cb-working').textContent).toBe(
-    'No agent has picked up your reply. Is the /code-buddy session busy?',
+    'No agent has picked up your reply. Check the Claude Code session watching.',
   )
   expect(screen.getByTestId('cb-working').getAttribute('title')).toMatch(
     /handed your reply over a minute ago/,
@@ -173,7 +173,7 @@ test('an open comment handed over long ago says no agent has started at once', a
 
   await waitFor(() =>
     expect(screen.getByTestId('cb-working').textContent).toBe(
-      'No agent has started. Is the /code-buddy session busy?',
+      'No agent has started. Check the Claude Code session watching.',
     ),
   )
 })

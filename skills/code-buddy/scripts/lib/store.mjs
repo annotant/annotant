@@ -88,7 +88,7 @@ function move(comment, to, { by, run, agent, model, complexity, message }) {
  * The comment's steps, oldest first: those of its current run, or with
  * `history`, of every run it had. A tool writes one line when it starts and
  * one when it ends or fails, both with its tool_use_id: they merge into one
- * step, in the place where it started.
+ * step, in the place where it started. Sorted by time.
  * @param {{ progressDir: string }} project
  * @param {string} id
  * @param {number} [limit]
@@ -120,6 +120,9 @@ export async function readProgress(project, id, limit, { history = false } = {})
       if (step.id) byTool.set(step.id, step)
     }
   }
+  // By time: the hooks module writes what the agent thinks while hook.mjs
+  // writes its tools, and either may land first.
+  steps.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
   return limit ? steps.slice(-limit) : steps
 }
 
@@ -141,6 +144,27 @@ export async function stepFiles(project, id) {
 
 /** The step file of comment `id`'s current run. */
 export const progressPath = (project, id) => path.join(project.progressDir, `${id}.jsonl`)
+/**
+ * The agent the hooks module started for comment `id`, the model it runs on and
+ * the classifier's label, as JSON: its claim records them on the run.
+ */
+export const routePath = (project, id) =>
+  path.join(project.progressDir, '..', 'routes', `${id}.json`)
+
+/**
+ * What routePath holds, or nothing when the hooks module wrote none.
+ * @param {{ progressDir: string }} project
+ * @param {string} id
+ * @returns {Promise<{ agent?: string, model?: string, complexity?: string }>}
+ */
+export async function readRoute(project, id) {
+  try {
+    const route = JSON.parse(await readFile(routePath(project, id), 'utf8'))
+    return typeof route === 'object' && route !== null ? route : {}
+  } catch {
+    return {}
+  }
+}
 // Every step of the runs that ended, for the widget's debug panel; kept with a
 // dev build of the widget only (createStore's `history`).
 const historyPath = (project, id) => path.join(project.progressDir, `${id}.history.jsonl`)
