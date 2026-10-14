@@ -774,6 +774,32 @@ test("a message resumes the comment's agent with its hooks, which a reload unloa
   await w.exit(0)
 })
 
+test('a reload gives the agents at work their hooks again, a resumed one too', async ($, on) => {
+  const w = world(on, ['c1', 'c2'].map(open))
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'), newLine('c2'))
+  await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
+  await $.turn.complete(ended('a2', 'Done.'))
+  await w.print(followUpLine('c1'))
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+
+  // /reload-plugins while a1 works on the follow-up: the plugin's agent
+  // types go, and the module loads again.
+  w.registered.clear()
+  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+  await w.clock.settle()
+  expect([...w.registered.keys()]).toEqual(['code-buddy:cb-c1'])
+  expect(w.registered.get('code-buddy:cb-c1')).toEqual(
+    expect.objectContaining({
+      model: 'haiku',
+      hooks: expect.objectContaining({ PreToolUse: expect.any(Array) }),
+    }),
+  )
+  await w.exit(0)
+})
+
 test('a reply the agent missed as it ended its turn goes to it again', async ($, on) => {
   const w = world(on, ['c1', 'c2'].map(open))
   await watch($, w)
