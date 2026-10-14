@@ -155,7 +155,7 @@ export interface ReviewCommentPatch {
   followUp?: string
   /** Answers Claude's question with options it offered, before any `followUp` text. */
   choices?: string[]
-  /** With `followUp`: the images the reader attached to it. */
+  /** With `followUp` or `choices`: the images the reader attached to that reply. */
   images?: NewImage[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string

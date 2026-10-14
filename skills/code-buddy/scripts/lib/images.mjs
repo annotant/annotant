@@ -107,9 +107,13 @@ export async function saveImages(project, id, message, images) {
 }
 
 /**
- * Removes comment `id`'s images.
+ * Removes comment `id`'s images: all of them, or those named.
  * @param {{ commentsFile: string }} project
  * @param {string} id
+ * @param {string[]} [names]
  */
-export const removeImages = (project, id) =>
-  rm(imagesDir(project, id), { recursive: true, force: true })
+export async function removeImages(project, id, names) {
+  const dir = imagesDir(project, id)
+  if (!names) return rm(dir, { recursive: true, force: true })
+  await Promise.all(names.map((name) => rm(path.join(dir, name), { force: true })))
+}

@@ -8,6 +8,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const PNG_BASE64 = 'iVBORw0KGgo='
 
 const png = (name = 'shot.png') => new File([PNG], name, { type: 'image/png' })
+const gif = new File(['GIF89a'], 'b.gif', { type: 'image/gif' })
 
 /** Pastes `files` in `box`, as Cmd+V or Ctrl+V does with an image copied. */
 function paste(box: HTMLElement, files: File[]) {
@@ -54,7 +55,7 @@ test('an image dropped in the box is attached, and can be removed before sending
   if (!form) throw new Error('no form')
 
   fireEvent.drop(form, {
-    dataTransfer: { files: [png('a.png'), png('b.png')], types: ['Files'] },
+    dataTransfer: { files: [png('a.png'), gif], types: ['Files'] },
   })
   await screen.findByRole('img', { name: 'Attached image 2' })
   fireEvent.click(screen.getByRole('button', { name: 'Remove image 1' }))
@@ -66,9 +67,37 @@ test('an image dropped in the box is attached, and can be removed before sending
   fireEvent.keyDown(box, { key: 'Enter' })
   await waitFor(() =>
     expect(sent(server, 'POST')).toMatchObject({
-      images: [{ type: 'image/png', data: PNG_BASE64 }],
+      images: [{ type: 'image/gif', data: 'R0lGODlh' }],
     }),
   )
+})
+
+test('pastes in quick succession count each other against the limit', async () => {
+  fakeServer([])
+  const box = await newComment()
+  paste(box, [png(), png(), png()])
+  await screen.findByRole('img', { name: 'Attached image 3' })
+  // Both before either is read: the second finds no room.
+  paste(box, [png()])
+  paste(box, [png()])
+  expect(await screen.findByText('At most 4 images per message.')).toBeTruthy()
+  await screen.findByRole('img', { name: 'Attached image 4' })
+})
+
+test("the server's refusal of an image shows in its words", async () => {
+  const server = fakeServer([])
+  const serve = server.fetch.getMockImplementation()
+  server.fetch.mockImplementation(async (input: string, init?: RequestInit) =>
+    init?.method === 'POST'
+      ? Response.json({ error: 'not a image/png image' }, { status: 422 })
+      : (serve?.(input, init) ?? Response.json([])),
+  )
+  const box = await newComment()
+  paste(box, [png()])
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  fireEvent.change(box, { target: { value: 'Like this' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  expect(await screen.findByText('not a image/png image')).toBeTruthy()
 })
 
 test('a paste with no image is left to the text box', async () => {

@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { NewImage } from './domain'
-import { attach, imageFiles, preview } from './images'
+import { imageFiles, pick, preview, readImages } from './images'
 
 const PATHS = {
   x: 'M6 6l12 12M18 6L6 18',
@@ -212,24 +212,30 @@ export function Composer({
     event.preventDefault()
     if (!blocked) onSubmit()
   }
+  // The images being read, not attached yet: counted against the limit.
+  const reading = useRef(0)
   const add = async (files: File[]) => {
-    if (!onAttach || !files.length) return
+    if (!onAttach || disabled || !files.length) return
+    const picked = pick(images.length + reading.current, files)
+    if (picked.refused) toast(picked.refused, true)
+    if (!picked.files.length) return
+    reading.current += picked.files.length
     try {
-      const { images: added, refused } = await attach(images.length, files)
-      if (refused) toast(refused, true)
-      if (added.length) onAttach(added)
+      onAttach(await readImages(picked.files))
     } catch {
       toast('The image could not be read.', true)
+    } finally {
+      reading.current -= picked.files.length
     }
   }
   const onDragOver = (event: DragEvent) => {
-    if (!onAttach || !event.dataTransfer.types.includes('Files')) return
+    if (!onAttach || disabled || !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
   }
   const onDrop = (event: DragEvent) => {
     const files = imageFiles(event.dataTransfer.files)
-    if (!onAttach || !files.length) return
+    if (!onAttach || disabled || !files.length) return
     event.preventDefault()
     void add(files)
   }

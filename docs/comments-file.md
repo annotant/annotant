@@ -253,7 +253,10 @@ with `followUp` or `choices`), as `images`: `{ type, data }` objects, `data`
 in base64. The server takes up to 4 per message, PNG, JPEG, GIF or WebP, up
 to 5 MB each, and checks the bytes, not only the type; it answers 422 with
 its reason otherwise, which the widget shows. A request may then hold up to
-100,000 characters of text besides its images.
+100,000 characters of text besides its images. Images sent with any
+other move are ignored. The server refuses any change (403) from a page whose
+origin it does not let in: a page of another site could send one without
+reading the answer.
 
 The store writes them beside the comments file, as
 `images/<comment id>/m<n>-<k>.<ext>` (`m1-1.png`: the first image of the

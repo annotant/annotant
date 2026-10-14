@@ -464,7 +464,11 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           ],
           events: [{ at, state: 'open', by: 'reader' }],
         }
-        await writeAll([...comments, comment])
+        // Unsaved, the comment leaves no image behind.
+        await writeAll([...comments, comment]).catch(async (error) => {
+          await removeImages(project, id)
+          throw error
+        })
         return comment
       })
     },
@@ -503,11 +507,13 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           }
         }
         const reply = readerReply(comment, followUp, choices)
+        /** @type {string[]} */
+        let names = []
         if (reply) {
           move(comment, 'open', { by: 'reader', message: { author: 'reader', ...reply } })
           // Written once the move is taken: a refused one leaves no file behind.
           const message = comment.messages.at(-1)
-          const names = message ? await saveImages(project, id, message.id, images) : []
+          if (message) names = await saveImages(project, id, message.id, images)
           if (message && names.length) message.images = names
         }
         if (status === 'resolved' && comment.state !== 'resolved') {
@@ -515,7 +521,11 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           // Resolved by the reader: no answer to file the steps under.
           await endRun(id, run)
         }
-        await writeAll(comments)
+        // Unsaved, the reply leaves no image behind.
+        await writeAll(comments).catch(async (error) => {
+          await removeImages(project, id, names)
+          throw error
+        })
         return comment
       })
     },

@@ -28,13 +28,11 @@ function read(file: File): Promise<NewImage> {
 }
 
 /**
- * The images `files` add to `count` attached already: those the server
- * takes, up to MAX_IMAGES in all, and why the others are left out.
+ * Of `files`, those `count` images attached already leave room for: the
+ * ones the server takes, up to MAX_IMAGES in all, and why the others are
+ * left out. At once: a second paste counts the first's.
  */
-export async function attach(
-  count: number,
-  files: File[],
-): Promise<{ images: NewImage[]; refused?: string }> {
+export function pick(count: number, files: File[]): { files: File[]; refused?: string } {
   const taken = files.filter((file) => TYPES.has(file.type))
   const small = taken.filter((file) => file.size <= MAX_IMAGE_BYTES)
   const room = small.slice(0, Math.max(0, MAX_IMAGES - count))
@@ -46,6 +44,8 @@ export async function attach(
         : room.length < small.length
           ? `At most ${MAX_IMAGES} images per message.`
           : undefined
-  const images = await Promise.all(room.map(read))
-  return refused ? { images, refused } : { images }
+  return refused ? { files: room, refused } : { files: room }
 }
+
+/** The images in `files`, read to be sent. */
+export const readImages = (files: File[]) => Promise.all(files.map(read))

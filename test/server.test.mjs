@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
+import http from 'node:http'
 import net from 'node:net'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
@@ -543,6 +544,10 @@ test("files the reader's images, serves them, and gives the agent their paths", 
   assert.equal(served.status, 200)
   assert.equal(served.headers.get('content-type'), 'image/png')
   assert.equal(served.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(
+    served.headers.get('content-security-policy'),
+    "default-src 'none'; sandbox",
+  )
   assert.equal(Buffer.from(await served.arrayBuffer()).toString('base64'), PNG)
   for (const name of ['m1-2.png', '..%2Fcomments.json', 'comments.json']) {
     const missing = await fetch(`${base}/api/images/${created.id}/${name}`)
@@ -596,4 +601,85 @@ test('takes images with a follow-up', async () => {
   assert.deepEqual(reopened.messages.at(-1).images, ['m2-1.png'])
   const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
   assert.match(event, / messages=2 images=\[".*\/m2-1\.png"\]$/)
+})
+
+test('takes JPEG, GIF and WebP by their bytes, and refuses one over 5 MB', async () => {
+  const bytes = {
+    'image/jpeg': 'ffd8ffe000104a46',
+    'image/gif': '474946383961',
+    'image/webp': '52494646000000005745425056503820',
+  }
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/images',
+        body: 'All kinds',
+        images: Object.entries(bytes).map(([type, hex]) => ({
+          type,
+          data: Buffer.from(hex, 'hex').toString('base64'),
+        })),
+      }),
+    ),
+  )
+  assert.deepEqual(created.messages[0].images, ['m1-1.jpg', 'm1-2.gif', 'm1-3.webp'])
+
+  const big = Buffer.alloc(5 * 1024 * 1024 + 1)
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(big)
+  const refused = await post(
+    JSON.stringify({
+      route: '/images',
+      body: 'Too big',
+      images: [{ type: 'image/png', data: big.toString('base64') }],
+    }),
+  )
+  assert.equal(refused.status, 422)
+  assert.deepEqual(await json(refused), { error: 'an image may hold at most 5 MB' })
+})
+
+test('refuses a body over the images’ room by its length, before reading it', async () => {
+  // Only the headers are sent: the answer comes before any of the body.
+  const status = await new Promise((resolve, reject) => {
+    const request = http.request(`${base}/api/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': '30000000' },
+    })
+    request.on('response', (response) => {
+      response.resume()
+      resolve(response.statusCode)
+      request.destroy()
+    })
+    request.on('error', reject)
+    request.flushHeaders()
+  })
+  assert.equal(status, 413)
+})
+
+test('refuses a change from a page of another site, which would not read the answer', async () => {
+  const response = await post(JSON.stringify({ route: '/', body: 'Planted' }), {
+    origin: 'https://evil.example',
+  })
+  assert.equal(response.status, 403)
+  assert.deepEqual(await json(response), { error: 'origin not allowed' })
+  const local = await post(JSON.stringify({ route: '/', body: 'Mine' }), {
+    origin: 'http://localhost:5173',
+  })
+  assert.equal(local.status, 201)
+})
+
+test('takes images with a reply only', async () => {
+  const created = await json(
+    await post(JSON.stringify({ route: '/images', body: 'Done?' })),
+  )
+  const resolved = await json(
+    await fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        status: 'resolved',
+        images: [{ type: 'image/png', data: PNG }],
+      }),
+    }),
+  )
+  assert.equal(resolved.state, 'resolved')
+  assert.equal(existsSync(path.join(root, '.code-buddy', 'images', created.id)), false)
 })

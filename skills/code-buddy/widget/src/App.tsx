@@ -717,6 +717,12 @@ export default function App({ root }: { root: Element }) {
       : undefined
   const reply = replying && followUp?.id === replying.id ? followUp.body : ''
   const replyImages = (replying && followUp?.id === replying.id && followUp.images) || []
+  // The thread the message box replies to now: images read after the reader
+  // left a thread are not its.
+  const replyingTo = useRef<string>(undefined)
+  useEffect(() => {
+    replyingTo.current = replying?.id
+  })
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
   const ticked = (comment: ReviewComment) =>
@@ -1426,6 +1432,7 @@ export default function App({ root }: { root: Element }) {
                   }
                   onAttach={(added) =>
                     setFollowUp((current) => {
+                      if (replyingTo.current !== replying.id) return current
                       const own = current?.id === replying.id ? current : undefined
                       return {
                         id: replying.id,

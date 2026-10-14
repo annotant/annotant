@@ -71,10 +71,12 @@ const LOCAL_ORIGIN =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|[\w-]+\.localhost)(:\d+)?$/
 const allowedOrigins = new Set(config.devOrigins ?? [])
 
+/** @param {string | undefined} origin */
+const isAllowed = (origin) =>
+  !!origin && (LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin))
+
 function corsHeaders(origin) {
-  if (!origin || !(LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin))) {
-    return {}
-  }
+  if (!isAllowed(origin)) return {}
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
@@ -98,6 +100,7 @@ function send(res, status, body, headers = {}) {
 /** What the server answers to a request the client got wrong, by status. */
 const CLIENT_ERRORS = /** @type {const} */ ({
   400: 'invalid JSON',
+  403: 'origin not allowed',
   413: 'body too large',
 })
 
@@ -119,6 +122,9 @@ const MAX_TEXT = 100_000
 const MAX_BODY = MAX_TEXT + Math.ceil(MAX_IMAGE_BYTES / 3) * 4 * MAX_IMAGES
 
 async function readJson(req) {
+  if (Number(req.headers['content-length']) > MAX_BODY) throw new ClientError(413)
+  // Decoded as a whole: a character split between two chunks stays one.
+  req.setEncoding('utf8')
   let raw = ''
   for await (const chunk of req) {
     raw += chunk
@@ -188,8 +194,10 @@ function sanitisePatch(input) {
       .slice(0, MAX_OPTIONS)
   }
   // With the reader's reply only: the store files them under it.
-  const images = parseImages(input.images)
-  if (images.length) patch.images = images
+  if (patch.followUp || patch.choices) {
+    const images = parseImages(input.images)
+    if (images.length) patch.images = images
+  }
   if (typeof input.text === 'string' && input.text.trim()) {
     patch.text = input.text.trim()
   }
@@ -235,6 +243,10 @@ async function handle(req, res) {
   const cors = corsHeaders(req.headers.origin)
   const url = new URL(req.url, `http://${req.headers.host}`)
   if (req.method === 'OPTIONS') return send(res, 204, undefined, cors)
+  // A page of another site may send a request it cannot read the answer of:
+  // it would write comments and images, and start agents.
+  const { origin } = req.headers
+  if (req.method !== 'GET' && origin && !isAllowed(origin)) throw new ClientError(403)
 
   if (req.method === 'GET' && url.pathname === '/widget.js') {
     const source = await readFile(WIDGET, 'utf8')
