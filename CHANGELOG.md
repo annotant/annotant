@@ -71,7 +71,8 @@ released to the `stable` branch.
 
 - **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
   message box, of a new comment or a reply: it shows as a thumbnail, goes
-  with the message and shows in its bubble. Up to 4 per message, PNG, JPEG,
+  with the message and shows in its bubble; an image alone is a message too.
+  Up to 4 per message, PNG, JPEG,
   GIF or WebP, 5 MB each. The server keeps them beside the comments file
   (`.code-buddy/images/<id>/`), deleted with the comment, and the comment's
   agent opens them with Read.

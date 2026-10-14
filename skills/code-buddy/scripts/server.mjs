@@ -193,8 +193,10 @@ function sanitisePatch(input) {
       .filter((choice) => typeof choice === 'string')
       .slice(0, MAX_OPTIONS)
   }
-  // With the reader's reply only: the store files them under it.
-  if (patch.followUp || patch.choices) {
+  // With the reader's reply only, the store files them under it: words,
+  // options, or the images alone, sent with no other move.
+  const other = patch.status || patch.cancelled !== undefined
+  if (patch.followUp || patch.choices || !other) {
     const images = parseImages(input.images)
     if (images.length) patch.images = images
   }
@@ -337,15 +339,22 @@ async function handle(req, res) {
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
-      const body = input.body?.trim()
-      if (typeof input.route !== 'string' || !input.route || !body) {
-        return send(res, 400, { error: 'route and body are required' }, cors)
+      const body = typeof input.body === 'string' ? input.body.trim() : ''
+      // An image alone says enough, as in a prompt to Claude.
+      const images = parseImages(input.images)
+      if (typeof input.route !== 'string' || !input.route || (!body && !images.length)) {
+        return send(
+          res,
+          400,
+          { error: 'route and a body or an image are required' },
+          cors,
+        )
       }
       const comment = await store.create({
         route: input.route.slice(0, 500),
         url: sanitiseUrl(input.url),
         body,
-        images: parseImages(input.images),
+        images,
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),

@@ -4,36 +4,40 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+// The limits, shared with the widget, which refuses an image before sending it.
+import limits from './image-limits.json' with { type: 'json' }
+
 /** The most images one message carries. */
-export const MAX_IMAGES = 4
+export const MAX_IMAGES = limits.maxImages
 /** The most bytes one image holds: what Claude reads in one image. */
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+export const MAX_IMAGE_BYTES = limits.maxImageBytes
 
 /**
- * The types taken, each with its file's extension and how its file starts:
- * the bytes decide, never the type the widget claims.
+ * How the file of each type taken starts: the bytes decide, never the type
+ * the widget claims.
+ * @type {Record<string, (data: Buffer) => boolean>}
+ */
+const SIGNATURES = {
+  'image/png': (data) =>
+    data.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')),
+  'image/jpeg': (data) => data.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex')),
+  'image/gif': (data) => /^GIF8[79]a/.test(data.subarray(0, 6).toString('latin1')),
+  'image/webp': (data) =>
+    data.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    data.subarray(8, 12).toString('latin1') === 'WEBP',
+}
+
+/**
+ * The types taken, each with its file's extension and how its file starts.
  * @type {Record<string, { ext: string, matches: (data: Buffer) => boolean }>}
  */
-const TYPES = {
-  'image/png': {
-    ext: 'png',
-    matches: (data) => data.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')),
-  },
-  'image/jpeg': {
-    ext: 'jpg',
-    matches: (data) => data.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex')),
-  },
-  'image/gif': {
-    ext: 'gif',
-    matches: (data) => /^GIF8[79]a/.test(data.subarray(0, 6).toString('latin1')),
-  },
-  'image/webp': {
-    ext: 'webp',
-    matches: (data) =>
-      data.subarray(0, 4).toString('latin1') === 'RIFF' &&
-      data.subarray(8, 12).toString('latin1') === 'WEBP',
-  },
-}
+const TYPES = Object.fromEntries(
+  Object.entries(limits.types).map(([type, ext]) => {
+    const matches = SIGNATURES[type]
+    if (!matches) throw new Error(`no signature for ${type}`)
+    return [type, { ext, matches }]
+  }),
+)
 
 /** By extension, the type an image's file is served with. */
 export const CONTENT_TYPES = Object.fromEntries(
@@ -41,7 +45,9 @@ export const CONTENT_TYPES = Object.fromEntries(
 )
 
 /** An image's file name, as the store writes it: `m1-1.png`. */
-export const IMAGE_NAME = /^m\d+-\d+\.(png|jpg|gif|webp)$/
+export const IMAGE_NAME = new RegExp(
+  `^m\\d+-\\d+\\.(${Object.values(limits.types).join('|')})$`,
+)
 
 /**
  * An image the reader attached, checked: its bytes and its file's extension.

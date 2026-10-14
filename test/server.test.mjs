@@ -603,6 +603,36 @@ test('takes images with a follow-up', async () => {
   assert.match(event, / messages=2 images=\[".*\/m2-1\.png"\]$/)
 })
 
+test('takes an image alone, as a comment or a follow-up, but not nothing', async () => {
+  const image = [{ type: 'image/png', data: PNG }]
+  const empty = await post(JSON.stringify({ route: '/images', body: ' ' }))
+  assert.equal(empty.status, 400)
+  const printed = output.length
+  const created = await json(
+    await post(JSON.stringify({ route: '/images', images: image })),
+  )
+  assert.equal(created.messages[0].body, '')
+  assert.deepEqual(created.messages[0].images, ['m1-1.png'])
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(event, / body="" images=\[".*\/m1-1\.png"\]$/)
+
+  const patch = (body) =>
+    fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  await patch({ status: 'resolved' })
+  const reopened = await json(await patch({ images: image }))
+  assert.equal(reopened.state, 'open')
+  assert.deepEqual(reopened.messages.at(-1), {
+    ...reopened.messages.at(-1),
+    author: 'reader',
+    body: '',
+    images: ['m2-1.png'],
+  })
+})
+
 test('takes JPEG, GIF and WebP by their bytes, and refuses one over 5 MB', async () => {
   const bytes = {
     'image/jpeg': 'ffd8ffe000104a46',

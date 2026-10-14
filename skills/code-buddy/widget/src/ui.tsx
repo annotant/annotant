@@ -207,7 +207,8 @@ export function Composer({
     // Empty, it keeps the CSS height: one line.
     if (value) textarea.style.height = `${textarea.scrollHeight}px`
   }, [value])
-  const blocked = disabled || !value.trim()
+  // An image alone is a message, as in a prompt to Claude.
+  const blocked = disabled || (!value.trim() && !images.length)
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!blocked) onSubmit()

@@ -204,9 +204,26 @@ export function statusOf(
   return comment.state === 'working' ? 'claimed' : 'open'
 }
 
+const latestOwn = (comment: Pick<ReviewComment, 'messages'>) =>
+  comment.messages.findLast((message) => message.author === 'reader')
+
 /** The reader's latest words: their comment, or what they wrote since. */
 export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
-  return comment.messages.findLast((message) => message.author === 'reader')?.body ?? ''
+  return latestOwn(comment)?.body ?? ''
+}
+
+/** The images of the reader's latest message. */
+export function latestImages(comment: Pick<ReviewComment, 'messages'>): string[] {
+  return latestOwn(comment)?.images ?? []
+}
+
+/** What a message says, in one line: its words, or the images that are all it holds. */
+export function gist(
+  message: Pick<ReviewMessage, 'body' | 'images'> | undefined,
+): string {
+  if (!message) return ''
+  if (message.body || !message.images?.length) return message.body
+  return message.images.length === 1 ? 'An image' : `${message.images.length} images`
 }
 
 export function normaliseQuote(text: string): string {

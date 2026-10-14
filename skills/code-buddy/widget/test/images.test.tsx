@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, test } from 'vitest'
-import { comment, fakeServer, openThread } from './server'
+import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
 /** A PNG file's first bytes: the widget sends what it reads. */
@@ -160,4 +160,61 @@ test('an image filed with a message shows in its bubble, from the server', async
   })
   expect(image.src).toMatch(/\/api\/images\/c1\/m1-1\.png$/)
   expect(image.closest('a')?.getAttribute('target')).toBe('_blank')
+})
+
+test('an image alone is a new comment', async () => {
+  const server = fakeServer([])
+  const box = await newComment()
+  const save = screen.getByRole('button', { name: 'Save' })
+  expect(save).toHaveProperty('disabled', true)
+  paste(box, [png()])
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  expect(save).toHaveProperty('disabled', false)
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(sent(server, 'POST')).toMatchObject({
+      body: '',
+      images: [{ type: 'image/png', data: PNG_BASE64 }],
+    }),
+  )
+})
+
+test('a follow-up of an image alone sends the image only', async () => {
+  const server = fakeServer([
+    comment({
+      state: 'resolved',
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z', run: 'r1' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  paste(box, [png()])
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(server.patches).toEqual([
+      { id: 'c1', patch: { images: [{ type: 'image/png', data: PNG_BASE64 }] } },
+    ]),
+  )
+})
+
+test('a comment of an image alone reads as one, with no empty bubble', async () => {
+  const filed = comment()
+  filed.messages = filed.messages.map((message) => ({
+    ...message,
+    body: '',
+    images: ['m1-1.png', 'm1-2.png'],
+  }))
+  fakeServer([filed])
+  openPanel()
+  renderWidget()
+  const summary = await screen.findByTestId('cb-summary')
+  expect(summary.textContent).toContain('2 images')
+
+  fireEvent.click(summary)
+  await screen.findByRole('img', { name: 'Attached image 2' })
+  expect(document.querySelector('.cb-bubble--reader')).toBeNull()
 })

@@ -249,10 +249,13 @@ history first, which the debug panel opens in a tab.
 
 The reader pastes or drops an image in the widget's message box: it goes
 with the message, a new comment (`POST /api/comments`) or a reply (`PATCH`
-with `followUp` or `choices`), as `images`: `{ type, data }` objects, `data`
-in base64. The server takes up to 4 per message, PNG, JPEG, GIF or WebP, up
-to 5 MB each, and checks the bytes, not only the type; it answers 422 with
-its reason otherwise, which the widget shows. A request may then hold up to
+with `followUp` or `choices`, or alone), as `images`: `{ type, data }`
+objects, `data` in base64. An image alone is a message, with an empty `body`.
+The server takes up to 4 per message, PNG, JPEG, GIF or WebP, up to 5 MB
+each, and checks the bytes, not only the type; it answers 422 with its reason
+otherwise, which the widget shows. These limits live in
+`scripts/lib/image-limits.json`, which the widget bundles to refuse an image
+before sending it. A request may then hold up to
 100,000 characters of text besides its images. Images sent with any
 other move are ignored. The server refuses any change (403) from a page whose
 origin it does not let in: a page of another site could send one without

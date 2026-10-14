@@ -173,20 +173,22 @@ const historyPath = (project, id) => path.join(project.progressDir, `${id}.histo
 
 /**
  * The reader's answer to Claude's question: the options they chose, from the
- * ones it offered, then their own words. Undefined when it says nothing.
+ * ones it offered, then their own words. Undefined when it holds neither,
+ * unless images go with it (`imaged`): an image alone is a reply.
  * @param {any} comment
  * @param {string | undefined} text
  * @param {string[] | undefined} choices
+ * @param {boolean} imaged
  * @returns {{ body: string, choices?: string[] } | undefined}
  */
-function readerReply(comment, text, choices) {
+function readerReply(comment, text, choices, imaged) {
   const asked = isAsking(comment) ? comment.messages?.at(-1) : undefined
   /** @type {string[]} */
   const offered = asked?.options?.map((option) => option.label) ?? []
   const valid = offered.filter((label) => choices?.includes(label))
   const chosen = asked?.multiple ? valid : valid.slice(0, 1)
   const body = [chosen.join(', '), text ?? ''].filter(Boolean).join('\n\n')
-  if (!body) return undefined
+  if (!body && !imaged) return undefined
   return chosen.length ? { body, choices: chosen } : { body }
 }
 
@@ -506,7 +508,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             comment.messages[comment.messages.indexOf(last)] = { ...kept, body: text }
           }
         }
-        const reply = readerReply(comment, followUp, choices)
+        const reply = readerReply(comment, followUp, choices, images.length > 0)
         /** @type {string[]} */
         let names = []
         if (reply) {

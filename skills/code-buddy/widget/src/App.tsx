@@ -32,9 +32,11 @@ import {
   type ReviewMessage,
   type ReviewProgress,
   answered,
+  gist,
   isActive,
   isAsking,
   isReply,
+  latestImages,
   latestText,
   modelOf,
   paused,
@@ -666,7 +668,7 @@ export default function App({ root }: { root: Element }) {
   }
 
   const save = async () => {
-    if (!draft?.body.trim()) return
+    if (!draft || !written(draft)) return
     const { app, body, images, route: startedOn, url, ...anchor } = draft
     await run(async () => {
       const comment = await createComment({
@@ -1038,7 +1040,9 @@ export default function App({ root }: { root: Element }) {
                   ))}
                 </div>
               ) : null}
-              <div className="cb-bubble cb-bubble--reader">{message.body}</div>
+              {message.body && (
+                <div className="cb-bubble cb-bubble--reader">{message.body}</div>
+              )}
               <MessageTime at={message.at} />
             </div>
           ),
@@ -1086,9 +1090,13 @@ export default function App({ root }: { root: Element }) {
             const body = (
               resend?.id === comment.id ? resend.body : latestText(comment)
             ).trim()
-            if (!body) return
+            // Images alone go again as they were.
+            if (!body && !latestImages(comment).length) return
             void run(async () => {
-              await updateComment(comment.id, { text: body, cancelled: false })
+              await updateComment(comment.id, {
+                ...(body ? { text: body } : {}),
+                cancelled: false,
+              })
               setResend(undefined)
               toLatest()
             })
@@ -1177,7 +1185,7 @@ export default function App({ root }: { root: Element }) {
           </time>
           {deleteButton(comment)}
         </div>
-        <p>{comment.messages[0]?.body}</p>
+        <p>{gist(comment.messages[0])}</p>
         {(messages > 2 || model) && (
           <span className="cb-author">
             <ModelLabel comment={comment} />

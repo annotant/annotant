@@ -1,10 +1,12 @@
 import type { NewImage } from './domain'
 
-/** The types the server takes, as scripts/lib/images.mjs checks them. */
-const TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
-/** As the server: the most images one message carries, and bytes one image holds. */
-export const MAX_IMAGES = 4
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+// The server's limits, scripts/lib/images.mjs's, from the same file.
+import limits from '../../scripts/lib/image-limits.json' with { type: 'json' }
+
+const TYPES = new Set(Object.keys(limits.types))
+/** The most images one message carries. */
+export const MAX_IMAGES = limits.maxImages
+const MAX_IMAGE_BYTES = limits.maxImageBytes
 
 /** The image files among `files`: what a paste or a drop brings. */
 export const imageFiles = (files: Iterable<File>) =>

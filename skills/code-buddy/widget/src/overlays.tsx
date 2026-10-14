@@ -1,7 +1,7 @@
 import { type CSSProperties, Fragment, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { elementFromAnchor, rangesFromAnchors, startRect } from './anchors'
-import { type ReviewComment, wasResolved } from './domain'
+import { gist, type ReviewComment, wasResolved } from './domain'
 import { RAINBOW_PERIOD } from './styles'
 import { Icon } from './ui'
 
@@ -252,7 +252,7 @@ export function ElementMarks({
             className="cb-quote-pin cb-live"
             style={{ top: shown.top, left: shown.left }}
             aria-label={`Open the comment on <${comment.anchor.element?.tag ?? 'element'}>`}
-            title={comment.messages[0]?.body}
+            title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
           >
             <Icon name="chat" />
@@ -455,7 +455,7 @@ export function QuoteBubbles({
             className="cb-quote-pin cb-live"
             style={bubble}
             aria-label={`Open the comment on “${comment.anchor.quote}”`}
-            title={comment.messages[0]?.body}
+            title={gist(comment.messages[0])}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onOpen(comment)}
           >
