@@ -116,6 +116,9 @@ released to the `stable` branch.
 
 ### Fixed
 
+- The hook log lost lines when several processes wrote it at once (other
+  sessions, the agents' own hooks): each line rewrote the whole log, dropping
+  what was appended in between. Each line is now appended.
 - An open conversation did not scroll when a message arrived: Claude's
   answer, its steps or the reader's own message landed below the fold. Read
   to its end, the conversation now follows what arrives; scrolled up, it keeps
