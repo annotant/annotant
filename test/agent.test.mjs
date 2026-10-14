@@ -11,11 +11,11 @@ const agent = await readFile(path.join(ROOT, 'agents/worker.md'), 'utf8')
 const skill = await readFile(path.join(ROOT, 'skills/code-buddy/SKILL.md'), 'utf8')
 const hooks = await readFile(path.join(ROOT, 'hooks/register.ts'), 'utf8')
 
-test('the hooks start the agent the plugin ships', () => {
+test("each comment's agent gets the instructions of the agent the plugin ships", () => {
   const name = agent.match(/^---\n[\s\S]*?^name: (\S+)$[\s\S]*?^---$/m)?.[1]
   assert.equal(name, 'worker')
   assert.match(hooks, /^const WORKER = 'code-buddy:worker'$/m)
-  assert.match(hooks, /subagentType: WORKER,/)
+  assert.match(hooks, /\$\.fs\s*\.read\(`\$\{\$\.plugin\.root\}\/agents\/worker\.md`\)/)
 })
 
 test('the hooks pass the agent its paths, not its steps', () => {

@@ -172,6 +172,24 @@ test('only a claimed comment shows progress, a tool merged from start to end', a
   ])
 })
 
+test('steps show in the order they happened, whichever process wrote one first', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // The hooks module notes the thinking after hook.mjs started the tool.
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 2, id: 't1', kind: 'edit', label: 'a.ts', state: 'running' },
+    { at: 1, kind: 'thinking', label: '' },
+    { at: 3, id: 't1', kind: 'edit', label: 'a.ts', state: 'done' },
+  )
+  const [listed] = await comments.list('/')
+  assert.deepEqual(listed.progress, [
+    { at: 1, kind: 'thinking', label: '' },
+    { at: 2, id: 't1', kind: 'edit', label: 'a.ts', state: 'done' },
+  ])
+})
+
 test('a cancellation lists the files written and counts tools, not narration', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)

@@ -97,7 +97,7 @@ What to do after a change, in a running session, is in the README's
 | Path                                  | What                                                                |
 | ------------------------------------- | ------------------------------------------------------------------- |
 | `.claude-plugin/`                     | Plugin and marketplace manifests                                    |
-| `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: `/code-buddy` and the dispatch, file locks and progress, in every agent |
+| `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: `/code-buddy` and the dispatch; each comment's agent gets `scripts/hook.mjs` (file locks, progress) as its own hooks |
 | `types/index.d.ts`                    | The values the hooks keep for the session (`$.state`)               |
 | `agents/worker.md`                    | The agent that handles one comment (`code-buddy:worker`): its steps and rules |
 | `skills/code-buddy/SKILL.md`          | The skill Claude reads: its modes; the watch is the hooks'          |

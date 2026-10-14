@@ -1,26 +1,28 @@
-// Code Buddy's hooks, as a Claude Code mod (2.1.287 or later). They run in
-// every session and every subagent, and act only for an agent that claimed a
-// comment with claim.mjs: they lock the files it writes, so agents working on
-// other comments never edit the same file at once, and record its steps for
-// the widget in the progress file the server reads.
-//
-// Before a comment's agent starts, they pick its model: a classifier sorts the
-// comment (trivial, standard, hard) and `.code-buddy.json`'s `models` maps the
-// label to a model, which claim.mjs records on the run for the widget.
+// Code Buddy's hooks, as a Claude Code mod (2.1.287 or later).
 //
 // `/code-buddy` (or the skill, through mcp__code-buddy__watch) starts the
 // project's server and reads its lines: each comment starts its agent at once,
 // in the background, with no model turn, so the session stays free for any
 // other work. Follow-ups and edits go to that agent; a stop ends it.
 //
-// Loaded once per session, they start no process per tool call. The bindings
-// (agent to comment), the locks, the routes, the workers and the projects
-// watched live in $.state, so they survive a reload of the module and vanish
-// with the session, like the agents themselves.
+// Before a comment's agent starts, they pick its model: a classifier sorts the
+// comment (trivial, standard, hard) and `.code-buddy.json`'s `models` maps the
+// label to a model, which claim.mjs records on the run for the widget.
+//
+// Claude Code runs none of this module's hooks for an agent it starts, so each
+// comment's agent is a type of its own, `code-buddy:cb-<id>`, whose settings
+// hooks run scripts/hook.mjs around each of its tools with the comment written
+// in: it locks the files the agent writes, so agents working on other comments
+// never edit the same file at once, and records its steps for the widget in
+// the progress file the server reads.
+//
+// The workers and the projects watched live in $.state, so they survive a
+// reload of the module and vanish with the session, like the agents
+// themselves.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Binding, CommentsFile, Complexity, Lock, Route, Worker } from '../types'
+import type { CommentsFile, Complexity, Worker } from '../types'
 
 type $ = EngineInterface
 /**
@@ -38,18 +40,15 @@ type Project = {
 }
 type Step = Record<string, unknown>
 
-const noBindings: Record<string, Binding> = {}
-const noLocks: Record<string, Lock> = {}
-const noRoutes: Record<string, Route> = {}
-const bindings = atom({ plugin: 'code-buddy', key: 'bindings' } as const, noBindings)
-const locks = atom({ plugin: 'code-buddy', key: 'locks' } as const, noLocks)
-const routes = atom({ plugin: 'code-buddy', key: 'routes' } as const, noRoutes)
 const noWorkers: Record<string, Worker> = {}
 const noWatching: Record<string, true> = {}
 const workers = atom({ plugin: 'code-buddy', key: 'workers' } as const, noWorkers)
 const watching = atom({ plugin: 'code-buddy', key: 'watching' } as const, noWatching)
 
+/** The plugin's agent file, whose instructions every comment's agent gets. */
 const WORKER = 'code-buddy:worker'
+/** A comment's agent type: `cb-` and the comment's short id. */
+const COMMENT_AGENT = /^code-buddy:cb-[\w-]+$/
 const COMPLEXITIES: readonly Complexity[] = ['trivial', 'standard', 'hard']
 /** The parent's model: today's behaviour, no routing. */
 const INHERIT = 'inherit'
@@ -70,39 +69,7 @@ const GUIDE = [
 // A hook's own time is bounded: past this, the agent starts on its own model.
 const CLASSIFY_MS = 5_000
 const MAX_CLASSIFIED = 2_000
-
-// A hook's own time is bounded (10 s, waits included).
-const LOCK_WAIT_MS = 6_000
-const LOCK_POLL_MS = 200
-const STALE_MS = 20 * 60 * 1000
 const MAX_TEXT = 400
-
-const BUILD = /\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?build\b|\b(?:next|vite)\s+build\b/
-const WORD = String.raw`[^\s;&|()<>]+`
-// The agent's scripts, called by any path (`$S/claim.mjs` too).
-const CLAIM = new RegExp(String.raw`\bclaim\.mjs\s+(${WORD})`)
-// The folder claim.mjs was run from, when the command gives it in full.
-const SCRIPTS_DIR = /(\/[^\s;&|()<>'"]*\/)claim\.mjs\b/
-const RESOLVE = new RegExp(String.raw`\b(?:resolve|ask)\.mjs\s+(${WORD})`)
-// What claim.mjs prints: the project it found from the shell's directory,
-// which the hooks cannot see (`--project .` after a `cd`), and the run it
-// started, which tags the agent's steps.
-const CLAIMED = /^claimed (\S+) \(.*\) project=(\/.*?)(?: run=(\S+))?$/m
-// A Bash command that writes files takes no lock: refused to an agent working
-// on a comment, which must use Edit or Write. Best effort, on the usual forms.
-// What an inline script writes cannot be told: always refused.
-const SCRIPT_WRITES = [
-  /\bopen\([^)]*,\s*['"][wax]b?\+?['"]/,
-  /\.write_(?:text|bytes)\(/,
-  /\b(?:writeFile|appendFile)(?:Sync)?\s*\(/,
-]
-// An in-place editor, cat or tee names its files: refused only when one may be
-// in the repository (a relative path, after some `cd`, may be).
-const IN_PLACE = /\b(?:sed|perl)\s+(?:-\S+\s+)*-[\w-]*i/
-const CAT_INTO = /\bcat\s*>>?\s*(\S+)/
-const TEE = /\btee\b((?:\s+[^\s|;&<>]+)*)/
-// Claude Code's own plumbing, not the agent's work.
-const INTERNAL_TOOLS = new Set(['SubagentHandback'])
 
 // No node:path in a mod; the paths are the POSIX ones Claude Code hands over.
 function normalize(file: string): string {
@@ -122,19 +89,8 @@ const relative = (root: string, file: string) =>
     : file.startsWith(`${root}/`)
       ? file.slice(root.length + 1)
       : undefined
-/** An agent id as a shell word: Claude Code's ids are letters and digits. */
-const shellWord = (value: string) => value.replace(/[^\w-]/g, '')
 const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
-const unquote = (value: string) => value.replace(/^["']|["']$/g, '')
 const basename = (file: string) => file.slice(file.lastIndexOf('/') + 1)
-/** `file` as seen from `root`, `../` included. */
-function relativeFrom(root: string, file: string) {
-  const from = root.split('/').filter(Boolean)
-  const to = file.split('/').filter(Boolean)
-  let shared = 0
-  while (shared < from.length && from[shared] === to[shared]) shared++
-  return [...from.slice(shared).map(() => '..'), ...to.slice(shared)].join('/')
-}
 const short = (text: string, max = 80) =>
   text.length > max ? `${text.slice(0, max - 1)}…` : text
 const clip = (text: string) => short(text.trim().replace(/\s+/g, ' '), MAX_TEXT)
@@ -300,176 +256,6 @@ function loadProject($: $, root: string): Promise<Project> {
   return found
 }
 
-/**
- * Ids of the comments an agent may work on, as lib/store.mjs's isActive;
- * undefined when the file cannot be read, or is in another format.
- */
-async function activeCommentIds($: $, project: Project) {
-  try {
-    const file: CommentsFile = JSON.parse(await $.fs.read(project.commentsFile))
-    if (file.version !== 2 || !Array.isArray(file.comments)) return undefined
-    return new Set(
-      file.comments
-        .filter((c) => c.state === 'open' || c.state === 'working')
-        .map((c) => c.id),
-    )
-  } catch {
-    return undefined
-  }
-}
-
-// $.fs has no append: one read-then-write at a time per file.
-const writes = new Map<string, Promise<void>>()
-
-function appendProgress($: $, project: Project, comment: string, steps: Step[]) {
-  if (!steps.length) return Promise.resolve()
-  const file = `${project.progressDir}/${comment}.jsonl`
-  const lines = steps.map((step) => `${JSON.stringify(step)}\n`).join('')
-  const done = (writes.get(file) ?? Promise.resolve())
-    .then(async () => {
-      let text = ''
-      try {
-        text = await $.fs.read(file)
-      } catch {}
-      return $.fs.write(file, text + lines)
-    })
-    .catch(() => undefined)
-  writes.set(file, done)
-  return done
-}
-
-/** Nothing for a comment the reader stopped: its agent may still call tools. */
-async function record(
-  $: $,
-  agent: string,
-  project: Project,
-  comment: string,
-  steps: Step[],
-) {
-  if (!steps.length) return
-  const active = await activeCommentIds($, project)
-  if (active && !active.has(comment)) {
-    await debug($, agent, comment, 'recorded nothing: the comment is no longer active')
-    return
-  }
-  const run = (await bindingOf($, agent))?.run
-  await appendProgress(
-    $,
-    project,
-    comment,
-    steps.map((step) => ({ ...step, ...(run && { run }), agent })),
-  )
-  for (const step of steps) {
-    const state = typeof step.state === 'string' ? ` ${step.state}` : ''
-    await debug(
-      $,
-      agent,
-      comment,
-      `recorded ${String(step.kind)}${state} "${String(step.label)}"`,
-    )
-  }
-}
-
-/**
- * AskUserQuestion would reach the session's terminal, never the reader, who is
- * on the page: the agent asks in the comment's thread instead.
- */
-const askInThread = ({ root, comment, scripts }: Binding) =>
-  'The reader answers in the browser, where AskUserQuestion never shows. Ask in ' +
-  `the comment's thread instead: node ${JSON.stringify(`${scripts ?? 'SKILL/scripts/'}ask.mjs`)} ` +
-  `${comment} --project ${JSON.stringify(root)} ` +
-  '"<question>" --option "<label>: <description>" --option "…" (2 to 6 options; ' +
-  'add --multiple to let the reader pick several), then reply "QUESTION: <your question>".'
-
-function writeTarget(tool: string, args: Record<string, string | undefined>) {
-  if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit') return args.file_path
-  if (tool === 'NotebookEdit') return args.notebook_path
-  if (tool === 'Bash' && BUILD.test(args.command ?? '')) return '@build'
-  return undefined
-}
-
-/** The agent's own scripts pass: an answer may quote anything. */
-function writesFromBash(command: string, project: Project) {
-  if (CLAIM.test(command) || RESOLVE.test(command)) return false
-  if (SCRIPT_WRITES.some((pattern) => pattern.test(command))) return true
-  const targets: string[] = []
-  for (const segment of command.split(/&&|\|\||[;|\n]/)) {
-    const words = segment.trim().split(/\s+/)
-    if (IN_PLACE.test(segment)) targets.push(words.at(-1) ?? '')
-    const into = CAT_INTO.exec(segment)?.[1]
-    if (into) targets.push(into)
-    const teed = TEE.exec(segment)?.[1]
-    if (teed)
-      targets.push(
-        ...teed
-          .trim()
-          .split(/\s+/)
-          .filter((word) => !word.startsWith('-')),
-      )
-  }
-  return targets.some((target) => {
-    const file = unquote(target)
-    return (
-      !file.startsWith('/') || relative(project.lockRoot, normalize(file)) !== undefined
-    )
-  })
-}
-
-function describe(
-  project: Project,
-  tool: string,
-  args: Record<string, string | undefined>,
-) {
-  // From the project, as the agent's prompt and the reader see paths.
-  const repoPath = (file = '') => {
-    const full = resolve(project.root, file)
-    return relative(project.lockRoot, full) === undefined
-      ? basename(file)
-      : relativeFrom(project.root, full)
-  }
-  if (tool.startsWith('mcp__')) {
-    const [, server, name] = tool.split('__')
-    return { kind: 'mcp', label: `${server} · ${name}` }
-  }
-  switch (tool) {
-    case 'Read':
-    case 'Edit':
-    case 'Write':
-    case 'MultiEdit':
-      return { kind: tool.toLowerCase(), label: repoPath(args.file_path) }
-    case 'NotebookEdit':
-      return { kind: 'edit', label: repoPath(args.notebook_path) }
-    case 'Bash':
-      return CLAIM.test(args.command ?? '')
-        ? { kind: 'start', label: 'Started' }
-        : { kind: 'bash', label: short(args.description || args.command || '') }
-    case 'Grep':
-    case 'Glob':
-      return { kind: 'search', label: short(args.pattern ?? '') }
-    case 'WebFetch':
-      return {
-        kind: 'web',
-        label: args.url && URL.canParse(args.url) ? new URL(args.url).host : 'web',
-      }
-    case 'WebSearch':
-      return { kind: 'web', label: short(args.query ?? '') }
-    case 'Skill':
-      return { kind: 'skill', label: args.skill ?? '' }
-    default:
-      return { kind: 'tool', label: tool }
-  }
-}
-
-/** The comment and project a worker's prompt names: `<id>` first, then `PROJECT=<dir>`. */
-function workerTask(prompt: string) {
-  const lines = prompt.split('\n').map((line) => line.trim())
-  const comment = lines[0] ?? ''
-  const root = lines.find((line) => line.startsWith('PROJECT='))?.slice('PROJECT='.length)
-  return /^[\w-]+$/.test(comment) && root?.startsWith('/')
-    ? { comment, root: normalize(root) }
-    : undefined
-}
-
 async function readComment($: $, project: Project, id: string) {
   try {
     const file: CommentsFile = JSON.parse(await $.fs.read(project.commentsFile))
@@ -519,142 +305,9 @@ async function routeComment($: $, project: Project, id: string) {
   return { complexity, model: model && model !== INHERIT ? model : undefined }
 }
 
-/**
- * The route of the comment a claim.mjs command claims, when `agent` is the one
- * started for it: resumed for a follow-up, it keeps its model; any other
- * agent's claim names none it does not run on.
- */
-async function routeOfClaim($: $, command: string, agent: string) {
-  const id = CLAIM.exec(command)?.[1]
-  const route = id ? (await read($, routes))[unquote(id)] : undefined
-  return route?.agent === agent ? route : undefined
-}
-
-/** claim.mjs's environment: the agent, and the model it runs on. */
-function claimEnv(agent: string, route: Route | undefined) {
-  const env = [`CODE_BUDDY_AGENT=${shellWord(agent)}`]
-  if (route) env.push(`CODE_BUDDY_MODEL=${shellQuote(route.model)}`)
-  if (route?.complexity) env.push(`CODE_BUDDY_COMPLEXITY=${route.complexity}`)
-  return `export ${env.join(' ')};`
-}
-
-const lockKey = (root: string, target: string) => `${root}\n${target}`
-
-async function tryLock($: $, project: Project, owner: string, target: string) {
-  const active = await activeCommentIds($, project)
-  const key = lockKey(project.lockRoot, target)
-  let holder: string | undefined
-  await update($, locks, (all) => {
-    const held = all[key]
-    holder = undefined
-    if (held && held.owner !== owner) {
-      const stale =
-        Date.now() - held.at > STALE_MS ||
-        (active !== undefined && !active.has(held.owner))
-      if (!stale) {
-        holder = held.owner
-        return all
-      }
-    }
-    return { ...all, [key]: { owner, at: Date.now() } }
-  })
-  return holder
-}
-
-async function releaseAll($: $, { lockRoot: root }: Project, owner: string) {
-  const released: string[] = []
-  await update($, locks, (all) => {
-    released.length = 0
-    const kept: Record<string, Lock> = {}
-    for (const [key, lock] of Object.entries(all)) {
-      if (lock.owner === owner && key.startsWith(`${root}\n`)) {
-        released.push(key.slice(root.length + 1))
-      } else kept[key] = lock
-    }
-    return kept
-  })
-  return released
-}
-
-async function unlock($: $, project: Project, owner: string, target: string) {
-  const key = lockKey(project.lockRoot, target)
-  await update($, locks, (all) => {
-    if (all[key]?.owner !== owner) return all
-    const { [key]: _, ...rest } = all
-    return rest
-  })
-}
-
-/** The deny message, or undefined when the agent holds the lock. */
-async function lockTarget(
-  $: $,
-  agent: string,
-  project: Project,
-  binding: Binding,
-  target: string,
-  step: Step,
-): Promise<string | undefined> {
-  const log = (message: string) => debug($, agent, binding.comment, message)
-  const active = await activeCommentIds($, project)
-  if (active && !active.has(binding.comment)) {
-    await log(`refused ${target}: the reader stopped or resolved the comment`)
-    return `Comment ${binding.comment} was cancelled, resolved or deleted by the reader. Stop now: make no further changes and reply "CANCELLED".`
-  }
-  const relativeTarget =
-    target === '@build'
-      ? target
-      : relative(project.lockRoot, resolve(project.root, target))
-  if (relativeTarget === undefined) {
-    await log(`no lock for ${target}: outside ${project.lockRoot}`)
-    return undefined
-  }
-  const deadline = (await $.clock.now()) + LOCK_WAIT_MS
-  let waited = false
-  for (;;) {
-    const holder = await tryLock($, project, binding.comment, relativeTarget)
-    if (holder === undefined) {
-      await log(`locked ${relativeTarget}`)
-      return undefined
-    }
-    if (!waited) await log(`waiting for ${relativeTarget}, held by comment ${holder}`)
-    waited = true
-    if ((await $.clock.now()) >= deadline) {
-      const released = await releaseAll($, project, binding.comment)
-      await log(
-        `refused ${relativeTarget}: still held by comment ${holder}; released ${released.length} lock(s)`,
-      )
-      await record($, agent, project, binding.comment, [
-        {
-          ...step,
-          state: 'failed',
-          error: `${relativeTarget} is being changed by another comment's agent`,
-        },
-      ])
-      return (
-        `${relativeTarget} is being changed by the agent of comment ${holder}. ` +
-        `Your ${released.length} lock(s) were released to avoid a deadlock: ` +
-        're-read the files you are changing, then retry this step.'
-      )
-    }
-    await $.clock.sleep(LOCK_POLL_MS)
-  }
-}
-
-async function bindingOf($: $, agent: string) {
-  return (await read($, bindings))[agent]
-}
-
-async function setBinding($: $, agent: string, binding: Binding | undefined) {
-  const all = await update($, bindings, (current) => {
-    const { [agent]: _, ...rest } = current
-    return binding ? { ...rest, [agent]: binding } : rest
-  })
-  await showStatus($, Object.keys(all).length)
-}
-
-/** The projects watched, and the agents bound to a comment. */
-async function showStatus($: $, bound?: number) {
-  const count = bound ?? Object.keys(await read($, bindings)).length
+/** The projects watched, and the agents at work on comments. */
+async function showStatus($: $) {
+  const count = Object.values(await read($, workers)).filter((one) => one.running).length
   const parts = [
     ...(watches.size ? [`watching ${[...watches.keys()].map(basename).join(', ')}`] : []),
     ...(count ? [`${count} agent(s) on comments`] : []),
@@ -662,107 +315,93 @@ async function showStatus($: $, bound?: number) {
   $.ui.status(parts.length ? `code-buddy: ${parts.join(' · ')}` : undefined)
 }
 
+let workerPrompt: Promise<string> | undefined
+
 /**
- * The script that ended the run, done: the store archived the run's steps
- * while it still ran. Only into a history the store keeps (dev widget).
+ * The tools hook.mjs runs before: those it may refuse or lock for, and the slow
+ * ones the reader sees running. Each run is a Node start: Read, Grep and Glob,
+ * most of an agent's tools, are recorded once they end.
  */
-async function closeLastStep($: $, project: Project, comment: string, step: Step) {
-  const history = `${project.progressDir}/${comment}.history.jsonl`
-  if (!(await $.fs.exists(history).catch(() => false))) return
-  const text = await $.fs.read(history).catch(() => '')
-  await $.fs.write(history, `${text}${JSON.stringify(step)}\n`)
+const PRE_TOOLS =
+  'Edit|Write|MultiEdit|NotebookEdit|Bash|AskUserQuestion|WebFetch|WebSearch|Skill|mcp__.*'
+
+/** agents/worker.md's instructions, its frontmatter left out. */
+function readWorkerPrompt($: $) {
+  workerPrompt ??= $.fs
+    .read(`${$.plugin.root}/agents/worker.md`)
+    .then((text) => text.replace(/^---\n[\s\S]*?\n---\n+/, ''))
+  workerPrompt.catch(() => (workerPrompt = undefined))
+  return workerPrompt
 }
 
-async function finish(
+/**
+ * The agent type of one comment: the worker's instructions, the model routing
+ * chose, and hook.mjs around each tool, the comment and project written in.
+ * Re-registered for each agent the comment gets.
+ */
+async function registerCommentAgent(
   $: $,
-  agent: string,
   project: Project,
-  comment: string,
-  last: Step,
+  id: string,
+  model: string | undefined,
 ) {
-  const run = (await bindingOf($, agent))?.run
-  await closeLastStep($, project, comment, { ...last, ...(run && { run }), agent })
-  await setBinding($, agent, undefined)
-  const released = await releaseAll($, project, comment)
-  await debug(
-    $,
-    agent,
-    comment,
-    `run ended (answered or asked): unbound, released ${released.length} lock(s), progress dropped`,
-  )
-  const file = `${project.progressDir}/${comment}.jsonl`
-  await writes.get(file)
-  writes.delete(file)
-  await $.process.run(['rm', '-f', file])
+  const hook = (mode: string) =>
+    [
+      'node',
+      `${skillDir($)}/scripts/hook.mjs`,
+      mode,
+      '--comment',
+      id,
+      '--project',
+      project.root,
+      '--lock-root',
+      project.lockRoot,
+    ]
+      .map(shellQuote)
+      .join(' ')
+  const run = (mode: string) => [{ type: 'command', command: hook(mode) }]
+  const { agent } = await $.agent.register({
+    name: `cb-${tag(id)}`,
+    description: `Code Buddy: comment ${tag(id)}. Only the plugin's hooks start it.`,
+    prompt: await readWorkerPrompt($),
+    ...(model && { model }),
+    hooks: {
+      PreToolUse: [{ matcher: PRE_TOOLS, hooks: run('pre') }],
+      PostToolUse: [{ matcher: '*', hooks: run('post') }],
+      PostToolUseFailure: [{ matcher: '*', hooks: run('post') }],
+      // An agent's Stop hooks run as it stops.
+      Stop: [{ hooks: run('stop') }],
+    },
+  })
+  return agent
 }
 
-/**
- * claim.mjs binds the agent to its comment; resolve.mjs and ask.mjs end its
- * run. A failed chained command may still have run one: its output and the
- * comment's state tell. Returns true when the run ended. `last`: the step of
- * this command, once it ran.
- */
-async function followScripts(
-  $: $,
-  agent: string,
-  command: string,
-  output: string,
-  last: (project: Project) => Step,
-) {
-  const ended = command.match(RESOLVE)?.[1]
-  const binding = await bindingOf($, agent)
-  if (ended && binding?.comment === ended) {
-    const project = await projectOf($, agent, binding)
-    const active = project && (await activeCommentIds($, project))
-    if (project && !active?.has(ended)) {
-      await finish($, agent, project, ended, last(project))
-      return true
-    }
-  }
-  const claimed = CLAIMED.exec(output)
-  if (claimed?.[1] && claimed[2]) {
-    const root = normalize(claimed[2].trim())
-    const run = claimed[3]
-    const scripts = SCRIPTS_DIR.exec(command)?.[1]
-    await setBinding($, agent, {
-      root,
-      comment: claimed[1],
-      ...(run && { run }),
-      ...(scripts && { scripts }),
-    })
-    await debug(
-      $,
-      agent,
-      claimed[1],
-      `bound to comment ${claimed[1]} in ${root}${run ? `, run ${run}` : ''}`,
-    )
-  } else if (CLAIM.test(command)) {
-    const said = output.trim().split('\n')[0] ?? ''
-    await debug(
-      $,
-      agent,
-      '-',
-      `claim.mjs printed no project, so the agent is not bound: ${short(said, 160)}`,
-    )
-  }
-  return false
-}
+/** Where claim.mjs finds the agent, its model and the comment's label (lib/store.mjs's routePath). */
+const routeFile = (project: Project, id: string) =>
+  `${project.progressDir.slice(0, project.progressDir.lastIndexOf('/'))}/routes/${id}.json`
 
-/** The bound project, or undefined, unbinding the agent, when it cannot be read. */
-async function projectOf($: $, agent: string, binding: Binding) {
-  try {
-    return await loadProject($, binding.root)
-  } catch (error) {
-    await setBinding($, agent, undefined)
-    const why = error instanceof Error ? error.message : String(error)
-    await debug(
-      $,
-      agent,
-      binding.comment,
-      `cannot read ${binding.root}/.code-buddy.json (${short(why, 120)}): binding dropped`,
+/** The agents' notes, in order: hook.mjs writes them while the agents go on. */
+let noting: Promise<unknown> = Promise.resolve()
+
+/** What the agent thinks and says, into its comment's steps through hook.mjs. */
+async function note($: $, agent: string, id: string, root: string, steps: Step[]) {
+  if (!steps.length) return
+  await $.process
+    .run(
+      [
+        'node',
+        `${skillDir($)}/scripts/hook.mjs`,
+        'note',
+        '--comment',
+        id,
+        '--project',
+        root,
+        '--agent',
+        agent,
+      ],
+      { stdin: steps.map((step) => JSON.stringify(step)).join('\n') },
     )
-    return undefined
-  }
+    .catch(() => undefined)
 }
 
 // ---------------------------------------------------------------------------
@@ -773,8 +412,8 @@ const MAX_RUNNING = 3
 // A hook's own time is bounded: past this, the command answers and the server
 // keeps starting.
 const START_MS = 8_000
-// A resolved comment's agent ends on its own: it resolved it, and unbound.
-// Still bound past this, the reader resolved it while the agent worked.
+// A comment the reader resolved while its agent worked stops the agent, unless
+// the reader opens it again within this.
 const RESOLVED_GRACE_MS = 3_000
 const SERVER_ERRORS = new Set([
   'PORT_BUSY',
@@ -785,6 +424,13 @@ const SERVER_ERRORS = new Set([
 const WATCH_TOOL = 'mcp__code-buddy__watch'
 
 type Kind = 'new' | 'followup' | 'edit'
+/** The server's lines that ask an agent for work. */
+const WORK: Record<string, Kind | undefined> = {
+  OPEN: 'new',
+  NEW: 'new',
+  FOLLOWUP: 'followup',
+  EDIT: 'edit',
+}
 /** A comment waiting for a free agent, with the latest line about it. */
 type Queued = { id: string; line: string; kind: Kind }
 
@@ -796,6 +442,8 @@ type Watch = {
   queue: Queued[]
   /** By comment, how many lines came about it: a later one supersedes a wait. */
   heard: Map<string, number>
+  /** By comment, the last line that asked an agent for work. */
+  asked: Map<string, Queued>
   stopped: boolean
   stop: () => void
 }
@@ -825,6 +473,7 @@ const edited = (id: string, line: string) =>
 
 async function setWorker($: $, id: string, worker: Worker) {
   await update($, workers, (all) => ({ ...all, [id]: worker }))
+  await showStatus($)
 }
 
 async function workerOf($: $, agent: string) {
@@ -857,6 +506,13 @@ function pump($: $) {
 
 /** Sends the reader's edit or follow-up to the comment's agent, which a message resumes. */
 async function send($: $, worker: Worker, { id, line, kind }: Queued) {
+  // A reload of the plugin unloads its agent types, and with them the hooks of
+  // the agents running as one: the message resumes the agent with them again.
+  const project = await loadProject($, worker.root).catch(() => undefined)
+  if (project)
+    await registerCommentAgent($, project, id, worker.model).catch((error: unknown) =>
+      debug($, worker.agent, id, `could not register its agent type: ${String(error)}`),
+    )
   const sent = await $.session
     .send({
       to: { agentId: worker.agent },
@@ -889,18 +545,13 @@ async function handOver($: $, watched: Watch, next: Queued) {
 async function startWorker($: $, watched: Watch, id: string, line: string) {
   const name = `cb-${tag(id)}`
   starting.set(id, { stop: false })
-  const started = await $.agent
-    .spawn({
-      subagentType: WORKER,
-      name,
-      description: `Code Buddy comment ${tag(id)}`,
-      // The paths first: the reader's line is data, and comes last.
-      prompt: [id, `SKILL=${skillDir($)}`, `PROJECT=${watched.root}`, line].join('\n'),
-    })
-    .catch((error: unknown) => ({
+  const started = await spawnWorker($, watched, id, name, line).catch(
+    (error: unknown) => ({
       deny: error instanceof Error ? error.message : String(error),
       agentId: undefined,
-    }))
+      route: undefined,
+    }),
+  )
   // A spawn a hook answered carries no id: the agent list names it.
   const agent =
     started.agentId ??
@@ -915,11 +566,49 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     await debug($, 'main', id, `could not start an agent: ${short(why, 160)}`)
     return
   }
-  const worker = { agent, running: true }
+  if (started.route) {
+    const { project, ...route } = started.route
+    await $.fs.write(routeFile(project, id), JSON.stringify({ ...route, agent }))
+    const label = route.complexity ? `, the comment classified ${route.complexity}` : ''
+    await debug($, agent, id, `started on ${route.model}${label}`)
+  }
+  const worker = {
+    agent,
+    root: watched.root,
+    running: true,
+    ...(started.route && { model: started.route.model }),
+  }
   await setWorker($, id, worker)
   await debug($, agent, id, `started for ${line.split(' ')[0]}`)
   if (meanwhile?.stop) await stopWorker($, watched, id)
   else if (meanwhile?.message) await send($, worker, meanwhile.message)
+}
+
+/**
+ * Picks the comment's model, registers its agent type and starts it. `route`:
+ * what claim.mjs is to record on the run, the agent aside.
+ */
+async function spawnWorker($: $, watched: Watch, id: string, name: string, line: string) {
+  const project = await loadProject($, watched.root)
+  const { model, complexity } = await routeComment($, project, id)
+  const started = await $.agent.spawn({
+    subagentType: await registerCommentAgent($, project, id, model),
+    name,
+    description: `Code Buddy comment ${tag(id)}`,
+    // The paths first: the reader's line is data, and comes last.
+    prompt: [id, `SKILL=${skillDir($)}`, `PROJECT=${watched.root}`, line].join('\n'),
+  })
+  if (started.deny !== undefined) return { ...started, route: undefined }
+  // Claude Code names the model it resolved; the one asked for, or the
+  // session's, which the agent inherits, when it does not.
+  const resolved =
+    started.model && started.model !== INHERIT
+      ? started.model
+      : (model ?? (await $.session.model()))
+  return {
+    ...started,
+    route: { project, model: resolved, ...(complexity && { complexity }) },
+  }
 }
 
 /**
@@ -947,18 +636,20 @@ async function dispatch($: $, watched: Watch, next: Queued) {
   await pump($)
 }
 
-/** Ends the comment's agent; `ifBound`: only while it still works on it. */
-async function stopWorker($: $, watched: Watch, id: string, ifBound = false) {
+/**
+ * Ends the comment's agent; `ifRunning`: only while it still works on it, the
+ * reader resolved it meanwhile (its own answer ends its turn).
+ */
+async function stopWorker($: $, watched: Watch, id: string, ifRunning = false) {
   watched.queue = watched.queue.filter((one) => one.id !== id)
   const pending = starting.get(id)
   if (pending) {
     // A resolved comment's claim fails: its agent stops on its own.
-    if (!ifBound) pending.stop = true
+    if (!ifRunning) pending.stop = true
     return
   }
   const worker = (await read($, workers))[id]
   if (!worker?.running) return
-  if (ifBound && (await bindingOf($, worker.agent))?.comment !== id) return
   await $.tool.call({ tool: 'TaskStop', task_id: worker.agent }).catch(() => undefined)
   await setWorker($, id, { ...worker, running: false })
   await debug($, worker.agent, id, 'stopped: the reader ended the comment')
@@ -984,19 +675,19 @@ async function onLine(
   if (!/^[\w-]+$/.test(id)) return
   const heard = (watched.heard.get(id) ?? 0) + 1
   watched.heard.set(id, heard)
+  const work = WORK[kind]
+  if (work) {
+    const next = { id, line, kind: work }
+    watched.asked.set(id, next)
+    return dispatch($, watched, next)
+  }
   switch (kind) {
-    case 'OPEN':
-    case 'NEW':
-      return dispatch($, watched, { id, line, kind: 'new' })
-    case 'FOLLOWUP':
-      return dispatch($, watched, { id, line, kind: 'followup' })
-    case 'EDIT':
-      return dispatch($, watched, { id, line, kind: 'edit' })
     case 'CANCELLED':
     case 'DELETED':
       return stopWorker($, watched, id)
     case 'RESOLVED':
-      // Unless the reader opened it again meanwhile.
+      // The agent's own answer ends its turn.
+      if (await resolvedByAgent($, watched.root, id)) return
       void $.clock
         .sleep(RESOLVED_GRACE_MS)
         .then(() =>
@@ -1008,6 +699,13 @@ async function onLine(
       // ASKED, ANSWERED: the agent's own end; the reader answers in the thread.
       return
   }
+}
+
+/** Whether the comment's last move is its agent's: undefined when unknown. */
+async function resolvedByAgent($: $, root: string, id: string) {
+  const project = await loadProject($, root).catch(() => undefined)
+  const comment = project && (await readComment($, project, id))
+  return comment?.events?.at(-1)?.by === 'agent'
 }
 
 /** Starts the project's server and reads its lines, until it ends. */
@@ -1026,6 +724,7 @@ function serve($: $, root: string): Watch {
     started,
     queue: [],
     heard: new Map(),
+    asked: new Map(),
     stopped: false,
     stop: () => {
       watched.stopped = true
@@ -1186,6 +885,15 @@ async function mayWatch($: $, project: string) {
   )
 }
 
+/** A slash command, or a line in the log when Claude Code refuses its name. */
+async function registerCommand($: $, command: Parameters<$['command']['register']>[0]) {
+  await $.command
+    .register(command)
+    .catch((error: unknown) =>
+      debug($, 'main', '-', `/${command.name} not registered: ${String(error)}`),
+    )
+}
+
 /** `/code-buddy [dir|stop]`: the answer the person reads. */
 async function watchCommand($: $, args: string) {
   const word = args.trim()
@@ -1228,12 +936,32 @@ async function rearm($: $) {
   }
 }
 
+/**
+ * The reader answered while the agent was ending its turn: the message
+ * reached it, but it ended without reading it, and the comment still waits for
+ * an agent. It goes again, to the agent now free, once: an agent that ends
+ * its turn again without taking it would get it forever.
+ */
+async function answerMissed($: $, id: string, worker: Worker) {
+  const watched = watches.get(worker.root)
+  const last = watched?.asked.get(id)
+  if (!watched || !last || last.kind === 'new') return
+  const project = await loadProject($, worker.root).catch(() => undefined)
+  const comment = project && (await readComment($, project, id))
+  if (comment?.state !== 'open') return
+  watched.asked.delete(id)
+  await debug($, worker.agent, id, 'the comment still waits: sent the reply again')
+  await dispatch($, watched, { ...last, kind: 'followup' })
+}
+
 /** A comment's agent ended its run: its one line for the person, and the next in line. */
 async function workerDone($: $, agent: string, answer: string) {
   const done = await workerOf($, agent)
   if (!done) return
   await setWorker($, done.id, { ...done.worker, running: false })
   const said = answer.trim().split('\n')[0] ?? ''
+  await debug($, agent, done.id, `turn ended: ${short(said, 120)}`)
+  await answerMissed($, done.id, done.worker)
   if (said && said !== 'CANCELLED') {
     $.ui.log(`code-buddy ${tag(done.id)}: ${short(said, 300)}`)
     if (said.startsWith('QUESTION:'))
@@ -1246,29 +974,15 @@ async function workerDone($: $, agent: string, answer: string) {
 
 export const register: Register = (on) => {
   // Tells server.mjs, started from this session, that the hooks are loaded:
-  // without them, agents would work with no locks and no progress.
+  // without them, no agent would take the comments.
   on('session.start', async ($, e, next) => {
     await $.env.set('CODE_BUDDY_HOOKS', '1')
-    await $.command.register({
-      name: 'code-buddy-debug',
-      description:
-        "Code Buddy: log what the plugin's hooks decide (on, off, or show the log)",
-      argumentHint: '[on|off]',
-      immediate: true,
-    })
-    // Immediate: it runs mid-turn, and starts no turn of its own.
-    await $.command.register({
-      name: 'code-buddy',
-      description:
-        'Code Buddy: watch the app for comments, one background agent each (a folder, or stop)',
-      argumentHint: '[dir|stop]',
-      immediate: true,
-    })
-    // The skill's way in: it finds the project, then hands it over.
+    // The skill's way in: it finds the project, then hands it over. First, so
+    // a command Claude Code refuses cannot leave the session without it.
     await $.tool.register({
       name: 'watch',
       description:
-        "Starts Code Buddy's watch on a project: its server, and one background agent per comment the reader leaves. Call it only when the code-buddy skill says so.",
+        "Starts Code Buddy's watch on a project: its server, and one background agent per comment the reader leaves; or, with stop, ends it. Call it only when the code-buddy skill says so.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -1277,9 +991,28 @@ export const register: Register = (on) => {
             description:
               'The project root, absolute: the folder holding .code-buddy.json.',
           },
+          stop: {
+            type: 'boolean',
+            description: 'true ends the watch instead; project is then left out.',
+          },
         },
-        required: ['project'],
       },
+    })
+    await registerCommand($, {
+      name: 'code-buddy-debug',
+      description:
+        "Code Buddy: log what the plugin's hooks decide (on, off, or show the log)",
+      argumentHint: '[on|off]',
+      immediate: true,
+    })
+    // Immediate: it runs mid-turn, and starts no turn of its own. Refused
+    // while the skill holds the name /code-buddy: the skill calls the tool.
+    await registerCommand($, {
+      name: 'code-buddy',
+      description:
+        'Code Buddy: watch the app for comments, one background agent each (a folder, or stop)',
+      argumentHint: '[dir|stop]',
+      immediate: true,
     })
     const { version } = await $.session.version()
     await debug($, 'main', '-', `hooks loaded in a new session (Claude Code ${version})`)
@@ -1296,6 +1029,7 @@ export const register: Register = (on) => {
   }))
 
   on('tool.call', { tool: WATCH_TOOL }, async ($, e) => {
+    if (e.stop === true) return { result: await stopWatching($) }
     const { project } = e
     if (typeof project !== 'string' || !project.startsWith('/'))
       return { deny: 'Give the project root as an absolute path.' }
@@ -1306,129 +1040,24 @@ export const register: Register = (on) => {
     return { result: await startWatch($, normalize(project)) }
   })
 
+  // After a reload of the module, the first tool call starts its servers again.
   on('tool.call', async ($, e, next) => {
     void rearm($)
-    if (INTERNAL_TOOLS.has(e.tool)) return next(e)
-    const agent = e.agentId ?? 'main'
-    // The tool's string arguments, beside the envelope (`e.command` for Bash).
-    const args: Record<string, string | undefined> = {}
-    for (const [key, value] of Object.entries(e)) {
-      if (typeof value === 'string') args[key] = value
-    }
-    const isClaim = e.tool === 'Bash' && CLAIM.test(args.command ?? '')
-    const route = isClaim ? await routeOfClaim($, args.command ?? '', agent) : undefined
-    // The Started step says which model the agent runs on.
-    const routed = route && {
-      model: route.model,
-      ...(route.complexity && { complexity: route.complexity }),
-    }
-    const binding = await bindingOf($, agent)
-    const project = binding && (await projectOf($, agent, binding))
-    if (binding && project && e.tool === 'AskUserQuestion') {
-      await debug($, agent, binding.comment, 'refused AskUserQuestion: ask in the thread')
-      return { deny: askInThread(binding) }
-    }
-    if (binding && project) {
-      const step = {
-        at: Date.now(),
-        id: e.tool_use_id,
-        ...describe(project, e.tool, args),
-        ...routed,
-      }
-      if (e.tool === 'Bash' && writesFromBash(args.command ?? '', project)) {
-        await debug(
-          $,
-          agent,
-          binding.comment,
-          `refused a Bash write: ${short(args.command ?? '', 120)}`,
-        )
-        await record($, agent, project, binding.comment, [
-          {
-            ...step,
-            state: 'failed',
-            error: 'writes files from Bash; use Edit or Write',
-          },
-        ])
-        return {
-          deny:
-            'This command writes files from Bash, where Code Buddy cannot lock them against ' +
-            "the other comments' agents. Make the change with the Edit or Write tool instead.",
-        }
-      }
-      const target = writeTarget(e.tool, args)
-      if (target) {
-        const deny = await lockTarget($, agent, project, binding, target, step)
-        if (deny) return { deny }
-      }
-      await record($, agent, project, binding.comment, [{ ...step, state: 'running' }])
-    }
-
-    // claim.mjs records which agent opened the run, and its model: the hooks
-    // alone know them.
-    const ran = await next(
-      isClaim ? { ...e, command: `${claimEnv(agent, route)} ${args.command}` } : e,
-    )
-    if (ran.deny !== undefined) return ran
-
-    const command = e.tool === 'Bash' ? (args.command ?? '') : ''
-    const done = (where: Project): Step => ({
-      at: Date.now(),
-      id: e.tool_use_id,
-      ...describe(where, e.tool, args),
-      ...routed,
-      state: ran.isError ? 'failed' : 'done',
-    })
-    if (await followScripts($, agent, command, ran.text ?? '', done)) return ran
-    // Read again: claim.mjs may have just bound the agent.
-    const bound = await bindingOf($, agent)
-    const boundProject = bound && (await projectOf($, agent, bound))
-    if (!bound || !boundProject) return ran
-    // A failed build frees the build lock as a successful one does.
-    if (BUILD.test(command)) {
-      await unlock($, boundProject, bound.comment, '@build')
-      await debug($, agent, bound.comment, 'build ended: released the build lock')
-    }
-    const step = done(boundProject)
-    if (ran.isError) step.error = short((ran.text ?? '').trim().split('\n')[0] ?? '', 160)
-    await record($, agent, boundProject, bound.comment, [step])
-    return ran
+    return next(e)
   })
 
-  // A comment's agent is about to start: the classifier sorts the comment, and
-  // `.code-buddy.json`'s `models` picks the model for its label. Whatever the
-  // agent ends up on is kept for its claim, which records it on the run.
-  on('agent.spawn', { subagentType: WORKER }, async ($, e, next) => {
-    const task = workerTask(e.prompt)
-    const project = task && (await loadProject($, task.root).catch(() => undefined))
-    if (!task || !project) return next(e)
-    const { model, complexity } = await routeComment($, project, task.comment)
-    const started = await next(model && !e.fork ? { ...e, model } : e)
-    if (started.deny !== undefined) return started
-    await update($, routes, (all) => ({
-      ...all,
-      [task.comment]: {
-        model: started.model,
-        ...(complexity && { complexity }),
-        ...(started.agentId && { agent: started.agentId }),
-      },
-    }))
-    await debug(
-      $,
-      started.agentId ?? '-',
-      task.comment,
-      `started on ${started.model}${complexity ? `, the comment classified ${complexity}` : ''}`,
-    )
-    return started
-  })
+  // Comments' agents are the hooks' alone: the model is never offered them.
+  on('agent.offer', async ($, e, next) =>
+    e.agent === WORKER || COMMENT_AGENT.test(e.agent) ? { isOffered: false } : next(e),
+  )
 
   // The agent's thinking (often redacted, then an empty label) and the
   // messages it writes between its tool calls.
   on('session.append', async ($, e, next) => {
     const stored = await next(e)
     if (!e.agentId || e.message.type !== 'assistant') return stored
-    const binding = await bindingOf($, e.agentId)
-    const project = binding && (await projectOf($, e.agentId, binding))
-    if (!binding || !project) return stored
+    const worker = await workerOf($, e.agentId)
+    if (!worker) return stored
     const content: { type?: string; thinking?: string; text?: string }[] = Array.isArray(
       e.message.content,
     )
@@ -1443,26 +1072,17 @@ export const register: Register = (on) => {
         steps.push({ at, kind: 'message', label: clip(block.text) })
       }
     }
-    await record($, e.agentId, project, binding.comment, steps)
+    // Not waited for: each note is a Node start. Its steps carry their time,
+    // which orders them among the tools' steps.
+    const agent = e.agentId
+    noting = noting.then(() => note($, agent, worker.id, worker.worker.root, steps))
     return stored
   })
 
-  // SubagentStop: a stopped agent holds nothing; resumed for a follow-up, it
-  // claims its comment again.
+  // A comment's agent ended its turn: resumed for a follow-up, it claims its
+  // comment again. Its Stop hook released its locks.
   on('turn.complete', async ($, e, next) => {
     void rearm($)
-    const binding = e.agentId ? await bindingOf($, e.agentId) : undefined
-    if (e.agentId && binding) {
-      const project = await projectOf($, e.agentId, binding)
-      const released = project ? await releaseAll($, project, binding.comment) : []
-      await setBinding($, e.agentId, undefined)
-      await debug(
-        $,
-        e.agentId,
-        binding.comment,
-        `turn ended: unbound, released ${released.length} lock(s)`,
-      )
-    }
     if (e.agentId) await workerDone($, e.agentId, e.answer)
     return next(e)
   })

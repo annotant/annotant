@@ -189,7 +189,8 @@ const PLUGIN_ROOT = path.resolve(SKILL_DIR, '..', '..')
 
 /**
  * What agent `id` was given: its first message, and for one of the plugin's
- * agents, its instructions (`agents/<name>.md`). Claude Code keeps only the
+ * agents, its instructions (`agents/<name>.md`; a comment's agent,
+ * `code-buddy:cb-<id>`, has the worker's). Claude Code keeps only the
  * message: the file is read as it is now, which a change since the agent
  * started makes differ.
  * @param {string} id
@@ -197,7 +198,11 @@ const PLUGIN_ROOT = path.resolve(SKILL_DIR, '..', '..')
 async function agentContext(id) {
   const agent = await findAgentPrompt(id)
   if (!agent) return undefined
-  const name = /^code-buddy:([\w-]+)$/.exec(agent.agentType ?? '')?.[1]
+  const type = (agent.agentType ?? '').replace(
+    /^code-buddy:cb-[\w-]+$/,
+    'code-buddy:worker',
+  )
+  const name = /^code-buddy:([\w-]+)$/.exec(type)?.[1]
   const file = name && `agents/${name}.md`
   const text =
     file && (await readFile(path.join(PLUGIN_ROOT, file), 'utf8').catch(() => ''))
