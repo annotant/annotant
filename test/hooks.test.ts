@@ -6,6 +6,7 @@ import type { CommandRunInput, EngineInterface, On } from 'claude-code'
 type AgentSpec = Parameters<EngineInterface['agent']['register']>[0]
 
 const ROOT = '/repo/web'
+const LOG = '/home/u/.cache/code-buddy/hook.log'
 
 type Comment = {
   id: string
@@ -40,12 +41,22 @@ function world(
     [`${ROOT}/.code-buddy/comments.json`, commentsFile(comments)],
   ])
   const removed: string[] = []
+  // Another process appending to the hook log (a comment agent's hook.mjs,
+  // another session): its line lands right after the mod next reads or
+  // appends to it.
+  let otherLine: string | undefined
+  const otherAppends = (path: string) => {
+    if (path !== LOG || otherLine === undefined) return
+    files.set(LOG, (files.get(LOG) ?? '') + otherLine)
+    otherLine = undefined
+  }
   on('fs.read', (_$, e) => {
     // The plugin's agent file.
     if (e.path.endsWith('/agents/worker.md'))
       return { value: '---\nname: worker\n---\n\nYou handle one comment.\n' }
     const text = files.get(e.path)
     if (text === undefined) throw new Error(`ENOENT ${e.path}`)
+    otherAppends(e.path)
     return { value: text }
   })
   on('fs.write', (_$, e) => {
@@ -107,6 +118,18 @@ function world(
           isStderrTruncated: false,
         },
       }
+    }
+    // The hook log's appender, `sh -c <script> sh <file> <line> <cap> <kept>`:
+    // past the cap, the last <kept> bytes from their first whole line.
+    if (e.argv[0] === 'sh' && e.argv[1] === '-c') {
+      const [file = '', line = '', cap = '', kept = ''] = e.argv.slice(4)
+      let text = (files.get(file) ?? '') + line
+      if (text.length > Number(cap)) {
+        text = text.slice(-Number(kept))
+        text = text.slice(text.indexOf('\n') + 1)
+      }
+      files.set(file, text)
+      otherAppends(file)
     }
     if (e.argv[0] === 'rm') {
       const file = e.argv[e.argv.length - 1] ?? ''
@@ -239,6 +262,9 @@ function world(
       label = next
     },
     write: (path: string, text: string) => files.set(path, text),
+    appendToLogMeanwhile: (line: string) => {
+      otherLine = line
+    },
     env,
     clock,
     removed,
@@ -298,7 +324,6 @@ async function watch(
   return (await answer).text
 }
 
-const LOG = '/home/u/.cache/code-buddy/hook.log'
 const debugCommand = (args: string): CommandRunInput => ({
   command: 'code-buddy-debug',
   args,
@@ -334,6 +359,33 @@ test('/code-buddy-debug turns the hook log on, shows it, and turns it off', asyn
   await $.command.run(debugCommand('off'))
   await w.print(newLine('c2'))
   expect(w.file(LOG)).toBe(log)
+  await w.exit(0)
+})
+
+test('keeps the lines another process appends to the hook log meanwhile', async ($, on) => {
+  const w = world(on, [open('c1'), open('c2')])
+  await $.command.run(debugCommand('on'))
+  await watch($, w)
+  await w.print(newLine('c1'))
+  w.appendToLogMeanwhile('2026-10-13T00:00:00.000Z a1 c1 locked src/App.tsx\n')
+  await w.print(newLine('c2'))
+  const log = w.file(LOG) ?? ''
+  expect(log).toMatch(/ a1 c1 locked src\/App\.tsx\n/)
+  expect(log).toMatch(/ a2 c2 started for NEW\n/)
+  await w.exit(0)
+})
+
+test('keeps the hook log under its cap, its newest whole lines', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await $.command.run(debugCommand('on'))
+  w.write(LOG, `${'x'.repeat(99)}\n`.repeat(3000))
+  await watch($, w)
+  await w.print(newLine('c1'))
+  const log = w.file(LOG) ?? ''
+  expect(log.length).toBeLessThanOrEqual(128 * 1024)
+  expect(log.length).toBeGreaterThan(100 * 1024)
+  expect(log).toMatch(/^x{99}\n/)
+  expect(log).toMatch(/ a1 c1 started for NEW\n/)
   await w.exit(0)
 })
 
