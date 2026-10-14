@@ -51,6 +51,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Unused code
+        run: npm run lint:unused
+
       - name: Type-check
         run: npm run typecheck
 

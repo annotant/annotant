@@ -5,7 +5,7 @@ import { elementFromAnchor, rangeFromAnchor } from './anchors'
  * The text the comment being written is about, until it is saved. Saved, it
  * gets a rainbow (`QuoteBubbles`), which a highlight cannot draw.
  */
-export const DRAFT_HIGHLIGHT_NAME = 'code-buddy-draft'
+const DRAFT_HIGHLIGHT_NAME = 'code-buddy-draft'
 
 function highlightsApi() {
   return typeof CSS !== 'undefined' && 'highlights' in CSS ? CSS.highlights : undefined

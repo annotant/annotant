@@ -29,7 +29,7 @@ export interface ReviewAnchor {
 }
 
 /** How much work a comment needs, as the hooks' classifier sorts it. */
-export type ReviewComplexity = 'trivial' | 'standard' | 'hard'
+type ReviewComplexity = 'trivial' | 'standard' | 'hard'
 
 export interface ReviewProgress {
   at: number
@@ -50,7 +50,7 @@ export interface ReviewProgress {
   complexity?: ReviewComplexity
 }
 
-export interface ReviewOption {
+interface ReviewOption {
   label: string
   description?: string
 }
@@ -73,7 +73,7 @@ export interface ReviewMessage {
   choices?: string[]
 }
 
-export interface ReviewCancellation {
+interface ReviewCancellation {
   at: string
   /** Files the cancelled agent had already written, relative to the repo. */
   changed: string[]
@@ -82,7 +82,7 @@ export interface ReviewCancellation {
 }
 
 /** One move of a comment, never overwritten. */
-export interface ReviewEvent {
+interface ReviewEvent {
   at: string
   /** The state it moved to. */
   state: ReviewState
@@ -125,7 +125,7 @@ export interface ReviewComment {
 }
 
 /** A line the server printed for the hooks, as it printed it. */
-export interface ReviewLine {
+interface ReviewLine {
   at: string
   line: string
 }

@@ -34,7 +34,8 @@ browser, and one background agent per comment makes the change. See the
 ## Commands
 
 - `npm ci`: install (install scripts are disabled).
-- `npm run check`: format check, lint, type-check, build and tests; must pass.
+- `npm run check`: format check, lint, unused code (knip, `knip.json`),
+  type-check, build and tests; must pass.
 - `npm test`: the `node:test` suites in `test/` (they need the widget built),
   then the widget's Vitest suites in `widget/test/` (`npx vitest` there to
   watch).

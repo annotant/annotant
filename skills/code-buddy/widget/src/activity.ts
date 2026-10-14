@@ -20,7 +20,7 @@ const RUNNING: Record<string, string> = {
   skill: 'Using',
 }
 
-export function stepText(step: ReviewProgress): string {
+function stepText(step: ReviewProgress): string {
   if (step.kind === 'thinking') return step.label || 'Thinking'
   return step.label
 }
