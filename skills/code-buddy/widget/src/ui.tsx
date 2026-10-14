@@ -1,5 +1,6 @@
 import {
   type ButtonHTMLAttributes,
+  type DragEvent,
   type FormEvent,
   type ReactNode,
   type TextareaHTMLAttributes,
@@ -9,6 +10,8 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react'
+import type { NewImage } from './domain'
+import { attach, imageFiles, preview } from './images'
 
 const PATHS = {
   x: 'M6 6l12 12M18 6L6 18',
@@ -161,25 +164,39 @@ export const Textarea = forwardRef<
   return <textarea ref={ref} className={`cb-textarea ${className}`} {...props} />
 })
 
-/** The message box at the panel's foot: Enter sends, Shift+Enter breaks the line. */
+const NO_IMAGES: NewImage[] = []
+
+/**
+ * The message box at the panel's foot: Enter sends, Shift+Enter breaks the
+ * line. An image pasted or dropped in it is attached to the message, shown
+ * as a thumbnail until it is sent.
+ */
 export function Composer({
   value,
   placeholder,
   disabled,
   autoFocus,
   sendLabel = 'Send',
+  images = NO_IMAGES,
   onChange,
   onSubmit,
   onEscape,
+  onAttach,
+  onDetach,
 }: {
   value: string
   placeholder: string
   disabled: boolean
   autoFocus?: boolean
   sendLabel?: string
+  images?: NewImage[]
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
+  /** Without it, the box takes no image. */
+  onAttach?: (images: NewImage[]) => void
+  /** Removes the attached image at `index`. */
+  onDetach?: (index: number) => void
 }) {
   const box = useRef<HTMLTextAreaElement>(null)
   // Grows with its text up to the CSS max-height, then scrolls.
@@ -195,8 +212,50 @@ export function Composer({
     event.preventDefault()
     if (!blocked) onSubmit()
   }
+  const add = async (files: File[]) => {
+    if (!onAttach || !files.length) return
+    try {
+      const { images: added, refused } = await attach(images.length, files)
+      if (refused) toast(refused, true)
+      if (added.length) onAttach(added)
+    } catch {
+      toast('The image could not be read.', true)
+    }
+  }
+  const onDragOver = (event: DragEvent) => {
+    if (!onAttach || !event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }
+  const onDrop = (event: DragEvent) => {
+    const files = imageFiles(event.dataTransfer.files)
+    if (!onAttach || !files.length) return
+    event.preventDefault()
+    void add(files)
+  }
   return (
-    <form className="cb-composer-box" onSubmit={submit}>
+    <form
+      className="cb-composer-box"
+      onSubmit={submit}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {images.length > 0 && (
+        <div className="cb-attachments" data-testid="cb-attachments">
+          {images.map((image, index) => (
+            // oxlint-disable-next-line react/no-array-index-key -- the same image twice is two attachments: only its place tells them apart
+            <div key={index} className="cb-attachment">
+              <img src={preview(image)} alt={`Attached image ${index + 1}`} />
+              <IconButton
+                icon="x"
+                label={`Remove image ${index + 1}`}
+                className="cb-attachment-remove"
+                onClick={() => onDetach?.(index)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       <textarea
         ref={box}
         rows={1}
@@ -205,6 +264,13 @@ export function Composer({
         aria-label={placeholder}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
+        onPaste={(event) => {
+          const files = imageFiles(event.clipboardData.files)
+          if (!onAttach || !files.length) return
+          // An image copied from a file also brings its name as text: the image alone goes in.
+          event.preventDefault()
+          void add(files)
+        }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return
           if (event.key === 'Escape') return onEscape?.()

@@ -33,7 +33,9 @@ Read `PROJECT/.code-buddy.json` first: `commentsFile` (relative to PROJECT),
    your earlier answers (`claude`) were applied; act on the reader's last
    message. `state` says where it stands. A `cancellation` field lists files
    an earlier, stopped agent left changed: keep, finish or revert them to
-   match the current text. When the element is unclear, screenshot it with
+   match the current text. `images=` in the line lists the images the reader
+   attached to that message (a screenshot, a mockup): open each with Read
+   before changing anything. When the element is unclear, screenshot it with
    Playwright on `devUrl`.
 3. Make the change, only under `editable`, with the Edit and Write tools:
    never write files from Bash (`sed -i`, scripts, redirections). Other

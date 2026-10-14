@@ -18,6 +18,15 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
+import {
+  CONTENT_TYPES,
+  IMAGE_NAME,
+  ImageRefusal,
+  MAX_IMAGES,
+  MAX_IMAGE_BYTES,
+  imagesDir,
+  parseImages,
+} from './lib/images.mjs'
 import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
@@ -104,17 +113,27 @@ class ClientError extends Error {
   }
 }
 
+/** The most a request's text may hold, its images aside. */
+const MAX_TEXT = 100_000
+/** The most a request may hold: its text, and its images in base64. */
+const MAX_BODY = MAX_TEXT + Math.ceil(MAX_IMAGE_BYTES / 3) * 4 * MAX_IMAGES
+
 async function readJson(req) {
   let raw = ''
   for await (const chunk of req) {
     raw += chunk
-    if (raw.length > 100_000) throw new ClientError(413)
+    if (raw.length > MAX_BODY) throw new ClientError(413)
   }
+  let input
   try {
-    return raw ? JSON.parse(raw) : {}
+    input = raw ? JSON.parse(raw) : {}
   } catch {
     throw new ClientError(400)
   }
+  // Only images may take the room above the text's.
+  const { images: _, ...text } = input ?? {}
+  if (JSON.stringify(text).length > MAX_TEXT) throw new ClientError(413)
+  return input
 }
 
 function sanitiseElement(element) {
@@ -168,6 +187,9 @@ function sanitisePatch(input) {
       .filter((choice) => typeof choice === 'string')
       .slice(0, MAX_OPTIONS)
   }
+  // With the reader's reply only: the store files them under it.
+  const images = parseImages(input.images)
+  if (images.length) patch.images = images
   if (typeof input.text === 'string' && input.text.trim()) {
     patch.text = input.text.trim()
   }
@@ -226,6 +248,26 @@ async function handle(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
     return listen(req, res, cors)
+  }
+
+  // An image a reader attached, as the store wrote it.
+  const [, imageOf, image] = /^\/api\/images\/([\w-]+)\/([^/]+)$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && imageOf && image) {
+    const data =
+      IMAGE_NAME.test(image) &&
+      (await readFile(path.join(imagesDir(project, imageOf), image)).catch(
+        () => undefined,
+      ))
+    if (!data) return send(res, 404, { error: 'not found' }, cors)
+    res.writeHead(200, {
+      ...cors,
+      'content-type': CONTENT_TYPES[path.extname(image).slice(1)],
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      // A name is never written twice: a deleted comment's id is not reused.
+      'cache-control': 'private, max-age=86400, immutable',
+    })
+    return res.end(data)
   }
 
   if (url.pathname === '/api/health') {
@@ -291,6 +333,7 @@ async function handle(req, res) {
         route: input.route.slice(0, 500),
         url: sanitiseUrl(input.url),
         body,
+        images: parseImages(input.images),
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),
@@ -417,7 +460,12 @@ function describe(comment) {
   const text = reply
     ? `followup=${quoted(reply.body)}${choices} messages=${comment.messages.length}`
     : `body=${quoted(comment.messages[0]?.body ?? '')}`
-  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}`
+  // The images of that message, as files the agent opens with Read.
+  const attached = (reply ?? comment.messages[0])?.images ?? []
+  const images = attached.length
+    ? ` images=${JSON.stringify(attached.map((name) => path.join(imagesDir(project, comment.id), name)))}`
+    : ''
+  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}${images}`
 }
 
 /** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
@@ -614,6 +662,11 @@ const server = http.createServer((req, res) => {
     // format: the store's own words, meant for the reader.
     if (error instanceof StoreRefusal) {
       send(res, 409, { error: error.message }, cors)
+      return
+    }
+    // An image the server does not take: its own words, for the reader too.
+    if (error instanceof ImageRefusal) {
+      send(res, 422, { error: error.message }, cors)
       return
     }
     if (error instanceof ClientError) {

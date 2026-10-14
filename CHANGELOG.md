@@ -69,6 +69,12 @@ released to the `stable` branch.
 
 ### Added
 
+- **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
+  message box, of a new comment or a reply: it shows as a thumbnail, goes
+  with the message and shows in its bubble. Up to 4 per message, PNG, JPEG,
+  GIF or WebP, 5 MB each. The server keeps them beside the comments file
+  (`.code-buddy/images/<id>/`), deleted with the comment, and the comment's
+  agent opens them with Read.
 - **Each comment gets a model that fits it.** Before a comment's agent
   starts, the hooks ask Claude Code's small fast model to sort the comment:
   `trivial` (copy, spacing, colour, one element), `standard` (a component's

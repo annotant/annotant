@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/prom
 import path from 'node:path'
 import { errorCode } from './errors.mjs'
 import { withFileLock } from './filelock.mjs'
+import { removeImages, saveImages } from './images.mjs'
 import {
   COMPLEXITIES,
   FORMAT_VERSION,
@@ -19,6 +20,7 @@ import { isDevWidget } from './project.mjs'
 /** @typedef {import('./format.mjs').Actor} Actor */
 /** @typedef {import('./format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./format.mjs').Complexity} Complexity */
+/** @typedef {import('./images.mjs').Image} Image */
 /** @typedef {import('./format.mjs').MessageV2} MessageV2 */
 /** @typedef {import('./format.mjs').State} State */
 
@@ -432,23 +434,34 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     },
 
     /**
-     * The reader's new comment: their words open the thread.
-     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string }} input
+     * The reader's new comment: their words, and the images they attached,
+     * open the thread.
+     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[] }} input
      * @returns {Promise<CommentV2>}
      */
-    create({ route, url, anchor, body }) {
+    create({ route, url, anchor, body, images = [] }) {
       return exclusive(async () => {
         const comments = await readAll()
         const at = new Date().toISOString()
+        const id = randomUUID()
+        const names = await saveImages(project, id, 'm1', images)
         /** @type {CommentV2} */
         const comment = {
-          id: randomUUID(),
+          id,
           route,
           ...(url ? { url } : {}),
           anchor,
           state: 'open',
           createdAt: at,
-          messages: [{ id: 'm1', author: 'reader', body, at }],
+          messages: [
+            {
+              id: 'm1',
+              author: 'reader',
+              body,
+              ...(names.length ? { images: names } : {}),
+              at,
+            },
+          ],
           events: [{ at, state: 'open', by: 'reader' }],
         }
         await writeAll([...comments, comment])
@@ -459,15 +472,16 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     /**
      * The reader's move, as the widget sends it: stop the run (`cancelled:
      * true`), send it again (`cancelled: false`, with new words in `text`),
-     * answer or follow up (`followUp`, `choices`), or resolve it (`status`).
+     * answer or follow up (`followUp`, `choices`, with the `images` the
+     * reader attached), or resolve it (`status`).
      * A stop or a re-send the comment is past changes nothing: a double
      * click, or a click on a button a poll late, is not an error. Undefined
      * when there is no such comment.
      * @param {string} id
-     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], text?: string, status?: 'resolved' }} patch
+     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], text?: string, status?: 'resolved' }} patch
      * @returns {Promise<CommentV2 | undefined>}
      */
-    update(id, { cancelled, followUp, choices, text, status }) {
+    update(id, { cancelled, followUp, choices, images = [], text, status }) {
       return exclusive(async () => {
         const comments = await readAll()
         const comment = comments.find((entry) => entry.id === id)
@@ -489,8 +503,13 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           }
         }
         const reply = readerReply(comment, followUp, choices)
-        if (reply)
+        if (reply) {
           move(comment, 'open', { by: 'reader', message: { author: 'reader', ...reply } })
+          // Written once the move is taken: a refused one leaves no file behind.
+          const message = comment.messages.at(-1)
+          const names = message ? await saveImages(project, id, message.id, images) : []
+          if (message && names.length) message.images = names
+        }
         if (status === 'resolved' && comment.state !== 'resolved') {
           move(comment, 'resolved', { by: 'reader', run })
           // Resolved by the reader: no answer to file the steps under.
@@ -509,6 +528,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         await writeAll(remaining)
         await rm(progressFile(id), { force: true })
         await rm(historyPath(project, id), { force: true })
+        await removeImages(project, id)
         return true
       })
     },

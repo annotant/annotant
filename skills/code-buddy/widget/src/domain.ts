@@ -71,6 +71,8 @@ export interface ReviewMessage {
   multiple?: boolean
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
+  /** Reader only: the images they attached, file names the server serves. */
+  images?: string[]
 }
 
 interface ReviewCancellation {
@@ -130,8 +132,17 @@ interface ReviewLine {
   line: string
 }
 
+/** An image the reader attaches to a message, before it is sent. */
+export interface NewImage {
+  /** `image/png`, `image/jpeg`, `image/gif` or `image/webp`. */
+  type: string
+  /** Its bytes, in base64. */
+  data: string
+}
+
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {
   body: string
+  images?: NewImage[]
 }
 
 /** What the reader asks of a comment; the server turns it into a move. */
@@ -144,6 +155,8 @@ export interface ReviewCommentPatch {
   followUp?: string
   /** Answers Claude's question with options it offered, before any `followUp` text. */
   choices?: string[]
+  /** With `followUp`: the images the reader attached to it. */
+  images?: NewImage[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
 }

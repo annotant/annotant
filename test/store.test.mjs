@@ -442,3 +442,46 @@ test('only a dev build of the widget counts as one', async (t) => {
   assert.equal(projects.isDevWidget(release), false)
   assert.equal(projects.isDevWidget(path.join(dir, 'missing.js')), false)
 })
+
+/** The first bytes of a PNG file: enough for the store, which writes what it is given. */
+const PNG = Buffer.from('89504e470d0a1a0a', 'hex')
+
+test("the reader's images go beside the comments file, and with the comment", async (t) => {
+  const project = projects.project(await tempProject(t))
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Like this',
+    images: [
+      { data: PNG, ext: 'png' },
+      { data: PNG, ext: 'png' },
+    ],
+  })
+  assert.deepEqual(comment.messages[0].images, ['m1-1.png', 'm1-2.png'])
+  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
+  assert.deepEqual(await readFile(path.join(dir, 'm1-2.png')), PNG)
+
+  await claim(comments, comment.id)
+  await comments.answer(comment.id, 'Done.')
+  const reopened = await update(comments, comment.id, {
+    followUp: 'And this',
+    images: [{ data: PNG, ext: 'png' }],
+  })
+  assert.deepEqual(lastOf(reopened.messages).images, ['m3-1.png'])
+  assert.equal(existsSync(path.join(dir, 'm3-1.png')), true)
+
+  await comments.remove(comment.id)
+  assert.equal(existsSync(dir), false)
+})
+
+test('a reply the comment refuses leaves no image behind', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await assert.rejects(
+    comments.update(comment.id, { followUp: 'Now', images: [{ data: PNG, ext: 'png' }] }),
+    store.StoreRefusal,
+  )
+  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
+  assert.equal(existsSync(dir), false)
+})

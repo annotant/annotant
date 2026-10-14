@@ -7,11 +7,13 @@ Code Buddy keeps two kinds of files for a project:
 | `comments.json` | In the project, at `commentsFile` of `.code-buddy.json` (`.code-buddy/comments.json` by default; `CODE_BUDDY_COMMENTS_FILE` overrides it) | The discussions: every comment, its thread, its state and the history of its moves | The store (`scripts/lib/store.mjs`), for the server and the agents' scripts |
 | `<id>.jsonl` | In the state folder, `<state>/<hash>/progress/` | The steps of the run in progress on comment `<id>` | The hooks (`hooks/register.ts`) |
 | `<id>.history.jsonl` | Next to it | The steps of every run that ended, with a dev build of the widget only | The store, when a run ends |
+| `images/<id>/m<n>-<k>.<ext>` | Beside `comments.json` | The images the reader attached to message `m<n>` of comment `<id>` | The store, from the widget's request |
 
 `<state>` is `CODE_BUDDY_STATE_DIR`, else `$XDG_CACHE_HOME/code-buddy`, else
 `~/.cache/code-buddy`. `<hash>` is the first 12 hex digits of the SHA-1 of the
 project's root: each project has its own folder. Deleting a comment deletes
-its step files; `comments.json` never holds a step.
+its step files and its images; `comments.json` never holds a step nor an
+image's bytes.
 
 The reference for the comments file is
 [`skills/code-buddy/scripts/lib/format.mjs`](../skills/code-buddy/scripts/lib/format.mjs):
@@ -95,6 +97,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
+| `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
 
 ### An event
 
@@ -241,6 +244,25 @@ comments: `progress`, the last 10 steps of the run in progress, and with
 `history=1` (the debug panel), `history`, every step of every run. With a dev
 widget, `GET /api/debug/steps/<id>` serves both files as they are on disk,
 history first, which the debug panel opens in a tab.
+
+## Images
+
+The reader pastes or drops an image in the widget's message box: it goes
+with the message, a new comment (`POST /api/comments`) or a reply (`PATCH`
+with `followUp` or `choices`), as `images`: `{ type, data }` objects, `data`
+in base64. The server takes up to 4 per message, PNG, JPEG, GIF or WebP, up
+to 5 MB each, and checks the bytes, not only the type; it answers 422 with
+its reason otherwise, which the widget shows. A request may then hold up to
+100,000 characters of text besides its images.
+
+The store writes them beside the comments file, as
+`images/<comment id>/m<n>-<k>.<ext>` (`m1-1.png`: the first image of the
+comment), and lists their names on the message. The server serves them at
+`GET /api/images/<comment id>/<name>`, for the thread's bubbles, and adds
+their full paths to the comment's line for the hooks (`NEW`, `OPEN`,
+`FOLLOWUP`): ` images=["/…/.code-buddy/images/<id>/m1-1.png"]`, after
+`body` or `followup`, for the images of that message. The agent opens them
+with Read. Deleting the comment deletes its folder.
 
 ## What the server adds
 

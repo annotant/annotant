@@ -519,3 +519,81 @@ test('tells the widgets when a comment is deleted', async () => {
     events.close()
   }
 })
+
+/** A PNG file's first bytes, in base64: the server checks them. */
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')
+
+test("files the reader's images, serves them, and gives the agent their paths", async () => {
+  const printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/images',
+        body: 'Like this',
+        images: [{ type: 'image/png', data: PNG }],
+      }),
+    ),
+  )
+  assert.deepEqual(created.messages[0].images, ['m1-1.png'])
+  const file = path.join(root, '.code-buddy', 'images', created.id, 'm1-1.png')
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.ok(event.endsWith(` body="Like this" images=${JSON.stringify([file])}`), event)
+
+  const served = await fetch(`${base}/api/images/${created.id}/m1-1.png`)
+  assert.equal(served.status, 200)
+  assert.equal(served.headers.get('content-type'), 'image/png')
+  assert.equal(served.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(Buffer.from(await served.arrayBuffer()).toString('base64'), PNG)
+  for (const name of ['m1-2.png', '..%2Fcomments.json', 'comments.json']) {
+    const missing = await fetch(`${base}/api/images/${created.id}/${name}`)
+    assert.equal(missing.status, 404, name)
+  }
+
+  const deleted = await fetch(`${base}/api/comments/${created.id}`, { method: 'DELETE' })
+  assert.equal(deleted.status, 204)
+  assert.equal(existsSync(path.dirname(file)), false)
+})
+
+test('refuses an image it does not take with 422, in words for the reader', async () => {
+  const cases = [
+    [
+      [{ type: 'image/svg+xml', data: PNG }],
+      'only PNG, JPEG, GIF and WebP images are taken',
+    ],
+    [[{ type: 'image/jpeg', data: PNG }], 'not a image/jpeg image'],
+    [
+      Array.from({ length: 5 }, () => ({ type: 'image/png', data: PNG })),
+      'at most 4 images per message',
+    ],
+  ]
+  for (const [images, error] of cases) {
+    const response = await post(JSON.stringify({ route: '/images', body: 'No', images }))
+    assert.equal(response.status, 422)
+    assert.deepEqual(await json(response), { error })
+  }
+})
+
+test('takes images with a follow-up', async () => {
+  const created = await json(
+    await post(JSON.stringify({ route: '/images', body: 'Change it' })),
+  )
+  await fetch(`${base}/api/comments/${created.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status: 'resolved' }),
+  })
+  const printed = output.length
+  const reopened = await json(
+    await fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        followUp: 'More like this',
+        images: [{ type: 'image/png', data: PNG }],
+      }),
+    }),
+  )
+  assert.deepEqual(reopened.messages.at(-1).images, ['m2-1.png'])
+  const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
+  assert.match(event, / messages=2 images=\[".*\/m2-1\.png"\]$/)
+})
