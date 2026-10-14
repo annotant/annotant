@@ -512,36 +512,43 @@ function pump($: $) {
   return dispatching
 }
 
-/** The comment's agent type again, for the agent that has it. */
+/**
+ * The comment's agent type again: a reload of the plugin unloads its agent
+ * types, and with them the hooks of the agents running as one. Whether it is.
+ */
 async function registerAgain($: $, id: string, worker: Worker) {
   const project = await loadProject($, worker.root).catch(() => undefined)
-  if (project)
-    await registerCommentAgent($, project, id, worker.model).catch((error: unknown) =>
-      debug($, worker.agent, id, `could not register its agent type: ${String(error)}`),
-    )
+  if (!project) return false
+  return registerCommentAgent($, project, id, worker.model).then(
+    () => true,
+    async (error: unknown) => {
+      await debug(
+        $,
+        worker.agent,
+        id,
+        `could not register its agent type: ${String(error)}`,
+      )
+      return false
+    },
+  )
 }
 
-/**
- * After a reload, which unloads the plugin's agent types and with them the
- * hooks of the agents running as one, the agents at work get them again: a
- * message may have resumed one just before.
- */
+/** After a reload, the agents at work: a message may have resumed one just before. */
 async function registerRunning($: $) {
   const all = Object.entries(await read($, workers))
   await Promise.all(
     all
       .filter(([, worker]) => worker.running)
       .map(async ([id, worker]) => {
-        await registerAgain($, id, worker)
-        await debug($, worker.agent, id, 'agent type registered again after a reload')
+        if (await registerAgain($, id, worker))
+          await debug($, worker.agent, id, 'agent type registered again after a reload')
       }),
   )
 }
 
 /** Sends the reader's edit or follow-up to the comment's agent, which a message resumes. */
 async function send($: $, worker: Worker, { id, line, kind }: Queued) {
-  // A reload of the plugin unloads its agent types, and with them the hooks of
-  // the agents running as one: the message resumes the agent with them again.
+  // The message resumes the agent with its hooks again.
   await registerAgain($, id, worker)
   const sent = await $.session
     .send({
