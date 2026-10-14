@@ -735,7 +735,7 @@ function serve($: $, root: string): Watch {
   void (async () => {
     let pending = ''
     let errors = ''
-    let ended = 'the server stopped'
+    let ended: string
     try {
       for (;;) {
         const piece = await pieces.next()
