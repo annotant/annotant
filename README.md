@@ -36,9 +36,9 @@ to stop it.
 
 ## How it works
 
-- **The widget** is served by a small local server that the skill starts while
-  you run `/code-buddy:code-buddy`. No server, no widget: nothing runs when Claude is not
-  watching.
+- **The widget** is served by a small local server that the plugin starts
+  when you run `/code-buddy`, for the session's life. No server, no widget:
+  nothing runs when Claude is not watching.
 - **Your project** only gets a few lines: a dev-only loader snippet, a
   `.code-buddy.json` config, and a `.code-buddy/` folder for the comments
   (git-ignored by default; `comments.json`, its format versioned, each thread
@@ -48,15 +48,19 @@ to stop it.
 - **The widget is framework-agnostic.** It ships its own React inside a shadow
   root, so it works on Next.js, Vite, CRA or anything served by a dev server,
   without touching your styles or dependencies.
-- **Agents work in parallel safely.** One background agent per comment; the
-  plugin's hooks take a per-file lock before every write, so two agents never
-  edit the same file at once, and refuse an agent a Bash command that writes
+- **No session waits on another.** The plugin's hooks read the server and
+  start each comment's agent at once, in the background, with no model turn:
+  keep working with Claude in the same session, comments are not held up by
+  it. Three agents run at a time; a fourth comment starts when one ends.
+- **Agents work in parallel safely.** One background agent per comment; its
+  own hooks take a per-file lock before every write, so two agents never
+  edit the same file at once, and refuse it a Bash command that writes
   files, which no lock could cover. What each agent does (files read and
   edited, commands, MCP calls, its messages and thinking) shows up live under
-  the comment. The hooks are a Claude Code
+  the comment. The plugin's hooks are a Claude Code
   [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/), loaded
-  once per session: they start no process per tool call, and act only for an
-  agent working on a comment.
+  once per session, for the watch; each comment's agent runs a short script
+  around each of its tools, and no other agent does.
 - **Each comment gets a model that fits it.** Before its agent starts, a
   classifier sorts the comment as `trivial`, `standard` or `hard`, and
   `models` in `.code-buddy.json` picks the model for it (by default Haiku,
@@ -81,30 +85,34 @@ code-buddy`, or turn on auto-update for the marketplace in `/plugin`; the
 
 Requires Claude Code 2.1.287 or later (`claude update`), for its mods, and
 Node.js 22 or later. On an older Claude Code, `/code-buddy:code-buddy` says so
-and does not start.
+and does not start, and `/code-buddy` does not exist.
 
 Then, in your frontend project:
 
 ```
 /code-buddy:code-buddy init    install in this project (asks only what it cannot detect)
-/code-buddy:code-buddy         start a session; open your dev app and comment
+/code-buddy                    watch the app; open your dev app and comment
+/code-buddy stop               stop watching
 /code-buddy:code-buddy update  migrate an older install
 /code-buddy:code-buddy uninstall
 ```
 
-Plugin skills are prefixed with the plugin name, hence `/code-buddy:code-buddy`.
+Plugin skills are prefixed with the plugin name, hence `/code-buddy:code-buddy`;
+`/code-buddy` is a command of the plugin's hooks, and runs at once, even while
+Claude is answering. `/code-buddy:code-buddy` with no mode watches too, through
+the skill. Both find the project of a git worktree in the main checkout when
+the worktree lacks `.code-buddy.json`.
 
-Keep the session running `/code-buddy:code-buddy` for Code Buddy, and work in
-another one. That session dispatches the comments, and it only hears of a new
-one between two of its turns: while it answers a question, a review or a
-build, every new comment waits for that answer to end. The widget says so
-after 15 seconds ("Claude has your comment but is busy"), and after a minute
-asks whether that session is busy ("No agent has started").
+Work on in the same session: the comments go straight to their agents, never
+through your conversation. When an agent ends, its one-line answer shows in
+the session's transcript (Claude does not read it), and a question it asks in
+the thread shows as a notification too. Closing the session stops the server;
+`/code-buddy` starts it again, and nothing is lost.
 
 When the frontend lives in a folder of the repository, name it after the
 command: `/code-buddy:code-buddy init web` installs Code Buddy in `web/`, and
-`/code-buddy:code-buddy web` starts a session there. The folder is resolved
-from the current directory, else from the repository root.
+`/code-buddy web` watches it. The folder is resolved from the current
+directory, else from the repository root.
 
 ## In the widget
 
@@ -154,29 +162,34 @@ with `/code-buddy-debug off`; the log stays where it is. Without the command,
 off. The log keeps its last 128 to 256 KB.
 
 Each line reads `<time> <agent> <comment> <what happened>`; the agent is
-`main` for your own session, and the comment `-` until the agent claims one:
+`main` for your own session, and the comment `-` when there is none:
 
 ```
 … main - hooks loaded in a new session (Claude Code 2.1.287)
-… a53927e6… e329bcbb… bound to comment e329bcbb… in /Users/me/shop/web
+… a53927e6… e329bcbb… started on claude-haiku-5-5, the comment classified trivial
+… a53927e6… e329bcbb… started for NEW
 … a53927e6… e329bcbb… locked api/presets.py
 … a53927e6… e329bcbb… recorded edit done "../api/presets.py"
-… a53927e6… e329bcbb… run ended (answered or asked): unbound, released 1 lock(s), progress dropped
+… a53927e6… e329bcbb… run ended (answered or asked): released 1 lock(s)
 ```
 
 | Line                                                        | What it means                                                                                                                                  |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `hooks loaded in a new session`                             | The hooks run in that session. **No line at all** after starting a session: they did not load (Code Buddy needs Claude Code 2.1.287 or later). |
-| `bound to comment <id> in <project>`                        | The agent claimed its comment: from now on its files are locked and its steps shown.                                                           |
-| `claim.mjs printed no project, so the agent is not bound`   | The claim failed (the comment was stopped, resolved or deleted); the reason follows.                                                           |
-| `cannot read <project>/.code-buddy.json …: binding dropped` | The agent's project has no readable config: it works on without locks or progress.                                                             |
 | `locked <file>`                                             | The agent holds that file, named from the repository root, until its run ends.                                                                 |
 | `waiting for <file>, held by comment <id>`                  | Another comment's agent is changing it; the agent waits up to 6 seconds.                                                                       |
 | `refused <file>: still held by comment <id>`                | The wait ran out: the agent releases its locks, re-reads and retries.                                                                          |
 | `no lock for <file>: outside <repository>`                  | Files outside the git repository take no lock.                                                                                                 |
 | `refused a Bash write: <command>`                           | The agent tried to write files from Bash, where they cannot be locked; it is told to use Edit or Write.                                        |
-| `recorded <step>`                                           | A step shown under the comment. `recorded nothing: the comment is no longer active` when the reader stopped it.                                |
-| `run ended …`, `turn ended …`                               | The agent answered, asked, or stopped: its locks are released.                                                                                 |
+| `recorded <step>`                                           | A step shown under the comment, once the agent claimed it, until the reader stops it.                                                          |
+| `run ended …`, `agent stopped …`                            | The agent answered, asked, or stopped: its locks are released.                                                                                 |
+| `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |
+| `hook.mjs failed: <error>`                                  | The agent's hook could not run: its tool ran without a lock or a step.                                                                         |
+| `started on <model>, …`                                     | The model the comment's agent runs on, and how the classifier sorted the comment.                                                              |
+| `started for NEW`, `sent the follow-up`                     | `/code-buddy` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
+| `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
+| `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
+| `stopped: the reader ended the comment`                     | The reader stopped, resolved or deleted the comment while its agent worked.                                                                    |
 
 ## Security
 
@@ -214,7 +227,7 @@ What to do after a change:
 | ------------------------------------- | ------------------------------------------------------ |
 | `SKILL.md`, `agents/*`, `hooks/*`     | `/reload-plugins` in the session, or a new session     |
 | `scripts/*.mjs` except the server     | Nothing: each call runs the script again               |
-| `scripts/server.mjs`, `scripts/lib/*` | Restart the server: run `/code-buddy:code-buddy` again |
+| `scripts/server.mjs`, `scripts/lib/*` | Restart the server: `/code-buddy stop`, then `/code-buddy` |
 | `widget/src/*`                        | Rebuild the widget, then reload the app page           |
 
 The server reads `dist/widget.js` on every page load, so a rebuild and a page
@@ -236,7 +249,7 @@ Paths below are relative to `skills/code-buddy/`.
 | Path                                                   | What                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------- |
 | `SKILL.md`                                             | The skill: watch, init, update, uninstall                  |
-| `scripts/server.mjs`                                   | Local server: widget, API, events for the managing session |
+| `scripts/server.mjs`                                   | Local server: widget, API, a line per comment event for the hooks |
 | `scripts/claim.mjs`, `resolve.mjs`, `ask.mjs`          | Used by the agents                                         |
 | `scripts/detect.mjs`, `verify-prod.mjs`, `migrate.mjs` | Used by `init` / `update`                                  |
 | `widget/src`                                           | The widget (React, TypeScript)                             |
@@ -244,7 +257,8 @@ Paths below are relative to `skills/code-buddy/`.
 At the repository root, `agents/worker.md` is the agent that handles a
 comment (`code-buddy:worker`): its steps and rules. `hooks/register.ts` is
 the plugin's hooks module (a Claude Code mod, declared in `hooks/hooks.json`):
-file locks and live progress.
+the watch (`/code-buddy`, the server, one agent per comment, each registered
+with `scripts/hook.mjs` around its tools for file locks and live progress).
 The values it keeps for the session are typed in `types/index.d.ts`, and
 `test/hooks.test.ts` tests it against Claude Code itself:
 

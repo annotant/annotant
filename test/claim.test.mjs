@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { realpath } from 'node:fs/promises'
+import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
@@ -102,6 +102,35 @@ test('records the model the hooks routed the comment to, and its label', async (
   assert.equal(claimed.code, 0, claimed.stderr)
   const [saved] = await comments.readAll()
   const working = saved.events[saved.events.length - 1]
+  assert.equal(working.model, 'claude-haiku-5-5')
+  assert.equal(working.complexity, 'trivial')
+})
+
+test('records the agent, model and label the hooks module left as it started the agent', async (t) => {
+  const root = await tempProject(t)
+  const project = projects.project(root)
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Make it blue',
+  })
+  const route = store.routePath(project, comment.id)
+  await mkdir(path.dirname(route), { recursive: true })
+  await writeFile(
+    route,
+    JSON.stringify({ agent: 'a1b2c3', model: 'claude-haiku-5-5', complexity: 'trivial' }),
+  )
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const [saved] = await comments.readAll()
+  const working = saved.events[saved.events.length - 1]
+  assert.equal(working.agent, 'a1b2c3')
   assert.equal(working.model, 'claude-haiku-5-5')
   assert.equal(working.complexity, 'trivial')
 })

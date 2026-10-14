@@ -231,7 +231,7 @@ const runOf = (event: TimelineEvent) =>
       ? event.message.run
       : event.step.run
 
-/** A line that hands an opening of the comment over to the manager. */
+/** A line that hands an opening of the comment over to the hooks. */
 const HANDOVER = /^(OPEN|NEW|FOLLOWUP) /
 
 /**
@@ -248,7 +248,7 @@ export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[
     const at = time(event.at)
     if (event.state === 'open') opened = at
     // The gap from the hand-over of this opening to the claim: the time the
-    // manager took to read the line and start an agent.
+    // hooks took to start an agent, or a free one to come.
     const handover =
       event.state === 'working'
         ? handovers.findLast((handed) => handed >= opened && handed <= at)

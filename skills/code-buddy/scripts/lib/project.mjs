@@ -28,7 +28,7 @@ export function isDevWidget(file = path.join(SKILL_DIR, 'widget', 'dist', 'widge
 
 // Not os.tmpdir(): hooks, sandboxed shells and the server may each see a different TMPDIR.
 // hooks/register.ts finds the same folder, and the progress files in it, the same way.
-const STATE_ROOT =
+export const STATE_ROOT =
   process.env.CODE_BUDDY_STATE_DIR ??
   path.join(process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), '.cache'), 'code-buddy')
 

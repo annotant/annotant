@@ -26,7 +26,8 @@ repository root.
 2. Run `LAUNCH prepare`, or `LAUNCH prepare keep` when the arguments say
    `keep`. It builds the widget when needed and refreshes `.playground/`. On
    `PORT_BUSY`, stop the background tasks of an earlier `/playground` in this
-   session (TaskStop) and run it again. If none is yours, ask with one
+   session (TaskStop); when Code Buddy's port is the busy one and this session
+   watches, ask the user to type `/code-buddy stop`. Then run it again. If none is yours, ask with one
    `AskUserQuestion`, naming the busy URLs and the `HOLDER <pid> <command>`
    lines it printed: **Kill them and retry (Recommended)** / **Stop here**.
    Kill → `kill <pid>…` (only those PIDs), then run it again; still busy →
@@ -36,7 +37,7 @@ repository root.
 4. Start `LAUNCH open` the same way: it opens the browser once the app and
    the Code Buddy server answer.
 5. Invoke the skill `code-buddy:code-buddy` with the argument `.playground`
-   and follow it: it starts the server and watches for comments.
+   and follow it: the plugin's hooks start the server and watch for comments.
 
 Tell the user, in one line, that the changes stay in `.playground/` and that
 `/playground keep` resumes them; `/playground` alone starts over. After a

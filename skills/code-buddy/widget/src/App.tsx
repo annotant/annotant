@@ -112,14 +112,14 @@ const STEP_ICONS: Record<string, IconName> = {
 
 const SLIDE_MS = 250
 /**
- * How long after the manager was sent a comment an agent may take to claim it
- * before the widget says the manager is busy: the manager only reads the line
- * between two turns, and a start alone often takes ten seconds.
+ * How long after the hooks were sent a comment an agent may take to claim it
+ * before the widget says it waits for a free agent: three run at a time, and a
+ * start alone often takes ten seconds.
  */
 const BUSY_AFTER_MS = 15_000
 /**
- * How long before the widget says no agent has started: the manager may not
- * read its lines at all (its Monitor stopped while the server still runs).
+ * How long before the widget says no agent has started: the session watching
+ * may refuse agents (background tasks turned off), or have three long ones.
  */
 const NO_AGENT_AFTER_MS = 60_000
 
@@ -195,20 +195,20 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
   )
 }
 
-/** What an open comment says, by how long ago the manager was sent it. */
+/** What an open comment says, by how long ago the hooks were sent it. */
 const WAITS = [
   { after: 0, text: 'Claude has your comment, an agent is starting…' },
   {
     after: BUSY_AFTER_MS,
-    text: 'Claude has your comment but is busy…',
+    text: 'Claude has your comment, waiting for a free agent…',
     title:
-      'The Claude session watching this app is answering something else, or already runs three agents; it starts on your comment once it is free.',
+      'Code Buddy runs three agents at a time; one starts on your comment as soon as another ends.',
   },
   {
     after: NO_AGENT_AFTER_MS,
-    text: 'No agent has started. Is the /code-buddy session busy?',
+    text: 'No agent has started. Check the Claude Code session watching.',
     title:
-      'The server handed your comment over a minute ago and no agent claimed it: check the terminal running /code-buddy:code-buddy, or run it again.',
+      'The server handed your comment over a minute ago and no agent claimed it: the session running /code-buddy says why, or run it again.',
   },
 ]
 
@@ -217,21 +217,21 @@ const REPLY_WAITS = [
   { after: 0, text: 'Claude has your reply, an agent is picking it up…' },
   {
     after: BUSY_AFTER_MS,
-    text: 'Claude has your reply but is busy…',
+    text: 'Claude has your reply, waiting for a free agent…',
     title:
-      'The Claude session watching this app is answering something else, or already runs three agents; it picks up your reply once it is free.',
+      'Code Buddy runs three agents at a time; one picks up your reply as soon as another ends.',
   },
   {
     after: NO_AGENT_AFTER_MS,
-    text: 'No agent has picked up your reply. Is the /code-buddy session busy?',
+    text: 'No agent has picked up your reply. Check the Claude Code session watching.',
     title:
-      'The server handed your reply over a minute ago and no agent claimed it: check the terminal running /code-buddy:code-buddy, or run it again.',
+      'The server handed your reply over a minute ago and no agent claimed it: the session running /code-buddy says why, or run it again.',
   },
 ]
 
 /**
  * An open comment while a session watches: sent, then handed over to the
- * manager, then, while no agent claims it, busy, then not started at all.
+ * hooks, then, while no agent claims it, waiting for one, then not started.
  * Each return to `open` starts again, with its own `notifiedAt`; `reply` when
  * it is the reader's reply.
  */
