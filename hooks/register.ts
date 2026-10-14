@@ -138,7 +138,7 @@ const clip = (text: string) => short(text.trim().replace(/\s+/g, ' '), MAX_TEXT)
 
 // The marker is checked at most this often: no file access per tool call.
 const RECHECK_MS = 5_000
-// $.fs has no append, so each line rewrites the log: keep it small.
+// Past this size, the log keeps its newest half.
 const MAX_LOG = 256 * 1024
 const SHOWN_LINES = 20
 
@@ -173,6 +173,14 @@ async function isLogging($: $) {
   return isOn
 }
 
+// Other processes write the log too (other sessions, each comment agent's
+// hooks): $.fs has no append, and reading the log then writing it back would
+// drop the lines they append in between. So the shell appends; past the cap,
+// it keeps the newest half, from its first whole line.
+const APPEND =
+  'printf %s "$2" >> "$1" && if [ "$(wc -c < "$1")" -gt "$3" ]; then ' +
+  'tail -c "$4" "$1" | sed 1d > "$1.$$" && mv "$1.$$" "$1"; fi'
+
 /**
  * Appends `<time> <agent> <comment> <message>` to the log when it is on.
  * `comment` is `-` before the agent claimed one.
@@ -181,14 +189,13 @@ async function debug($: $, agent: string, comment: string, message: string) {
   if (!(await isLogging($))) return
   const { log } = await paths($)
   const line = `${new Date().toISOString()} ${agent} ${comment} ${message}\n`
+  const argv = ['sh', '-c', APPEND, 'sh', log, line, `${MAX_LOG}`, `${MAX_LOG / 2}`]
   writing = writing
-    .then(async () => {
-      let text = await $.fs.read(log).catch(() => '')
-      if (text.length > MAX_LOG)
-        text = text.slice(text.indexOf('\n', text.length - MAX_LOG / 2) + 1)
-      return $.fs.write(log, text + line)
-    })
-    .catch(() => undefined)
+    .then(() => $.process.run(argv))
+    .then(
+      () => undefined,
+      () => undefined,
+    )
   return writing
 }
 

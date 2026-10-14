@@ -5,6 +5,7 @@ import type { CommandRunInput, On } from 'claude-code'
 
 const ROOT = '/repo/web'
 const SCRIPTS = '/s/scripts'
+const LOG = '/home/u/.cache/code-buddy/hook.log'
 const claim = (id: string) => `node ${SCRIPTS}/claim.mjs ${id} --project ${ROOT}`
 const resolveCmd = (id: string) =>
   `node ${SCRIPTS}/resolve.mjs ${id} --project ${ROOT} "done"`
@@ -31,9 +32,18 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
     [`${ROOT}/.code-buddy/comments.json`, commentsFile(comments)],
   ])
   const removed: string[] = []
+  // Another process appending to the hook log (an agent's hook.mjs, another
+  // session): its line lands right after the mod next reads or appends to it.
+  let otherLine: string | undefined
+  const otherAppends = (path: string) => {
+    if (path !== LOG || otherLine === undefined) return
+    files.set(LOG, (files.get(LOG) ?? '') + otherLine)
+    otherLine = undefined
+  }
   on('fs.read', (_$, e) => {
     const text = files.get(e.path)
     if (text === undefined) throw new Error(`ENOENT ${e.path}`)
+    otherAppends(e.path)
     return { value: text }
   })
   on('fs.write', (_$, e) => {
@@ -54,6 +64,12 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
           isStderrTruncated: false,
         },
       }
+    }
+    // The hook log's appender: `sh -c <script> sh <file> <line> …`.
+    if (e.argv[0] === 'sh' && e.argv[1] === '-c') {
+      const [file = '', line = ''] = e.argv.slice(4)
+      files.set(file, (files.get(file) ?? '') + line)
+      otherAppends(file)
     }
     if (e.argv[0] === 'rm') {
       const file = e.argv[e.argv.length - 1] ?? ''
@@ -127,6 +143,9 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
       label = next
     },
     write: (path: string, text: string) => files.set(path, text),
+    appendToLogMeanwhile: (line: string) => {
+      otherLine = line
+    },
     env,
     clock,
     removed,
@@ -444,7 +463,6 @@ test('lets an agent write from Bash outside the repository, where no lock is nee
   }
 })
 
-const LOG = '/home/u/.cache/code-buddy/hook.log'
 const debugCommand = (args: string): CommandRunInput => ({
   command: 'code-buddy-debug',
   args,
@@ -478,6 +496,17 @@ test('/code-buddy-debug turns the hook log on, shows it, and turns it off', asyn
   await $.command.run(debugCommand('off'))
   await $.tool.call(edit('a1', `${ROOT}/src/App.tsx`))
   expect(w.file(LOG)).toBe(log)
+})
+
+test('keeps the lines another process appends to the hook log meanwhile', async ($, on) => {
+  const w = world(on, [{ id: 'c1', state: 'open' }])
+  await $.command.run(debugCommand('on'))
+  await $.tool.call(bash('a1', claim('c1')))
+  w.appendToLogMeanwhile('2026-10-13T00:00:00.000Z cb-c2 c2 locked src/Other.tsx\n')
+  await $.tool.call(edit('a1', `${ROOT}/src/App.tsx`))
+  const log = w.file(LOG) ?? ''
+  expect(log).toMatch(/ cb-c2 c2 locked src\/Other\.tsx\n/)
+  expect(log).toMatch(/ a1 c1 locked src\/App\.tsx\n/)
 })
 
 test('logs why an agent is not bound, or no longer', async ($, on) => {
