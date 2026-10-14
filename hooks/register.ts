@@ -176,7 +176,8 @@ async function isLogging($: $) {
 // Other processes write the log too (other sessions, each comment agent's
 // hooks): $.fs has no append, and reading the log then writing it back would
 // drop the lines they append in between. So the shell appends; past the cap,
-// it keeps the newest half, from its first whole line.
+// it keeps the newest half, from its first whole line (a line appended while
+// it trims, once per half a cap, may still be lost).
 const APPEND =
   'printf %s "$2" >> "$1" && if [ "$(wc -c < "$1")" -gt "$3" ]; then ' +
   'tail -c "$4" "$1" | sed 1d > "$1.$$" && mv "$1.$$" "$1"; fi'

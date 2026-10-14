@@ -65,10 +65,16 @@ function world(on: On, comments: Comment[], { gitRoot }: { gitRoot?: string } = 
         },
       }
     }
-    // The hook log's appender: `sh -c <script> sh <file> <line> …`.
+    // The hook log's appender, `sh -c <script> sh <file> <line> <cap> <kept>`:
+    // past the cap, the last <kept> bytes from their first whole line.
     if (e.argv[0] === 'sh' && e.argv[1] === '-c') {
-      const [file = '', line = ''] = e.argv.slice(4)
-      files.set(file, (files.get(file) ?? '') + line)
+      const [file = '', line = '', cap = '', kept = ''] = e.argv.slice(4)
+      let text = (files.get(file) ?? '') + line
+      if (text.length > Number(cap)) {
+        text = text.slice(-Number(kept))
+        text = text.slice(text.indexOf('\n') + 1)
+      }
+      files.set(file, text)
       otherAppends(file)
     }
     if (e.argv[0] === 'rm') {
@@ -507,6 +513,18 @@ test('keeps the lines another process appends to the hook log meanwhile', async 
   const log = w.file(LOG) ?? ''
   expect(log).toMatch(/ cb-c2 c2 locked src\/Other\.tsx\n/)
   expect(log).toMatch(/ a1 c1 locked src\/App\.tsx\n/)
+})
+
+test('keeps the hook log under its cap, its newest whole lines', async ($, on) => {
+  const w = world(on, [{ id: 'c1', state: 'open' }])
+  await $.command.run(debugCommand('on'))
+  w.write(LOG, `${'x'.repeat(99)}\n`.repeat(3000))
+  await $.tool.call(bash('a1', claim('c1')))
+  const log = w.file(LOG) ?? ''
+  expect(log.length).toBeLessThanOrEqual(128 * 1024)
+  expect(log.length).toBeGreaterThan(100 * 1024)
+  expect(log).toMatch(/^x{99}\n/)
+  expect(log).toMatch(/ a1 c1 bound to comment c1 in \/repo\/web, run r1\n/)
 })
 
 test('logs why an agent is not bound, or no longer', async ($, on) => {
