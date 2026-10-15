@@ -1,13 +1,20 @@
 /**
- * Saves one of `element`'s inline style properties before the widget changes it: the host page
- * may have set it too. The returned function puts back that value, with its priority.
+ * Sets one of `element`'s inline style properties, which the host page may have set too. The
+ * returned function puts back the host's value, with its priority, unless the property no longer
+ * holds `value`: what the host wrote meanwhile stays.
  */
-export function saveInlineStyle(element: HTMLElement, property: string): () => void {
+export function setInlineStyle(
+  element: HTMLElement,
+  property: string,
+  value: string,
+): () => void {
   const { style } = element
-  const value = style.getPropertyValue(property)
+  const before = style.getPropertyValue(property)
   const priority = style.getPropertyPriority(property)
+  style.setProperty(property, value)
   return () => {
-    if (value) style.setProperty(property, value, priority)
+    if (style.getPropertyValue(property) !== value) return
+    if (before) style.setProperty(property, before, priority)
     else style.removeProperty(property)
   }
 }

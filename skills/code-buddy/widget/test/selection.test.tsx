@@ -102,7 +102,7 @@ test('the bubbles follow the page when an attribute moves its text', async () =>
   expect(bubble.style.left).toBe('120px')
   // A docked panel squeezes the page through its root element: no node changes, no resize, no scroll.
   x = 80
-  document.documentElement.style.marginRight = '380px'
+  document.documentElement.style.paddingRight = '380px'
   onTestFinished(() => document.documentElement.removeAttribute('style'))
   await waitFor(() => expect(bubble.style.left).toBe('80px'))
 })
