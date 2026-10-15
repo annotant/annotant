@@ -5,6 +5,14 @@ import type { CommandRunInput, EngineInterface, On } from 'claude-code'
 
 type AgentSpec = Parameters<EngineInterface['agent']['register']>[0]
 
+/** `agent.offer`'s input for one of the plugin's agent types. */
+const offerOf = (agent: string): Parameters<EngineInterface['agent']['offer']>[0] => ({
+  agent,
+  description: '',
+  source: 'plugin',
+  provider: { plugin: 'code-buddy', tier: 'plugin' },
+})
+
 const ROOT = '/repo/web'
 const LOG = '/home/u/.cache/code-buddy/hook.log'
 
@@ -98,12 +106,7 @@ function world(
     if (!delivering) return { isDelivered: false as const, reason: 'no agent by that id' }
     const type = spawned[Number(e.to.slice(1)) - 1]?.type
     if (engine && type && idle.has(e.to)) {
-      const { isOffered } = await engine.agent.offer({
-        agent: type,
-        description: '',
-        source: 'plugin',
-        provider: { plugin: 'code-buddy', tier: 'plugin' },
-      })
+      const { isOffered } = await engine.agent.offer(offerOf(type))
       if (!isOffered)
         return {
           isDelivered: false as const,
@@ -803,7 +806,7 @@ test("a message resumes the comment's agent with its hooks, which a reload unloa
   await w.exit(0)
 })
 
-test('a reply resumes the agent that finished its turn, a type the model is never offered', async ($, on) => {
+test('a reply resumes the agent that finished its turn, whose type the model is not offered', async ($, on) => {
   const w = world(on, [titleComment])
   w.classifyAs('trivial')
   await watch($, w)
@@ -812,17 +815,13 @@ test('a reply resumes the agent that finished its turn, a type the model is neve
   w.classifyAs('hard')
   await w.print(followUpLine('c1'))
   expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
-  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  // Resumed, it is at work: an edit goes to it too.
+  await w.print(`EDIT c1 route=/ page-level body="make it red"`)
+  expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
   // Once sent, the model is offered neither the comment's type nor the worker.
   for (const agent of ['code-buddy:cb-c1', 'code-buddy:worker'])
-    expect(
-      await $.agent.offer({
-        agent,
-        description: '',
-        source: 'plugin',
-        provider: { plugin: 'code-buddy', tier: 'plugin' },
-      }),
-    ).toEqual({ isOffered: false })
+    expect(await $.agent.offer(offerOf(agent))).toEqual({ isOffered: false })
   await w.exit(0)
 })
 
