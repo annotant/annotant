@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
@@ -8,6 +8,8 @@ const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
 // stream missed.
 const POLL_MS = 30_000
 const CHANGED = 'code-buddy:changed'
+// A comment as the server returned it once it accepted a change.
+const UPDATED = 'code-buddy:updated'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   // Headers, not an object spread: a spread drops the entries of a Headers or an array.
@@ -107,15 +109,24 @@ function listen(): () => void {
   }
 }
 
-function useCommentList(url: string | undefined) {
+/**
+ * The comments at `url`, reloaded on each change. With `merge`, a comment the
+ * server returns for a change replaces its entry at once: the thread shows
+ * its new state before the reload lands.
+ */
+function useCommentList(url: string | undefined, { merge = true } = {}) {
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [loaded, setLoaded] = useState(false)
   const [reachable, setReachable] = useState(true)
+  // Counts the merges: a list asked for before one is older than what it merged.
+  const merges = useRef(0)
 
   const load = useCallback(async () => {
     if (!url) return
+    const asked = merges.current
     try {
-      setComments(await request<ReviewComment[]>(url))
+      const list = await request<ReviewComment[]>(url)
+      if (asked === merges.current) setComments(list)
       setReachable(true)
     } catch {
       setReachable(false)
@@ -139,6 +150,22 @@ function useCommentList(url: string | undefined) {
     }
   }, [url, load])
 
+  useEffect(() => {
+    if (!url || !merge) return undefined
+    const update = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return
+      // Dispatched by updateComment alone, with the server's comment.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const updated = event.detail as ReviewComment
+      merges.current++
+      setComments((current) =>
+        current.map((comment) => (comment.id === updated.id ? updated : comment)),
+      )
+    }
+    window.addEventListener(UPDATED, update)
+    return () => window.removeEventListener(UPDATED, update)
+  }, [url, merge])
+
   return { comments, loaded, reachable }
 }
 
@@ -152,7 +179,10 @@ export function useAllComments(enabled: boolean) {
 
 /** Every comment with every step of every run: the debug panel's list. */
 export function useCommentHistory(enabled: boolean) {
-  return useCommentList(enabled ? `${API}?all=1&history=1` : undefined)
+  // The server returns a comment without its history: the reload brings it.
+  return useCommentList(enabled ? `${API}?all=1&history=1` : undefined, {
+    merge: false,
+  })
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {
@@ -172,6 +202,7 @@ export async function updateComment(
     method: 'PATCH',
     body: JSON.stringify(patch),
   })
+  window.dispatchEvent(new CustomEvent(UPDATED, { detail: comment }))
   changed()
   return comment
 }

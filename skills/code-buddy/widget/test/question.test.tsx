@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, test } from 'vitest'
 import type { ReviewMessage } from '../src/domain'
-import { comment, fakeServer, openThread } from './server'
+import { comment, fakeEvents, fakeServer, openThread } from './server'
 import { renderWidget } from './widget'
 
 type Message = Omit<ReviewMessage, 'id'>
@@ -163,4 +163,72 @@ test('the chosen single answer stays marked once answered', async () => {
   expect(red.className).toContain('cb-option--on')
   expect(blue.className).not.toContain('cb-option--on')
   expect(red).toHaveProperty('disabled', true)
+})
+
+test('the answer shows at once, before the slow reload lands', async () => {
+  const asked = question()
+  const answeredWith = comment({
+    messages: [asked, { author: 'reader', body: 'Red', at: asked.at }],
+  })
+  const server = fakeServer([asking(asked)])
+  // The server takes the answer; its lists, slow, come back after the test.
+  const served = server.fetch.getMockImplementation()
+  server.fetch.mockImplementation(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'PATCH') {
+      await served?.(input, init)
+      return Response.json(answeredWith)
+    }
+    if (server.patches.length) return new Promise<Response>(() => undefined)
+    return served ? served(input, init) : Response.error()
+  })
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: /Red/ }))
+
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
+  // Answered: no second answer goes out while the reload is on its way.
+  fireEvent.click(screen.getByRole('button', { name: /Blue/ }))
+  expect(server.patches).toHaveLength(1)
+})
+
+test('a reload asked for before the answer does not bring the question back', async () => {
+  const events = fakeEvents()
+  const asked = question()
+  const before = asking(asked)
+  const after = comment({
+    messages: [asked, { author: 'reader', body: 'Red', at: asked.at }],
+  })
+  const server = fakeServer([before])
+  const served = server.fetch.getMockImplementation()
+  // The reload asked for before the answer, held until the answer is in.
+  let release: (() => void) | undefined
+  server.fetch.mockImplementation(async (input: string, init?: RequestInit) => {
+    if (init?.method === 'PATCH') {
+      await served?.(input, init)
+      return Response.json(after)
+    }
+    if (server.patches.length) return new Promise<Response>(() => undefined)
+    if (screen.queryByRole('button', { name: /Red/ }) && !release) {
+      return new Promise<Response>((resolve) => {
+        release = () => resolve(Response.json([before]))
+      })
+    }
+    return served ? served(input, init) : Response.error()
+  })
+  openThread('c1')
+  renderWidget()
+
+  const red = await screen.findByRole('button', { name: /Red/ })
+  events.send('changed')
+  await waitFor(() => expect(release).toBeDefined())
+  fireEvent.click(red)
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
+  await act(async () => {
+    release?.()
+    await Promise.resolve()
+  })
+
+  expect(screen.getByTestId('cb-working').textContent).toBe('Sent…')
+  expect(screen.getByRole('button', { name: /Blue/ })).toHaveProperty('disabled', true)
 })
