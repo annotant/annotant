@@ -51,6 +51,7 @@ import {
 import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
+import { setInlineStyle } from './inline'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
 import {
   AreaDrawer,
@@ -525,6 +526,8 @@ export default function App({ root }: { root: Element }) {
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const pendingAnchor = useRef<ReviewAnchor>(undefined)
   const paddingAnimation = useRef<Animation>(undefined)
+  // Puts back the page's own inline padding, while the docked panel squeezes it.
+  const restorePadding = useRef<() => void>(undefined)
   const layout = useRef({ open, docked })
 
   const page = useComments(route)
@@ -584,16 +587,19 @@ export default function App({ root }: { root: Element }) {
 
   // Floating: the panel floats over the page, which is left untouched. Docked: the page is squeezed,
   // in step with the panel as it opens, closes, widens or narrows; at once while it is dragged.
+  // Through `html`'s padding, which hosts leave alone: libraries pad `body` for a modal's scrollbar.
   useEffect(() => {
-    const body = document.body
-    const from = getComputedStyle(body).paddingRight
+    const html = document.documentElement
+    const from = getComputedStyle(html).paddingRight
     paddingAnimation.current?.cancel()
-    body.style.paddingRight = open && docked ? `${width}px` : ''
+    restorePadding.current?.()
+    restorePadding.current =
+      open && docked ? setInlineStyle(html, 'padding-right', `${width}px`) : undefined
     const moved = open !== layout.current.open || docked !== layout.current.docked
     layout.current = { open, docked }
     if (!moved || matchMedia(REDUCED_MOTION).matches) return
-    if (getComputedStyle(body).paddingRight === from) return
-    paddingAnimation.current = body.animate([{ paddingRight: from, offset: 0 }], {
+    if (getComputedStyle(html).paddingRight === from) return
+    paddingAnimation.current = html.animate([{ paddingRight: from, offset: 0 }], {
       duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
       easing: open ? 'ease-out' : 'ease-in',
     })
@@ -602,7 +608,8 @@ export default function App({ root }: { root: Element }) {
   useEffect(
     () => () => {
       paddingAnimation.current?.cancel()
-      document.body.style.paddingRight = ''
+      restorePadding.current?.()
+      restorePadding.current = undefined
     },
     [],
   )
@@ -630,15 +637,16 @@ export default function App({ root }: { root: Element }) {
   const startResize = (event: ReactMouseEvent) => {
     event.preventDefault()
     setDragging(true)
+    const html = document.documentElement
+    const restoreCursor = setInlineStyle(html, 'cursor', 'col-resize')
+    const restoreSelect = setInlineStyle(html, 'user-select', 'none')
     const onUp = () => {
       setDragging(false)
       document.removeEventListener('mousemove', resizeTo)
       document.removeEventListener('mouseup', onUp)
-      document.documentElement.style.cursor = ''
-      document.documentElement.style.userSelect = ''
+      restoreCursor()
+      restoreSelect()
     }
-    document.documentElement.style.cursor = 'col-resize'
-    document.documentElement.style.userSelect = 'none'
     document.addEventListener('mousemove', resizeTo)
     document.addEventListener('mouseup', onUp)
   }
