@@ -20,6 +20,10 @@ released to the `stable` branch.
   `/code-buddy:code-buddy` without a mode starts it through the skill, whose
   dispatch instructions are gone. A busy comment now reads "waiting for a
   free agent". (#103)
+- **A comment's agent reads only its comment.** `claim.mjs` prints the
+  comment's thread as JSON, capped to the reader's comment and the 19 latest
+  messages, and the agent no longer opens the comments file, with every other
+  thread in it: fewer tokens, and no feedback that is not its own. (#123)
 - **Changes show in the widget at once.** The server watches the comments
   file's and the step files' folders, and pushes each change to the widget on
   `GET /api/events` (server-sent events): a new step, state or answer shows in
