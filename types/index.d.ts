@@ -25,7 +25,14 @@ export type Complexity = 'trivial' | 'standard' | 'hard'
  * it runs on: a follow-up or an edit goes to it, a stop ends it. `running`
  * until its turn completes; a message resumes it.
  */
-export type Worker = { agent: string; root: string; running: boolean; model?: string }
+export type Worker = {
+  agent: string
+  root: string
+  running: boolean
+  model?: string
+  /** The effort its agent type was registered with, when routing set one. */
+  effort?: string
+}
 
 declare module 'claude-code' {
   interface McpToolInputs {

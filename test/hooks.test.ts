@@ -478,7 +478,7 @@ test('a hard comment goes to opus, a standard one keeps the parent model', async
   await w.exit(0)
 })
 
-test('a comment of an image alone goes to the hard model, unclassified', async ($, on) => {
+test('a comment of an image alone goes to opus at a medium effort, unclassified', async ($, on) => {
   const w = world(on, [
     { ...titleComment, messages: [{ author: 'reader', body: '', images: ['m1-1.png'] }] },
   ])
@@ -487,7 +487,8 @@ test('a comment of an image alone goes to the hard model, unclassified', async (
   await w.print(newLine('c1'))
   expect(w.classified).toEqual([])
   expect(w.spawned[0]?.model).toBe('opus')
-  expect(w.route('c1')).toEqual(expect.objectContaining({ complexity: 'hard' }))
+  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  expect(w.route('c1')).not.toHaveProperty('complexity')
   await w.exit(0)
 })
 

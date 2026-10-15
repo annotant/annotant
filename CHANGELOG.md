@@ -86,7 +86,7 @@ released to the `stable` branch.
   keeps the managing session's model, and `{ "trivial": "inherit" }` turns
   routing off. A failed classifier never holds a comment back: its agent
   starts on the session's model. A comment of images alone, which the
-  classifier cannot read, goes to `hard`. A follow-up keeps the thread's
+  classifier cannot read, starts on Opus at a medium effort, unlabelled. A follow-up keeps the thread's
   model.
 - **The widget names the model.** A thread and its line in the list show the
   model its agent works on and the classifier's label ("haiku · trivial"),
