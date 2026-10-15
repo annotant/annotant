@@ -125,6 +125,9 @@ directory, else from the repository root.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or behind a text, marks a comment Claude has yet to
   resolve; once its thread is resolved, the mark goes away.
+- **Paste or drop an image** (a screenshot, a mockup) in the message box of a
+  comment or a reply: it goes with the message, or alone, and Claude opens
+  it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
 - **All comments** lists every discussion, newest first, filtered by status.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
@@ -194,11 +197,14 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 ## Security
 
 - The server listens on `127.0.0.1` only and accepts cross-origin requests
-  from `localhost` origins only.
+  from `localhost` origins only (and `devOrigins`); it refuses any change
+  from another origin (403).
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
-- Comments hold page text and HTML excerpts; they stay in your project folder.
+- Comments hold page text and HTML excerpts; they stay in your project folder,
+  with the images attached to them (`.code-buddy/images/`), which the server
+  checks are images by their bytes.
 
 To report a vulnerability, see the [security policy](SECURITY.md).
 

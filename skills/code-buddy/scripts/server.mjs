@@ -195,14 +195,13 @@ function sanitisePatch(input) {
   }
   // With the reader's reply only, the store files them under it: words,
   // options, or the images alone, sent with no other move.
-  const other = patch.status || patch.cancelled !== undefined
-  if (patch.followUp || patch.choices || !other) {
+  const anotherMove = patch.status || patch.cancelled !== undefined
+  if (patch.followUp || patch.choices || !anotherMove) {
     const images = parseImages(input.images)
     if (images.length) patch.images = images
   }
-  if (typeof input.text === 'string' && input.text.trim()) {
-    patch.text = input.text.trim()
-  }
+  // Empty, it leaves the images alone to go again; the store keeps the words otherwise.
+  if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }
 
@@ -267,11 +266,9 @@ async function handle(req, res) {
   // An image a reader attached, as the store wrote it.
   const [, imageOf, image] = /^\/api\/images\/([\w-]+)\/([^/]+)$/.exec(url.pathname) ?? []
   if (req.method === 'GET' && imageOf && image) {
-    const data =
-      IMAGE_NAME.test(image) &&
-      (await readFile(path.join(imagesDir(project, imageOf), image)).catch(
-        () => undefined,
-      ))
+    if (!IMAGE_NAME.test(image)) return send(res, 404, { error: 'not found' }, cors)
+    const file = path.join(imagesDir(project, imageOf), image)
+    const data = await readFile(file).catch(() => undefined)
     if (!data) return send(res, 404, { error: 'not found' }, cors)
     res.writeHead(200, {
       ...cors,

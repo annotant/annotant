@@ -8,6 +8,7 @@ import {
   forwardRef,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react'
 import type { NewImage } from './domain'
@@ -164,8 +165,6 @@ export const Textarea = forwardRef<
   return <textarea ref={ref} className={`cb-textarea ${className}`} {...props} />
 })
 
-const NO_IMAGES: NewImage[] = []
-
 /**
  * The message box at the panel's foot: Enter sends, Shift+Enter breaks the
  * line. An image pasted or dropped in it is attached to the message, shown
@@ -177,7 +176,7 @@ export function Composer({
   disabled,
   autoFocus,
   sendLabel = 'Send',
-  images = NO_IMAGES,
+  images,
   onChange,
   onSubmit,
   onEscape,
@@ -189,7 +188,7 @@ export function Composer({
   disabled: boolean
   autoFocus?: boolean
   sendLabel?: string
-  images?: NewImage[]
+  images: NewImage[]
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
@@ -207,38 +206,46 @@ export function Composer({
     // Empty, it keeps the CSS height: one line.
     if (value) textarea.style.height = `${textarea.scrollHeight}px`
   }, [value])
-  // An image alone is a message, as in a prompt to Claude.
-  const blocked = disabled || (!value.trim() && !images.length)
+  // The images being read, not attached yet: counted against the limit, and
+  // the message waits for them.
+  const reading = useRef(0)
+  const [pending, setPending] = useState(0)
+  const blocked = disabled || pending > 0 || (!value.trim() && !images.length)
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!blocked) onSubmit()
   }
-  // The images being read, not attached yet: counted against the limit.
-  const reading = useRef(0)
+  const attaching = !!onAttach && !disabled
   const add = async (files: File[]) => {
-    if (!onAttach || disabled || !files.length) return
+    if (!onAttach) return
     const picked = pick(images.length + reading.current, files)
     if (picked.refused) toast(picked.refused, true)
     if (!picked.files.length) return
-    reading.current += picked.files.length
+    const count = picked.files.length
+    reading.current += count
+    setPending((current) => current + count)
     try {
       onAttach(await readImages(picked.files))
     } catch {
       toast('The image could not be read.', true)
     } finally {
-      reading.current -= picked.files.length
+      reading.current -= count
+      setPending((current) => current - count)
     }
   }
   const onDragOver = (event: DragEvent) => {
-    if (!onAttach || disabled || !event.dataTransfer.types.includes('Files')) return
+    if (!attaching || !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
   }
+  // Taken over, as the drag was: a file the box does not take is refused
+  // here, never opened by the browser in the app's place.
   const onDrop = (event: DragEvent) => {
-    const files = imageFiles(event.dataTransfer.files)
-    if (!onAttach || disabled || !files.length) return
+    if (!attaching || !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
-    void add(files)
+    const files = imageFiles(event.dataTransfer.files)
+    if (files.length) void add(files)
+    else toast('Only images can be attached.', true)
   }
   return (
     <form
@@ -273,8 +280,8 @@ export function Composer({
         onChange={(event) => onChange(event.target.value)}
         onPaste={(event) => {
           const files = imageFiles(event.clipboardData.files)
-          if (!onAttach || !files.length) return
-          // An image copied from a file also brings its name as text: the image alone goes in.
+          if (!attaching || !files.length || pastesText(event.clipboardData, files))
+            return
           event.preventDefault()
           void add(files)
         }}
@@ -297,6 +304,16 @@ export function Composer({
       </button>
     </form>
   )
+}
+
+/**
+ * Whether a paste brings text of its own beside its images: cells copied from
+ * a spreadsheet come with a picture of them, which the text wins over. A file
+ * copied brings only its name as text, and the image goes in.
+ */
+function pastesText(clipboard: DataTransfer, files: File[]) {
+  const text = clipboard.getData('text/plain').trim()
+  return !!text && !files.some((file) => file.name === text)
 }
 
 export function Checkbox({

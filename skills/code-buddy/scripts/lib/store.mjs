@@ -282,6 +282,23 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
   }
 
   /**
+   * Runs `work`, which files images of comment `id`: failing, it leaves none
+   * behind, those `filed()` names by then (all of the comment's when it
+   * names none).
+   * @param {string} id
+   * @param {() => string[] | undefined} filed
+   * @param {() => Promise<void>} work
+   */
+  async function filing(id, filed, work) {
+    try {
+      await work()
+    } catch (error) {
+      await removeImages(project, id, filed())
+      throw error
+    }
+  }
+
+  /**
    * Runs `change` on the comment `id`, under the lock, and writes the result.
    * Throwing a StoreRefusal from it writes nothing.
    * @template T
@@ -446,7 +463,6 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         const comments = await readAll()
         const at = new Date().toISOString()
         const id = randomUUID()
-        const names = await saveImages(project, id, 'm1', images)
         /** @type {CommentV2} */
         const comment = {
           id,
@@ -460,17 +476,21 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               id: 'm1',
               author: 'reader',
               body,
-              ...(names.length ? { images: names } : {}),
               at,
             },
           ],
           events: [{ at, state: 'open', by: 'reader' }],
         }
         // Unsaved, the comment leaves no image behind.
-        await writeAll([...comments, comment]).catch(async (error) => {
-          await removeImages(project, id)
-          throw error
-        })
+        await filing(
+          id,
+          () => undefined,
+          async () => {
+            const names = await saveImages(project, id, 'm1', images)
+            if (names.length && comment.messages[0]) comment.messages[0].images = names
+            await writeAll([...comments, comment])
+          },
+        )
         return comment
       })
     },
@@ -502,8 +522,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         if (cancelled === false && comment.state === 'stopped') {
           move(comment, 'open', { by: 'reader' })
           const last = comment.messages.findLast((message) => message.author === 'reader')
-          if (text && last) {
-            // New words, no longer the options the reader had chosen.
+          if (text !== undefined && last && (text || last.images?.length)) {
+            // New words, or none and its images alone: no longer the options
+            // the reader had chosen.
             const { choices: _, ...kept } = last
             comment.messages[comment.messages.indexOf(last)] = { ...kept, body: text }
           }
@@ -511,23 +532,29 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         const reply = readerReply(comment, followUp, choices, images.length > 0)
         /** @type {string[]} */
         let names = []
-        if (reply) {
-          move(comment, 'open', { by: 'reader', message: { author: 'reader', ...reply } })
-          // Written once the move is taken: a refused one leaves no file behind.
-          const message = comment.messages.at(-1)
-          if (message) names = await saveImages(project, id, message.id, images)
-          if (message && names.length) message.images = names
-        }
-        if (status === 'resolved' && comment.state !== 'resolved') {
-          move(comment, 'resolved', { by: 'reader', run })
-          // Resolved by the reader: no answer to file the steps under.
-          await endRun(id, run)
-        }
         // Unsaved, the reply leaves no image behind.
-        await writeAll(comments).catch(async (error) => {
-          await removeImages(project, id, names)
-          throw error
-        })
+        await filing(
+          id,
+          () => names,
+          async () => {
+            if (reply) {
+              move(comment, 'open', {
+                by: 'reader',
+                message: { author: 'reader', ...reply },
+              })
+              // Written once the move is taken: a refused one leaves no file behind.
+              const message = comment.messages.at(-1)
+              if (message) names = await saveImages(project, id, message.id, images)
+              if (message && names.length) message.images = names
+            }
+            if (status === 'resolved' && comment.state !== 'resolved') {
+              move(comment, 'resolved', { by: 'reader', run })
+              // Resolved by the reader: no answer to file the steps under.
+              await endRun(id, run)
+            }
+            await writeAll(comments)
+          },
+        )
         return comment
       })
     },

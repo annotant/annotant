@@ -11,6 +11,7 @@ function renderComposer({ disabled = false, initial = '' } = {}) {
     return (
       <Composer
         value={value}
+        images={[]}
         placeholder="What should change?"
         sendLabel="Save"
         disabled={disabled}

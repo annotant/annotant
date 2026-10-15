@@ -72,10 +72,10 @@ released to the `stable` branch.
 - **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
   message box, of a new comment or a reply: it shows as a thumbnail, goes
   with the message and shows in its bubble; an image alone is a message too.
-  Up to 4 per message, PNG, JPEG,
-  GIF or WebP, 5 MB each. The server keeps them beside the comments file
-  (`.code-buddy/images/<id>/`), deleted with the comment, and the comment's
-  agent opens them with Read.
+  Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each: a request may now
+  hold them on top of its 100,000 characters of text. The server keeps them
+  beside the comments file (`.code-buddy/images/<id>/`), deleted with the
+  comment, and the comment's agent opens them with Read.
 - **Each comment gets a model that fits it.** Before a comment's agent
   starts, the hooks ask Claude Code's small fast model to sort the comment:
   `trivial` (copy, spacing, colour, one element), `standard` (a component's
@@ -212,6 +212,14 @@ released to the `stable` branch.
 - Two processes could break the same abandoned lock on the comments file and
   both write it, losing one change.
 - Claude's answers no longer carry the run's steps in `comments.json`.
+
+### Security
+
+- **The server refuses changes from other origins.** A request that would
+  change comments (`POST`, `PATCH`, `DELETE`) from a page whose origin the
+  server does not let in gets 403: a page of another site could otherwise
+  write comments and images, and start agents, without reading the answer.
+  Requests with no origin (scripts, curl) still pass.
 
 ## 0.1.0 - 2026-09-29
 

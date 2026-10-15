@@ -72,7 +72,7 @@ export function parseImages(input) {
   return input.map((image) => {
     const known = TYPES[typeof image?.type === 'string' ? image.type : '']
     if (!known || typeof image.data !== 'string') {
-      throw new ImageRefusal('only PNG, JPEG, GIF and WebP images are taken')
+      throw new ImageRefusal(`only ${limits.named} images are taken`)
     }
     const data = Buffer.from(image.data, 'base64')
     if (data.length > MAX_IMAGE_BYTES) {
@@ -92,7 +92,8 @@ export const imagesDir = (project, id) =>
   path.join(path.dirname(project.commentsFile), 'images', id)
 
 /**
- * Writes the images of message `message` of comment `id`.
+ * Writes the images of message `message` of comment `id`: all of them, or
+ * none when one cannot be.
  * @param {{ commentsFile: string }} project
  * @param {string} id
  * @param {string} message
@@ -102,14 +103,17 @@ export const imagesDir = (project, id) =>
 export async function saveImages(project, id, message, images) {
   if (!images.length) return []
   const dir = imagesDir(project, id)
-  await mkdir(dir, { recursive: true })
-  return Promise.all(
-    images.map(async ({ data, ext }, index) => {
-      const name = `${message}-${index + 1}.${ext}`
-      await writeFile(path.join(dir, name), data)
-      return name
-    }),
-  )
+  const names = images.map(({ ext }, index) => `${message}-${index + 1}.${ext}`)
+  try {
+    await mkdir(dir, { recursive: true })
+    await Promise.all(
+      names.map((name, index) => writeFile(path.join(dir, name), images[index].data)),
+    )
+  } catch (error) {
+    await removeImages(project, id, names)
+    throw error
+  }
+  return names
 }
 
 /**

@@ -570,12 +570,36 @@ test('refuses an image it does not take with 422, in words for the reader', asyn
       Array.from({ length: 5 }, () => ({ type: 'image/png', data: PNG })),
       'at most 4 images per message',
     ],
+    [{ type: 'image/png', data: PNG }, 'images must be a list'],
+    [[{ type: 'image/png', data: 42 }], 'only PNG, JPEG, GIF and WebP images are taken'],
+    [[{ type: 'image/png', data: '' }], 'not a image/png image'],
   ]
   for (const [images, error] of cases) {
     const response = await post(JSON.stringify({ route: '/images', body: 'No', images }))
     assert.equal(response.status, 422)
     assert.deepEqual(await json(response), { error })
   }
+})
+
+test('refuses an image of a follow-up with 422, and leaves the comment as it was', async () => {
+  const created = await json(await post(JSON.stringify({ route: '/images', body: 'Hm' })))
+  const patch = (body) =>
+    fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  await patch({ status: 'resolved' })
+  const refused = await patch({
+    followUp: 'Like this',
+    images: [{ type: 'image/svg+xml', data: PNG }],
+  })
+  assert.equal(refused.status, 422)
+  const kept = (await json(await fetch(`${base}/api/comments?all=1`))).find(
+    (entry) => entry.id === created.id,
+  )
+  assert.equal(kept.state, 'resolved')
+  assert.equal(kept.messages.length, 1)
 })
 
 test('takes images with a follow-up', async () => {
@@ -633,6 +657,32 @@ test('takes an image alone, as a comment or a follow-up, but not nothing', async
   })
 })
 
+test('sends a stopped comment again with its image alone, the words removed', async () => {
+  let printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/images',
+        body: 'Make it red',
+        images: [{ type: 'image/png', data: PNG }],
+      }),
+    ),
+  )
+  await nextLine(`NEW ${created.id} `, printed)
+  const patch = (body) =>
+    fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  await patch({ cancelled: true })
+  printed = output.length
+  const resent = await json(await patch({ cancelled: false, text: '' }))
+  assert.equal(resent.messages[0].body, '')
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(event, / body="" images=\[".*\/m1-1\.png"\]$/)
+})
+
 test('takes JPEG, GIF and WebP by their bytes, and refuses one over 5 MB', async () => {
   const bytes = {
     'image/jpeg': 'ffd8ffe000104a46',
@@ -652,6 +702,21 @@ test('takes JPEG, GIF and WebP by their bytes, and refuses one over 5 MB', async
     ),
   )
   assert.deepEqual(created.messages[0].images, ['m1-1.jpg', 'm1-2.gif', 'm1-3.webp'])
+  for (const [name, type] of [
+    ['m1-1.jpg', 'image/jpeg'],
+    ['m1-2.gif', 'image/gif'],
+    ['m1-3.webp', 'image/webp'],
+  ]) {
+    const served = await fetch(`${base}/api/images/${created.id}/${name}`, {
+      headers: { origin: 'http://localhost:5173' },
+    })
+    assert.equal(served.headers.get('content-type'), type, name)
+    assert.equal(served.headers.get('cache-control'), 'private, max-age=86400, immutable')
+    assert.equal(
+      served.headers.get('access-control-allow-origin'),
+      'http://localhost:5173',
+    )
+  }
 
   const big = Buffer.alloc(5 * 1024 * 1024 + 1)
   Buffer.from('89504e470d0a1a0a', 'hex').copy(big)
@@ -694,6 +759,18 @@ test('refuses a change from a page of another site, which would not read the ans
     origin: 'http://localhost:5173',
   })
   assert.equal(local.status, 201)
+  const { id } = await json(local)
+  for (const method of ['PATCH', 'DELETE']) {
+    const refused = await fetch(`${base}/api/comments/${id}`, {
+      method,
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      body: method === 'PATCH' ? JSON.stringify({ status: 'resolved' }) : undefined,
+    })
+    assert.equal(refused.status, 403, method)
+  }
+  // No origin at all: a script or curl, not a page.
+  const scripted = await fetch(`${base}/api/comments/${id}`, { method: 'DELETE' })
+  assert.equal(scripted.status, 204)
 })
 
 test('takes images with a reply only', async () => {

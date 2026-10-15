@@ -6,5 +6,6 @@
     "image/jpeg": "jpg",
     "image/gif": "gif",
     "image/webp": "webp"
-  }
+  },
+  "named": "PNG, JPEG, GIF and WebP"
 }

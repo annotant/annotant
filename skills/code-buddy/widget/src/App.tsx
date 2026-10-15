@@ -1090,13 +1090,10 @@ export default function App({ root }: { root: Element }) {
             const body = (
               resend?.id === comment.id ? resend.body : latestText(comment)
             ).trim()
-            // Images alone go again as they were.
+            // With its images, the comment may go again with no words.
             if (!body && !latestImages(comment).length) return
             void run(async () => {
-              await updateComment(comment.id, {
-                ...(body ? { text: body } : {}),
-                cancelled: false,
-              })
+              await updateComment(comment.id, { text: body, cancelled: false })
               setResend(undefined)
               toLatest()
             })
@@ -1399,7 +1396,9 @@ export default function App({ root }: { root: Element }) {
                   placeholder="What should change?"
                   sendLabel="Save"
                   disabled={busy}
-                  onChange={(body) => setDraft({ ...draft, body })}
+                  onChange={(body) =>
+                    setDraft((current) => current && { ...current, body })
+                  }
                   onAttach={(added) =>
                     setDraft(
                       (current) =>

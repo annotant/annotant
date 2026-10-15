@@ -40,7 +40,7 @@ export function pick(count: number, files: File[]): { files: File[]; refused?: s
   const room = small.slice(0, Math.max(0, MAX_IMAGES - count))
   const refused =
     taken.length < files.length
-      ? 'Only PNG, JPEG, GIF and WebP images can be attached.'
+      ? `Only ${limits.named} images can be attached.`
       : small.length < taken.length
         ? `An image may hold at most ${MAX_IMAGE_BYTES >> 20} MB.`
         : room.length < small.length

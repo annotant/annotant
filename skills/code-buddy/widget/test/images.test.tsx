@@ -218,3 +218,110 @@ test('a comment of an image alone reads as one, with no empty bubble', async () 
   await screen.findByRole('img', { name: 'Attached image 2' })
   expect(document.querySelector('.cb-bubble--reader')).toBeNull()
 })
+
+test('the message waits for an image still being read', async () => {
+  const server = fakeServer([])
+  const box = await newComment()
+  fireEvent.change(box, { target: { value: 'Like this' } })
+  paste(box, [png()])
+  // At once, before the image is read: nothing goes yet.
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  expect(sent(server, 'POST')).toBeUndefined()
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(sent(server, 'POST')).toMatchObject({
+      body: 'Like this',
+      images: [{ type: 'image/png', data: PNG_BASE64 }],
+    }),
+  )
+})
+
+test('a file dropped that is no image is refused, never opened by the browser', async () => {
+  fakeServer([])
+  const box = await newComment()
+  const form = box.closest('form')
+  if (!form) throw new Error('no form')
+  const pdf = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })
+  expect(fireEvent.drop(form, { dataTransfer: { files: [pdf], types: ['Files'] } })).toBe(
+    false,
+  )
+  expect(await screen.findByText('Only images can be attached.')).toBeTruthy()
+  expect(screen.queryByTestId('cb-attachments')).toBeNull()
+})
+
+test('cells pasted from a spreadsheet go in as text, not as their picture', async () => {
+  fakeServer([])
+  const box = await newComment()
+  const pasted = fireEvent.paste(box, {
+    clipboardData: {
+      files: [png('image.png')],
+      types: ['text/plain', 'Files'],
+      getData: (type: string) => (type === 'text/plain' ? 'Price\t4.50' : ''),
+    },
+  })
+  expect(pasted).toBe(true)
+  expect(screen.queryByTestId('cb-attachments')).toBeNull()
+})
+
+test('Escape keeps a draft that holds only an image', async () => {
+  fakeServer([])
+  const box = await newComment()
+  paste(box, [png()])
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  fireEvent.keyDown(box, { key: 'Escape' })
+  expect(screen.getByRole('img', { name: 'Attached image 1' })).toBeTruthy()
+  expect(screen.getByRole('textbox', { name: 'What should change?' })).toBe(box)
+})
+
+test('a stopped comment of words and an image goes again with the image alone', async () => {
+  const stopped = comment({ state: 'stopped', body: 'Make it red' })
+  stopped.messages = stopped.messages.map((message) => ({
+    ...message,
+    images: ['m1-1.png'],
+  }))
+  const server = fakeServer([stopped])
+  openThread('c1')
+  renderWidget()
+  const box = await screen.findByRole('textbox', {
+    name: 'Edit the comment before sending it again',
+  })
+  fireEvent.change(box, { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Send again' }))
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { text: '', cancelled: false } }]),
+  )
+})
+
+test('options ticked and an image go together', async () => {
+  const server = fakeServer([
+    comment({
+      state: 'asking',
+      messages: [
+        {
+          author: 'claude',
+          body: 'Which colour?',
+          at: '2026-01-01T10:01:00.000Z',
+          question: true,
+          multiple: true,
+          options: [{ label: 'Red' }, { label: 'Blue' }],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+  const box = await screen.findByPlaceholderText('Or answer in your own words…')
+  fireEvent.click(screen.getByRole('checkbox', { name: /Red/ }))
+  paste(box, [png()])
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(server.patches).toEqual([
+      {
+        id: 'c1',
+        patch: { choices: ['Red'], images: [{ type: 'image/png', data: PNG_BASE64 }] },
+      },
+    ]),
+  )
+})
