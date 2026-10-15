@@ -369,7 +369,7 @@ async function registerCommentAgent(
       .join(' ')
   const run = (mode: string) => [{ type: 'command', command: hook(mode) }]
   const { agent } = await $.agent.register({
-    name: `cb-${tag(id)}`,
+    name: agentName(id),
     description: `Code Buddy: comment ${tag(id)}. Only the plugin's hooks start it.`,
     prompt: await readWorkerPrompt($),
     ...(model && { model }),
@@ -463,6 +463,12 @@ const watches = new Map<string, Watch>()
  * or the reader's latest edit or follow-up, handed over once it started.
  */
 const starting = new Map<string, { stop: boolean; message?: Queued }>()
+/**
+ * How many sends are resuming each comment's agent type. Claude Code resumes
+ * an agent whose turn ended the way the Agent tool does, through
+ * `agent.offer`, so the type must be offered while a send is under way.
+ */
+const resuming = new Map<string, number>()
 let rearmed = false
 let dispatching: Promise<void> = Promise.resolve()
 
@@ -470,6 +476,8 @@ const ignore = () => undefined
 const skillDir = ($: $) => `${$.plugin.root}/skills/code-buddy`
 /** A comment's short id, as the agent's name carries it. */
 const tag = (id: string) => id.slice(0, 8)
+/** A comment's agent's name; `code-buddy:` before it makes its type. */
+const agentName = (id: string) => `cb-${tag(id)}`
 
 /** The follow-up message, the reader's line in it. */
 const followUp = (id: string, line: string) =>
@@ -550,22 +558,29 @@ async function registerRunning($: $) {
 async function send($: $, worker: Worker, { id, line, kind }: Queued) {
   // The message resumes the agent with its hooks again.
   await registerAgain($, id, worker)
+  const type = `code-buddy:${agentName(id)}`
+  resuming.set(type, (resuming.get(type) ?? 0) + 1)
   const sent = await $.session
     .send({
       to: { agentId: worker.agent },
       text: kind === 'edit' ? edited(id, line) : followUp(id, line),
     })
-    .catch(() => undefined)
+    .catch((error: unknown) => ({ isDelivered: false, reason: String(error) }))
+    .finally(() => {
+      const left = (resuming.get(type) ?? 0) - 1
+      if (left > 0) resuming.set(type, left)
+      else resuming.delete(type)
+    })
   await debug(
     $,
     worker.agent,
     id,
-    sent?.isDelivered
+    sent.isDelivered
       ? `sent the ${kind === 'edit' ? 'edit' : 'follow-up'}`
-      : `could not send: ${sent?.reason ?? 'refused'}`,
+      : `could not send: ${sent.reason}`,
   )
-  if (sent?.isDelivered) await setWorker($, id, { ...worker, running: true })
-  return Boolean(sent?.isDelivered)
+  if (sent.isDelivered) await setWorker($, id, { ...worker, running: true })
+  return sent.isDelivered
 }
 
 /**
@@ -580,7 +595,7 @@ async function handOver($: $, watched: Watch, next: Queued) {
 }
 
 async function startWorker($: $, watched: Watch, id: string, line: string) {
-  const name = `cb-${tag(id)}`
+  const name = agentName(id)
   starting.set(id, { stop: false })
   const started = await spawnWorker($, watched, id, name, line).catch(
     (error: unknown) => ({
@@ -1084,9 +1099,12 @@ export const register: Register = (on) => {
     return next(e)
   })
 
-  // Comments' agents are the hooks' alone: the model is never offered them.
+  // Comments' agents are the hooks' alone: the model is not offered them,
+  // except while a send resumes one (Claude Code offers the type then).
   on('agent.offer', async ($, e, next) =>
-    e.agent === WORKER || COMMENT_AGENT.test(e.agent) ? { isOffered: false } : next(e),
+    e.agent === WORKER || (COMMENT_AGENT.test(e.agent) && !resuming.has(e.agent))
+      ? { isOffered: false }
+      : next(e),
   )
 
   // The agent's thinking (often redacted, then an empty label) and the
