@@ -202,7 +202,9 @@ it, the default is:
 A `models` object is read whole: a label it leaves out inherits, so
 `{ "trivial": "inherit" }` turns routing off, and the classifier is not
 asked. A classifier that fails or takes more than 5 seconds leaves the agent
-on the session's model. Either way the hooks write the agent, the model it
+on the session's model. A comment of images alone, which the classifier
+cannot read, is labelled `hard` without asking it: in doubt, the largest
+model. Either way the hooks write the agent, the model it
 runs on and the label in the state folder (`routes/<id>.json`, beside
 `progress/`), and `claim.mjs` records them on the `working` event
 (`CODE_BUDDY_AGENT`, `CODE_BUDDY_MODEL` and `CODE_BUDDY_COMPLEXITY` override

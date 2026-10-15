@@ -292,6 +292,12 @@ function classifiedText(comment: CommentsFile['comments'][number]) {
   ].join('\n')
 }
 
+/** Whether the reader's latest message holds images and no words. */
+function onlyImages(comment: CommentsFile['comments'][number]) {
+  const said = comment.messages?.findLast((message) => message.author === 'reader')
+  return !!said?.images?.length && !said.body.trim()
+}
+
 /** The comment's label, or undefined: routing never blocks a comment. */
 async function classify($: $, text: string): Promise<Complexity | undefined> {
   const label = await Promise.race([
@@ -308,7 +314,12 @@ async function routeComment($: $, project: Project, id: string) {
   )
   const comment = routing ? await readComment($, project, id) : undefined
   const text = comment && classifiedText(comment)
-  const complexity = text ? await classify($, text) : undefined
+  // An image alone the classifier cannot read: in doubt, the largest model.
+  const complexity = text
+    ? await classify($, text)
+    : comment && onlyImages(comment)
+      ? 'hard'
+      : undefined
   const model = complexity && project.models[complexity]
   return { complexity, model: model && model !== INHERIT ? model : undefined }
 }

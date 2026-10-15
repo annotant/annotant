@@ -13,7 +13,7 @@ type Comment = {
   state: string
   route?: string
   anchor?: { quote: string; element?: { tag: string; text: string } }
-  messages?: { author: string; body: string }[]
+  messages?: { author: string; body: string; images?: string[] }[]
   events?: { by: string }[]
 }
 
@@ -475,6 +475,19 @@ test('a hard comment goes to opus, a standard one keeps the parent model', async
     complexity: 'standard',
     agent: 'a2',
   })
+  await w.exit(0)
+})
+
+test('a comment of an image alone goes to the hard model, unclassified', async ($, on) => {
+  const w = world(on, [
+    { ...titleComment, messages: [{ author: 'reader', body: '', images: ['m1-1.png'] }] },
+  ])
+  await watch($, w)
+  w.classifyAs('trivial')
+  await w.print(newLine('c1'))
+  expect(w.classified).toEqual([])
+  expect(w.spawned[0]?.model).toBe('opus')
+  expect(w.route('c1')).toEqual(expect.objectContaining({ complexity: 'hard' }))
   await w.exit(0)
 })
 
