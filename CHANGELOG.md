@@ -150,6 +150,11 @@ released to the `stable` branch.
 
 ### Fixed
 
+- A comment on an element with a generated id (React's `useId`, MUI, Ember,
+  Headless UI, Vue, Angular Material…), or inside one, lost its element after
+  a reload: its selector named the id, which the next load changes. Such ids
+  are now skipped, and the selector climbs to a written id or the element's
+  position.
 - The hook log lost lines when several processes wrote it at once (other
   sessions, the agents' own hooks): each line rewrote the whole log, dropping
   what was appended in between. Each line is now appended.

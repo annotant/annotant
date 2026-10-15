@@ -290,7 +290,18 @@ export function rangesFromAnchors(
   return anchors.map((anchor) => findAnchor(index, anchor))
 }
 
-/** The element's own name: its test id or id, when it has one. */
+/**
+ * An id made per render or per load, which the next one changes: React's
+ * `useId` (`:r3:`, `«r3»`, `_r_3_`, also inside Radix's `radix-:r1:`), Vue's
+ * `v-0`, Downshift's `downshift-0-menu`, and a counter after a library's
+ * prefix: MUI's `mui-123`, Ember's `ember42`, Headless UI's
+ * `headlessui-menu-button-5`, Angular Material's `mat-input-0`. An id with
+ * another colon (`loginForm:email`) is written in the code, and kept.
+ */
+const GENERATED_ID =
+  /:r[\da-z]*:|«r[\da-z]*»|^_r_[\da-z]+_$|^v-\d[\d-]*$|^downshift-\d|^(?:mui|ember|headlessui|radix|react-aria|mat|cdk)(?:-[a-z-]*)?\d[\d-]*$/i
+
+/** The element's own name: its test id or an id written in the code, when it has one. */
 function nameStep(element: Element): string | undefined {
   const testId = element.getAttribute('data-testid')
   // Quoted as written, for the agent to search the code for; escaped otherwise.
@@ -298,7 +309,7 @@ function nameStep(element: Element): string | undefined {
     return /["\\\n\r\f]/.test(testId)
       ? `[data-testid=${CSS.escape(testId)}]`
       : `[data-testid="${testId}"]`
-  if (element.id) return `#${CSS.escape(element.id)}`
+  if (element.id && !GENERATED_ID.test(element.id)) return `#${CSS.escape(element.id)}`
   return undefined
 }
 

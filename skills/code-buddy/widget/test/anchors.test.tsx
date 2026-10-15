@@ -241,3 +241,45 @@ test('the only match is found after its text changed', () => {
     elementFromAnchor(root, { quote: '', occurrence: 0, section: '', element }),
   ).toBe(root.querySelector('h1'))
 })
+
+test.each([
+  ['React 18 useId', ':r3:'],
+  ['React 18 server useId', ':R1a:'],
+  ['React 19.1 useId', '«r3»'],
+  ['React 19.2 useId', '_r_3_'],
+  ['Radix', 'radix-:r1:'],
+  ['React Aria', 'react-aria5948-1'],
+  ['Vue useId', 'v-1-2'],
+  ['MUI', 'mui-123'],
+  ['Ember', 'ember42'],
+  ['Headless UI', 'headlessui-menu-button-5'],
+  ['Angular Material', 'mat-mdc-form-field-label-2'],
+  ['Angular CDK', 'cdk-overlay-1'],
+  ['Downshift', 'downshift-0-menu'],
+])('a %s id is not the selector', (_, id) => {
+  const root = page(`<section id="${id}"><p>One</p><p>Two</p></section>`)
+  const picked = root.querySelectorAll('p')[1]
+  if (!picked) throw new Error('no second p')
+  const anchor = anchorFromElement(root, picked)
+  expect(anchor.element?.selector).toBe('section > p:nth-of-type(2)')
+  expect(elementFromAnchor(root, anchor)).toBe(picked)
+})
+
+test('a generated id climbs to the written id above it', () => {
+  const root = page('<form id="signup"><div id=":r3:"><p>One</p><p>Two</p></div></form>')
+  const picked = root.querySelectorAll('p')[1]
+  if (!picked) throw new Error('no second p')
+  expect(anchorFromElement(root, picked).element?.selector).toBe(
+    '#signup > div > p:nth-of-type(2)',
+  )
+})
+
+test.each(['main-nav', 'step-2', 'h2024', 'matrix-2', 'loginForm:email'])(
+  'a written id %s is the selector',
+  (id) => {
+    const root = page(`<p id="${id}">One</p>`)
+    const picked = root.querySelector('p')
+    if (!picked) throw new Error('no p')
+    expect(anchorFromElement(root, picked).element?.selector).toBe(`#${CSS.escape(id)}`)
+  },
+)
