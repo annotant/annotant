@@ -244,14 +244,21 @@ export const paused = (comment: Lifecycle) => comment.state === 'stopped'
 /** Claude answered a follow-up: the reader follows up again or resolves it. */
 export const answered = (comment: Lifecycle) => comment.state === 'answered'
 
+/** Each state's chip, in the panel and the debug panel; `working` is "In progress". */
+const STATUSES = {
+  open: 'open',
+  working: 'claimed',
+  asking: 'asking',
+  answered: 'answered',
+  stopped: 'stopped',
+  resolved: 'resolved',
+} as const satisfies Record<ReviewState, string>
+
+/** A chip's tone: where a comment stands, as the panel shows it. */
+export type Status = (typeof STATUSES)[ReviewState]
+
 /** Where a comment stands, as its chip in the panel shows it. */
-export function statusOf(
-  comment: Lifecycle,
-): 'open' | 'claimed' | 'asking' | 'answered' | 'resolved' {
-  if (comment.state === 'resolved') return 'resolved'
-  if (comment.state === 'asking' || comment.state === 'answered') return comment.state
-  return comment.state === 'working' ? 'claimed' : 'open'
-}
+export const statusOf = (comment: Lifecycle): Status => STATUSES[comment.state]
 
 const latestOwn = (comment: Pick<ReviewComment, 'messages'>) =>
   comment.messages.findLast((message) => message.author === 'reader')

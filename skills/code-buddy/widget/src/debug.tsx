@@ -12,7 +12,13 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useCommentHistory } from './api'
-import type { ReviewComment, ReviewMessage, ReviewProgress, ReviewState } from './domain'
+import {
+  statusOf,
+  type ReviewComment,
+  type ReviewMessage,
+  type ReviewProgress,
+  type ReviewState,
+} from './domain'
 import { readSession, writeSession } from './session'
 import { Chip, IconButton } from './ui'
 
@@ -304,19 +310,9 @@ export function timelineOf(comment: ReviewComment, run?: string): TimelineEvent[
     .toSorted((a, b) => order(a) - order(b))
 }
 
-/** The widget's badge tone for each state; `working` is its "In progress". */
-const TONES = {
-  open: 'open',
-  working: 'claimed',
-  asking: 'asking',
-  answered: 'answered',
-  stopped: 'stopped',
-  resolved: 'resolved',
-} as const
-
 /** A state as the widget's badge, smaller. */
 const StateChip = ({ state }: { state: ReviewState }) => (
-  <Chip tone={TONES[state]} small>
+  <Chip tone={statusOf({ state })} small>
     {state}
   </Chip>
 )

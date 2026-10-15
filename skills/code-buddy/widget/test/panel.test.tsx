@@ -200,3 +200,19 @@ test('the list names the model each comment was worked on with', async () => {
 
   expect((await screen.findByTestId('cb-model')).textContent).toBe('opus · hard')
 })
+
+/** The chip of the one comment listed. */
+const summaryChip = async () =>
+  (await screen.findByTestId('cb-summary')).querySelector('.cb-chip')?.textContent
+
+test('a stopped comment shows a Stopped chip, in the page list and in all comments', async () => {
+  fakeServer([comment({ state: 'stopped' })])
+  openPanel()
+  renderWidget()
+
+  expect(await summaryChip()).toBe('Stopped')
+  fireEvent.click(screen.getByRole('button', { name: 'All comments' }))
+  // Only All comments links each comment's page.
+  await screen.findByRole('link', { name: '/' })
+  expect(await summaryChip()).toBe('Stopped')
+})
