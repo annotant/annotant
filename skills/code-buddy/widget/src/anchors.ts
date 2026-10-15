@@ -380,7 +380,7 @@ const MAX_CROSSES = 6
 /** A box this much past an edge still counts as inside: borders round. */
 const SLACK = 1
 
-const boxOf = (element: Element): ReviewBox => {
+export const boxOf = (element: Element): ReviewBox => {
   const { top, left, width, height } = element.getBoundingClientRect()
   return { top, left, width, height }
 }
@@ -409,8 +409,8 @@ function laidOut(parent: Element): { element: Element; box: ReviewBox }[] {
 
 /**
  * The smallest element under `root` that holds all of `rect`, `root` when none
- * does. Of two siblings that both hold it, the later one, which paints on top:
- * a modal's portal, not the page under it.
+ * does. Of two siblings that both hold it, the later one, which usually paints
+ * on top: a modal's portal, not the page under it.
  */
 function holderFor(root: Element, rect: ReviewBox): Element {
   let holder = root
@@ -422,24 +422,35 @@ function holderFor(root: Element, rect: ReviewBox): Element {
 }
 
 /**
- * What `rect` covers in `holder`: the outermost elements wholly inside it, and
- * the children of `holder` it cuts through.
+ * What `rect` covers in `holder`: the outermost elements wholly inside it; the
+ * children of `holder` it cuts through, and the innermost ones in them (the
+ * section, and the two buttons around a gap in it); `truncated` when there
+ * were more than it keeps.
  */
 function elementsIn(holder: Element, rect: ReviewBox) {
   const covers: Element[] = []
   const crosses: Element[] = []
-  const visit = (parent: Element) => {
+  let truncated = false
+  const keep = (list: Element[], max: number, element: Element) => {
+    if (list.length < max) list.push(element)
+    else truncated = true
+  }
+  // Whether `rect` cuts through an element under `parent`.
+  const visit = (parent: Element): boolean => {
+    let cuts = false
     for (const { element, box } of laidOut(parent)) {
-      if (holds(rect, box)) {
-        if (covers.length < MAX_COVERS) covers.push(element)
-      } else if (overlaps(rect, box)) {
-        if (parent === holder && crosses.length < MAX_CROSSES) crosses.push(element)
-        if (covers.length < MAX_COVERS) visit(element)
+      if (holds(rect, box)) keep(covers, MAX_COVERS, element)
+      else if (overlaps(rect, box)) {
+        cuts = true
+        const outer = parent === holder
+        if (outer) keep(crosses, MAX_CROSSES, element)
+        if (!visit(element) && !outer) keep(crosses, MAX_CROSSES, element)
       }
     }
+    return cuts
   }
   visit(holder)
-  return { covers, crosses }
+  return { covers, crosses, truncated }
 }
 
 /** The elements an area drawn over `rect` would record as covered. */
@@ -456,25 +467,26 @@ function nodeOf(root: Element, element: Element): ReviewNode {
 }
 
 /**
- * Describes a rectangle drawn over the page, in viewport pixels: where it is
- * on the page, the element it lies in (to find it again on another layout),
- * and the elements it covers or cuts through (to find it in the code).
+ * Describes a rectangle drawn over the page (`rect`, in viewport pixels):
+ * where it is on the page, from its corner; the element it lies in, to find it
+ * again on another layout; and the elements it covers or cuts through, to find
+ * it in the code.
  */
 export function anchorFromArea(root: Element, rect: ReviewBox): ReviewAnchor {
   const holder = holderFor(root, rect)
-  const { covers, crosses } = elementsIn(holder, rect)
+  const { covers, crosses, truncated } = elementsIn(holder, rect)
   const box = boxOf(holder)
+  const size = { width: Math.round(box.width), height: Math.round(box.height) }
+  // In the holder's content: a holder that scrolls itself moves what it holds.
   const within =
-    holder !== root && box.width && box.height
+    holder !== root && size.width && size.height
       ? {
           ...nodeOf(root, holder),
           offset: {
-            top: Math.round(rect.top - box.top),
-            left: Math.round(rect.left - box.left),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
+            top: Math.round(rect.top - box.top + holder.scrollTop),
+            left: Math.round(rect.left - box.left + holder.scrollLeft),
           },
-          size: { width: Math.round(box.width), height: Math.round(box.height) },
+          size,
         }
       : undefined
   const area: ReviewArea = {
@@ -491,6 +503,7 @@ export function anchorFromArea(root: Element, rect: ReviewBox): ReviewAnchor {
     ...(within ? { within } : {}),
     covers: covers.map((element) => nodeOf(root, element)),
     crosses: crosses.map((element) => nodeOf(root, element)),
+    ...(truncated ? { truncated: true as const } : {}),
   }
   return {
     quote: '',
@@ -512,20 +525,20 @@ export function holderOf(root: Element, area: ReviewArea): Element | undefined {
 
 /**
  * Where the area is now, in viewport pixels: in the element it was drawn in,
- * which may have moved since; its width follows the holder's (a narrower
- * window), its height does not (content added further down). Without its
- * holder, where it was on the page.
+ * which may have moved or scrolled since; its width follows the holder's (a
+ * narrower window), its height does not (content added further down).
+ * Without its holder, where it was on the page.
  */
 export function rectFromArea(area: ReviewArea, holder?: Element): ReviewBox {
   const box = holder && boxOf(holder)
-  if (area.within && box?.width && box.height) {
+  if (area.within && holder && box?.width && box.height) {
     const { offset, size } = area.within
-    const scale = size.width ? box.width / size.width : 1
+    const scale = box.width / size.width
     return {
-      top: box.top + offset.top,
-      left: box.left + offset.left * scale,
-      width: offset.width * scale,
-      height: offset.height,
+      top: box.top + offset.top - holder.scrollTop,
+      left: box.left + offset.left * scale - holder.scrollLeft,
+      width: area.width * scale,
+      height: area.height,
     }
   }
   return {
@@ -534,6 +547,17 @@ export function rectFromArea(area: ReviewArea, holder?: Element): ReviewBox {
     width: area.width,
     height: area.height,
   }
+}
+
+/**
+ * Where to frame the area now: as `rectFromArea`, but nowhere while the
+ * element it was drawn in is gone or hidden (a closed modal, another tab):
+ * its old place on the page would frame something else.
+ */
+export function framedArea(area: ReviewArea, holder?: Element): ReviewBox | undefined {
+  const box = holder && boxOf(holder)
+  if (area.within && !(box?.width && box.height)) return undefined
+  return rectFromArea(area, holder)
 }
 
 /**

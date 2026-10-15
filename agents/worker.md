@@ -30,8 +30,8 @@ Read `PROJECT/.code-buddy.json` first: `commentsFile` (relative to PROJECT),
    `url`, and `anchor`: `section`, a text `quote`, a pointed `element`
    (selector from `body`, tag, text, HTML excerpt) or a drawn `area` (its box
    on the page, the `viewport` it was drawn in, the element it lies `within`,
-   and those it `covers` or `crosses`: find these in the code). `route` `*`
-   means the whole app. `messages` holds the whole thread, the reader's comment first:
+   and those it `covers` or `crosses`, a sample when `truncated`: find these
+   in the code). `route` `*` means the whole app. `messages` holds the whole thread, the reader's comment first:
    your earlier answers (`claude`) were applied; act on the reader's last
    message. `state` says where it stands. A `cancellation` field lists files
    an earlier, stopped agent left changed: keep, finish or revert them to

@@ -9,11 +9,12 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  boxOf,
   coveredBy,
   elementFromAnchor,
+  framedArea,
   holderOf,
   rangesFromAnchors,
-  rectFromArea,
   startRect,
 } from './anchors'
 import {
@@ -29,11 +30,6 @@ import { Icon } from './ui'
 const WIDGET = '[data-code-buddy]'
 
 type Box = ReviewBox
-
-const boxOf = (element: Element): Box => {
-  const { top, left, width, height } = element.getBoundingClientRect()
-  return { top, left, width, height }
-}
 
 type Corners = Pick<
   CSSProperties,
@@ -298,8 +294,8 @@ function findAreas(root: Element, comments: ReviewComment[]) {
 
 function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
   return found.flatMap(({ comment, area, holder, clippers }) => {
-    const frame = rectFromArea(area, holder)
-    const shown = within(frame, clipOf(clippers))
+    const frame = framedArea(area, holder)
+    const shown = frame && within(frame, clipOf(clippers))
     return shown ? [{ comment, frame, shown }] : []
   })
 }
@@ -604,10 +600,7 @@ export function TargetOutline({ element }: { element: Element }) {
 
 /** Outlines a drawn area while it is on screen, in the element it was drawn in. */
 export function AreaOutline({ root, area }: { root: Element; area: ReviewArea }) {
-  const measure = useCallback(
-    () => rectFromArea(area, holderOf(root, area)),
-    [root, area],
-  )
+  const measure = useCallback(() => framedArea(area, holderOf(root, area)), [root, area])
   const box = useOnScreen(measure)
   if (!box) return null
   return (
@@ -756,8 +749,8 @@ function boxBetween(start: Point, end: Point): Box {
 
 /**
  * The reader drags a rectangle over the page; the rest of the page dims, and
- * the elements it covers are outlined as it grows. Scrolling while dragging
- * extends it past the window. Escape cancels.
+ * the elements it covers are outlined as it grows. Scrolling the page while
+ * dragging extends it past the window. Escape cancels.
  */
 export function AreaDrawer({
   root,

@@ -458,7 +458,8 @@ function scopeLabel(comment: { route: string; url?: string }): string {
 function areaContents(area: ReviewArea): string {
   const nodes = area.covers.length ? area.covers : area.crosses
   const shown = nodes.slice(0, 3).map((node) => `<${node.tag}>`)
-  const more = nodes.length > shown.length ? ` +${nodes.length - shown.length}` : ''
+  const hidden = nodes.length - shown.length
+  const more = area.truncated ? ` +${hidden}…` : hidden ? ` +${hidden}` : ''
   if (shown.length)
     return `${area.covers.length ? 'covers' : 'across'} ${shown.join(' ')}${more}`
   return area.within ? `in <${area.within.tag}>` : 'on the page'

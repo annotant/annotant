@@ -47,11 +47,9 @@ export const TRANSITIONS = {
 export const COMPLEXITIES = ['trivial', 'standard', 'hard']
 
 /**
- * @typedef {object} Element
- * @property {string} selector From `body`, unique when it was recorded.
- * @property {string} tag
- * @property {string} text Visible text, normalised and truncated.
- * @property {string} html Outer HTML, whitespace-collapsed and truncated.
+ * @typedef {AreaNode & { html: string }} Element `selector` is from `body`,
+ * unique when it was recorded; `text` and `html` (the outer HTML) are
+ * whitespace-collapsed and truncated.
  */
 
 /**
@@ -65,19 +63,30 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  */
 
 /**
- * An element a drawn area covers or crosses: no HTML, an area may hold many.
+ * An element a drawn area covers or crosses: no HTML, an area may hold many;
+ * its text is cut to 80 characters.
  * @typedef {{ selector: string, tag: string, text: string }} AreaNode
  * @typedef {{ top: number, left: number, width: number, height: number }} Box
+ * @typedef {{ width: number, height: number }} Size
  */
 
 /**
- * A rectangle the reader drew, from the page's corner, in CSS pixels; `within`
- * places it in the smallest element holding it, for another viewport.
+ * The smallest element holding a drawn area: where the area's corner lies in
+ * its content (scroll included), and its size then, never 0, to scale the
+ * area's width with it on another viewport.
+ * @typedef {AreaNode & { offset: { top: number, left: number }, size: Size }} Holder
+ */
+
+/**
+ * A rectangle the reader drew, from the page's corner, in CSS pixels, never
+ * empty. `covers` keeps at most 10 elements and `crosses` 6; `truncated` says
+ * the area held more.
  * @typedef {Box & {
- *   viewport: { width: number, height: number, scrollX: number, scrollY: number },
- *   within?: AreaNode & { offset: Box, size: { width: number, height: number } },
+ *   viewport: Size & { scrollX: number, scrollY: number },
+ *   within?: Holder,
  *   covers: AreaNode[],
  *   crosses: AreaNode[],
+ *   truncated?: true,
  * }} Area
  */
 

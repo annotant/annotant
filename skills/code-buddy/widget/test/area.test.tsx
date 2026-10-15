@@ -42,7 +42,7 @@ function page() {
 const GAP = { left: 10, top: 300, width: 500, height: 60 }
 
 test.each([
-  ['a gap', GAP, 'across <div> <div>'],
+  ['a gap', GAP, 'across <div> <div> <p>'],
   ['a card', { left: 10, top: 110, width: 450, height: 230 }, 'covers <div>'],
   [
     'the empty corner of a section',
@@ -59,7 +59,7 @@ test.each([
   )
 })
 
-test('an area records the element it lies in, and the blocks it cuts through', () => {
+test('an area records the element it lies in, and what it cuts through', () => {
   layout()
   const root = page()
 
@@ -69,12 +69,14 @@ test('an area records the element it lies in, and the blocks it cuts through', (
     selector: 'section',
     tag: 'section',
     text: 'Card A Card B',
-    offset: { top: 200, left: 10, width: 500, height: 60 },
+    offset: { top: 200, left: 10 },
     size: { width: 1000, height: 400 },
   })
+  // The two cards, and card B's text, which it cuts too.
   expect(area?.crosses.map((node) => node.selector)).toEqual([
     'section > div:nth-of-type(1)',
     'section > div:nth-of-type(2)',
+    'section > div:nth-of-type(2) > p',
   ])
   expect(area?.covers).toEqual([])
   expect([area?.left, area?.top, area?.width, area?.height]).toEqual([10, 300, 500, 60])
@@ -107,6 +109,82 @@ test('an area records what it covers inside a block it cuts through', () => {
   expect(area?.covers.map((node) => node.selector)).toEqual([
     'section > div:nth-of-type(1) > p',
   ])
+})
+
+test('an area records the innermost elements it cuts through: the buttons around a gap', () => {
+  layout()
+  const root = page()
+  root.insertAdjacentHTML(
+    'beforeend',
+    `<div data-box="0,600,1000,100"><div data-box="20,620,400,40">
+      <a data-box="20,620,150,40">Find a retailer</a><a data-box="200,620,150,40">Ask us</a>
+    </div></div>`,
+  )
+
+  const area = anchorFromArea(root, { left: 160, top: 610, width: 50, height: 60 }).area
+
+  // The block they sit in, under the holder, and the buttons.
+  expect(area?.crosses.map((node) => node.tag)).toEqual(['div', 'a', 'a'])
+  expect(area?.crosses.slice(1).map((node) => node.text)).toEqual([
+    'Find a retailer',
+    'Ask us',
+  ])
+})
+
+test('an area says when it holds more elements than it records', () => {
+  layout()
+  const root = page()
+  const items = Array.from(
+    { length: 12 },
+    (_, index) => `<li data-box="20,${610 + index * 30},300,30">Item ${index + 1}</li>`,
+  )
+  root.insertAdjacentHTML(
+    'beforeend',
+    `<ul data-box="0,600,1000,400">${items.join('')}</ul>`,
+  )
+
+  const area = anchorFromArea(root, { left: 10, top: 605, width: 400, height: 380 }).area
+
+  expect(area?.covers).toHaveLength(10)
+  expect(area?.truncated).toBe(true)
+  expect(anchorFromArea(root, GAP).area?.truncated).toBeUndefined()
+})
+
+test('an area sees through a wrapper with no box of its own', () => {
+  layout()
+  const root = page()
+  const card = root.querySelector('section > div')
+  card?.insertAdjacentHTML('beforebegin', '<div style="display: contents"></div>')
+  card?.previousElementSibling?.append(card)
+
+  const area = anchorFromArea(root, { left: 10, top: 110, width: 450, height: 230 }).area
+
+  expect(area?.within?.selector).toBe('section')
+  expect(area?.covers.map((node) => node.text)).toEqual(['Card A'])
+})
+
+test('an area drawn in a list that scrolls stays on what it framed', () => {
+  layout()
+  const root = page()
+  const items = Array.from(
+    { length: 6 },
+    (_, index) => `<li data-box="20,${610 + index * 30},300,30">Item ${index + 1}</li>`,
+  )
+  root.insertAdjacentHTML(
+    'beforeend',
+    `<ul data-box="0,600,400,100">${items.join('')}</ul>`,
+  )
+  const list = root.querySelector('ul')
+  if (!list) throw new Error('no list')
+  list.scrollTop = 50
+
+  const area = anchorFromArea(root, { left: 10, top: 610, width: 100, height: 60 }).area
+  if (!area) throw new Error('no area')
+
+  expect(area.within?.offset).toEqual({ top: 60, left: 10 })
+  // Scrolled back to the top, what it framed is 50px further down.
+  list.scrollTop = 0
+  expect(rectFromArea(area, holderOf(root, area)).top).toBe(660)
 })
 
 test('an area lies in the smallest element that holds it', () => {
@@ -190,6 +268,23 @@ function renderCards(comments: ReviewComment[] = []) {
   return server
 }
 
+test('scrolling the page while drawing stretches the area', async () => {
+  renderCards()
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
+  fireEvent.mouseDown(screen.getByTestId('cb-draw'), {
+    button: 0,
+    clientX: 10,
+    clientY: 300,
+  })
+  const scrolled = vi.spyOn(window, 'scrollY', 'get').mockReturnValue(200)
+  onTestFinished(() => scrolled.mockRestore())
+  fireEvent.scroll(document)
+  fireEvent.mouseUp(document, { clientX: 510, clientY: 360 })
+
+  // From 300px down the page to 360px down the window, 200px further down.
+  expect((await screen.findByTestId('cb-area-chip')).textContent).toMatch(/^500 × 260/)
+})
+
 /** Drags from one corner to the other over the drawing layer. */
 function drag(from: [number, number], to: [number, number]) {
   fireEvent.mouseDown(screen.getByTestId('cb-draw'), {
@@ -210,7 +305,7 @@ test('a drawn area is commented on, and stays outlined while the comment is writ
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   expect(screen.queryByTestId('cb-draw')).toBeNull()
   expect(screen.getByTestId('cb-area-chip').textContent).toBe(
-    '500 × 60across <div> <div>',
+    '500 × 60across <div> <div> <p>',
   )
   await screen.findByTestId('cb-area-target')
 
@@ -242,7 +337,7 @@ test('the area goes to the server with what it covers', async () => {
     within: { selector: 'section' },
     covers: [],
   })
-  expect(area?.crosses).toHaveLength(2)
+  expect(area?.crosses).toHaveLength(3)
 })
 
 test('a slip of the mouse draws nothing, and Escape leaves the drawing', async () => {
@@ -326,7 +421,7 @@ const DRAWN: ReviewArea = {
     selector: 'section',
     tag: 'section',
     text: 'Card A Card B',
-    offset: { top: 200, left: 10, width: 500, height: 60 },
+    offset: { top: 200, left: 10 },
     size: { width: 1000, height: 400 },
   },
   covers: [],
@@ -372,4 +467,51 @@ test("the area's chip in a resolved thread shows it again on the page", async ()
     behavior: 'smooth',
   })
   await screen.findByTestId('cb-area-target')
+})
+
+test('an area whose element is hidden is not framed elsewhere', async () => {
+  renderCards([comment({ area: DRAWN })])
+  await screen.findByTestId('cb-area-mark')
+
+  // A closed tab, a modal: its old place on the page now shows something else.
+  document.querySelector('section')?.setAttribute('data-box', '0,0,0,0')
+
+  await waitFor(() => expect(screen.queryByTestId('cb-area-mark')).toBeNull())
+})
+
+test("the bubble on an area's frame opens its thread and scrolls to it", async () => {
+  renderCards([comment({ area: DRAWN, body: 'Tighten this gap' })])
+
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Open the comment on the drawn area' }),
+  )
+
+  await screen.findByTestId('cb-area-chip')
+  expect(window.scrollBy).toHaveBeenCalledWith({
+    top: 300 + 30 - window.innerHeight / 2,
+    behavior: 'smooth',
+  })
+})
+
+test('an area opened from another page waits for its element to be laid out', async () => {
+  const anchor = { section: '', quote: '', occurrence: 0, area: DRAWN }
+  sessionStorage.setItem(
+    'code-buddy:center',
+    JSON.stringify({ anchor, path: '/', id: 'c1' }),
+  )
+  renderCards([comment({ area: DRAWN })])
+  const section = document.querySelector('section')
+  section?.setAttribute('data-box', '0,0,0,0')
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(window.scrollBy).not.toHaveBeenCalled()
+  section?.setAttribute('data-box', '0,200,1000,400')
+
+  await waitFor(() =>
+    expect(window.scrollBy).toHaveBeenCalledWith({
+      top: 400 + 30 - window.innerHeight / 2,
+      behavior: 'smooth',
+    }),
+  )
+  expect(sessionStorage.getItem('code-buddy:center')).toBeNull()
 })

@@ -28,21 +28,37 @@ export interface ReviewBox {
   height: number
 }
 
-/** A rectangle the reader drew over the page. */
+interface ReviewSize {
+  width: number
+  height: number
+}
+
+/**
+ * The smallest element holding a whole drawn area: the area is found again in
+ * it, its width scaled with the holder's, on another viewport or after a
+ * layout change.
+ */
+interface ReviewHolder extends ReviewNode {
+  /** Where the area's corner lies in the holder's content, its scroll included. */
+  offset: { top: number; left: number }
+  /** The holder's size when the area was drawn; never 0. */
+  size: ReviewSize
+}
+
+/** A rectangle the reader drew over the page; never empty. */
 export interface ReviewArea extends ReviewBox {
   /** The viewport's size and scroll when it was drawn; `top` and `left` are from the page's corner. */
-  viewport: { width: number; height: number; scrollX: number; scrollY: number }
-  /**
-   * The smallest element holding the whole area (its holder), the area's box
-   * from the holder's corner, and the holder's size then: the area is found
-   * again in it, its width scaled with the holder's, on another viewport or
-   * after a layout change.
-   */
-  within?: ReviewNode & { offset: ReviewBox; size: { width: number; height: number } }
-  /** Elements wholly inside the area, the outermost ones only. */
+  viewport: ReviewSize & { scrollX: number; scrollY: number }
+  within?: ReviewHolder
+  /** Elements wholly inside the area, the outermost ones only: 10 at most. */
   covers: ReviewNode[]
-  /** Elements the area cuts through, such as the two blocks around a gap. */
+  /**
+   * Elements the area cuts through: its holder's children, and the innermost
+   * ones in them, such as the two buttons around a gap; 6 at most.
+   */
   crosses: ReviewNode[]
+  /** The area held more elements than `covers` and `crosses` keep. */
+  truncated?: true
 }
 
 export interface ReviewAnchor {

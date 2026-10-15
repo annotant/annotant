@@ -294,7 +294,7 @@ code { font-family: var(--cb-mono); }
 .cb-hover[data-hidden] { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .cb-hover { transition: none; animation: none; } }
 .cb-hover span { position: absolute; top: -22px; left: -2px; padding: 1px 4px; border-radius: 3px; background: var(--cb-accent); color: #fff; font: 12px var(--cb-mono); white-space: nowrap; }
-/* A drawn area: dashed, where an element's outline is solid. */
+/* A drawn area: square corners; its outline is dashed, where an element's is solid. */
 .cb-outline--area, .cb-mark--area { border-radius: 2px; }
 .cb-outline--area { border-style: dashed; }
 /* Drawing: the page under a veil, but for the area being drawn and what it covers. */
