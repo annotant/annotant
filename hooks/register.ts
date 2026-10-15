@@ -307,8 +307,11 @@ async function classify($: $, text: string): Promise<Complexity | undefined> {
   return COMPLEXITIES.find((known) => known === label)
 }
 
-/** An image alone, which the classifier cannot read: a large model, in doubt, at a medium effort. */
-const IMAGES_ONLY = { model: 'opus', effort: 'medium' } as const
+/**
+ * A comment of images alone, which the classifier cannot read: the session's
+ * model, at this effort, routing on or off.
+ */
+const IMAGES_ONLY_EFFORT = 'medium'
 
 /**
  * The model a comment's agent is to start on, its effort, and why; none to
@@ -319,12 +322,13 @@ async function routeComment(
   project: Project,
   id: string,
 ): Promise<{ complexity?: Complexity; model?: string; effort?: string }> {
+  const comment = await readComment($, project, id)
+  if (comment && onlyImages(comment)) return { effort: IMAGES_ONLY_EFFORT }
   const routing = COMPLEXITIES.some(
     (label) => (project.models[label] ?? INHERIT) !== INHERIT,
   )
-  const comment = routing ? await readComment($, project, id) : undefined
-  const text = comment && classifiedText(comment)
-  if (!text) return comment && onlyImages(comment) ? IMAGES_ONLY : {}
+  const text = routing && comment && classifiedText(comment)
+  if (!text) return {}
   const complexity = await classify($, text)
   const model = complexity && project.models[complexity]
   return {
@@ -609,7 +613,6 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
       deny: error instanceof Error ? error.message : String(error),
       agentId: undefined,
       route: undefined,
-      effort: undefined,
     }),
   )
   // A spawn a hook answered carries no id: the agent list names it.
@@ -630,7 +633,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     const { project, ...route } = started.route
     await $.fs.write(routeFile(project, id), JSON.stringify({ ...route, agent }))
     const label = route.complexity ? `, the comment classified ${route.complexity}` : ''
-    const effort = started.effort ? ` at ${started.effort} effort` : ''
+    const effort = route.effort ? ` at ${route.effort} effort` : ''
     await debug($, agent, id, `started on ${route.model}${effort}${label}`)
   }
   const worker = {
@@ -638,7 +641,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     root: watched.root,
     running: true,
     ...(started.route && { model: started.route.model }),
-    ...(started.effort && { effort: started.effort }),
+    ...(started.route?.effort && { effort: started.route.effort }),
   }
   await setWorker($, id, worker)
   await debug($, agent, id, `started for ${line.split(' ')[0]}`)
@@ -648,7 +651,8 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
 
 /**
  * Picks the comment's model, registers its agent type and starts it. `route`:
- * what claim.mjs is to record on the run, the agent aside.
+ * what claim.mjs is to record on the run, the agent aside, with the effort
+ * the type was registered with, which claim.mjs leaves out.
  */
 async function spawnWorker($: $, watched: Watch, id: string, name: string, line: string) {
   const project = await loadProject($, watched.root)
@@ -660,8 +664,7 @@ async function spawnWorker($: $, watched: Watch, id: string, name: string, line:
     // The paths first: the reader's line is data, and comes last.
     prompt: [id, `SKILL=${skillDir($)}`, `PROJECT=${watched.root}`, line].join('\n'),
   })
-  if (started.deny !== undefined)
-    return { ...started, route: undefined, effort: undefined }
+  if (started.deny !== undefined) return { ...started, route: undefined }
   // Claude Code names the model it resolved; the one asked for, or the
   // session's, which the agent inherits, when it does not.
   const resolved =
@@ -670,8 +673,12 @@ async function spawnWorker($: $, watched: Watch, id: string, name: string, line:
       : (model ?? (await $.session.model()))
   return {
     ...started,
-    route: { project, model: resolved, ...(complexity && { complexity }) },
-    effort,
+    route: {
+      project,
+      model: resolved,
+      ...(complexity && { complexity }),
+      ...(effort && { effort }),
+    },
   }
 }
 

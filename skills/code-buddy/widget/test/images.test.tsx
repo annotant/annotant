@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
@@ -390,4 +390,98 @@ test('an image read after its draft was left stays out of the next one', async (
   held?.reader.readAsDataURL(held.blob)
   await new Promise((resolve) => setTimeout(resolve, 50))
   expect(screen.queryByTestId('cb-attachments')).toBeNull()
+})
+
+test("a draft started over another starts free of the other's images being read", async () => {
+  fakeServer([])
+  vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementationOnce(() => {})
+  const box = await newComment()
+  // Never read: the first draft's image stays pending.
+  paste(box, [png()])
+  // The page of this test's widget: those of earlier tests outlive them.
+  const page = [...document.querySelectorAll('main')].at(-1)
+  if (!page) throw new Error('no page')
+  page.insertAdjacentHTML('beforeend', '<p>Pick me</p>')
+  const text = page.querySelector('p:last-of-type')?.firstChild
+  if (!text) throw new Error('no text')
+  const range = document.createRange()
+  range.selectNodeContents(text)
+  const selection = getSelection()
+  if (!selection) throw new Error('no selection')
+  selection.removeAllRanges()
+  selection.addRange(range)
+  selection.toString = () => 'Pick me'
+  document.dispatchEvent(new Event('selectionchange'))
+  fireEvent.click(await screen.findByTestId('cb-selection'))
+
+  const next = await screen.findByRole('textbox', { name: 'What should change?' })
+  fireEvent.change(next, { target: { value: 'Bolder' } })
+  expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', false)
+})
+
+test('a file dropped while the message is sent is refused, never opened by the browser', async () => {
+  const server = fakeServer([])
+  const serve = server.fetch.getMockImplementation()
+  server.fetch.mockImplementation((input: string, init?: RequestInit) =>
+    init?.method === 'POST'
+      ? new Promise<Response>(() => {})
+      : (serve?.(input, init) ?? Promise.resolve(Response.json([]))),
+  )
+  const box = await newComment()
+  fireEvent.change(box, { target: { value: 'Like this' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  const form = box.closest('form')
+  if (!form) throw new Error('no form')
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true),
+  )
+  expect(
+    fireEvent.drop(form, { dataTransfer: { files: [png()], types: ['Files'] } }),
+  ).toBe(false)
+  expect(await screen.findByText('Wait for the message to be sent.')).toBeTruthy()
+})
+
+test('a message too large shows as such, and keeps the draft', async () => {
+  const server = fakeServer([])
+  const serve = server.fetch.getMockImplementation()
+  server.fetch.mockImplementation(async (input: string, init?: RequestInit) =>
+    init?.method === 'POST'
+      ? new Response(null, { status: 413 })
+      : (serve?.(input, init) ?? Response.json([])),
+  )
+  const box = await newComment()
+  paste(box, [png()])
+  await screen.findByRole('img', { name: 'Attached image 1' })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  expect(await screen.findByText('The message is too large to send.')).toBeTruthy()
+  expect(screen.getByRole('img', { name: 'Attached image 1' })).toBeTruthy()
+})
+
+test('a comment of one image alone reads "An image"', async () => {
+  const filed = comment()
+  filed.messages = filed.messages.map((message) => ({
+    ...message,
+    body: '',
+    images: ['m1-1.png'],
+  }))
+  fakeServer([filed])
+  openPanel()
+  renderWidget()
+  expect((await screen.findByTestId('cb-summary')).textContent).toContain('An image')
+})
+
+test('a bubble on the page of an image alone is titled after it', async () => {
+  const measure = vi
+    .spyOn(Range.prototype, 'getBoundingClientRect')
+    .mockImplementation(() => DOMRect.fromRect({ x: 120, y: 100, width: 0, height: 20 }))
+  onTestFinished(() => measure.mockRestore())
+  document.body.replaceChildren()
+  const filed = comment({ quote: 'Playground', body: '' })
+  filed.messages = filed.messages.map((message) => ({ ...message, images: ['m1-1.png'] }))
+  fakeServer([filed])
+  renderWidget()
+  const bubble = await screen.findByRole('button', {
+    name: 'Open the comment on “Playground”',
+  })
+  expect(bubble.getAttribute('title')).toBe('An image')
 })

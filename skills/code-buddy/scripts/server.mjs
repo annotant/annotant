@@ -201,7 +201,8 @@ function sanitisePatch(input) {
     const images = parseImages(input.images)
     if (images.length) patch.images = images
   }
-  // Empty, it leaves the images alone to go again; the store keeps the words otherwise.
+  // Passed even empty: the store then clears the words of a message that has
+  // images, which goes again with them alone.
   if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }

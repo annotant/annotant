@@ -373,7 +373,7 @@ const removing = (images: NewImage[] = [], index: number) =>
 const written = (draft: Pick<Draft, 'body' | 'images'>) =>
   !!draft.body.trim() || !!draft.images?.length
 
-/** Draft keys: images read after their draft was left are not the next one's. */
+/** Draft keys: each draft gets a message box of its own, its reads with it. */
 let drafts = 0
 
 interface Draft extends ReviewAnchor {
@@ -725,12 +725,6 @@ export default function App({ root }: { root: Element }) {
       : undefined
   const reply = replying && followUp?.id === replying.id ? followUp.body : ''
   const replyImages = (replying && followUp?.id === replying.id && followUp.images) || []
-  // The thread the message box replies to now: images read after the reader
-  // left a thread are not its.
-  const replyingTo = useRef<string>(undefined)
-  useEffect(() => {
-    replyingTo.current = replying?.id
-  })
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
   const ticked = (comment: ReviewComment) =>
@@ -1396,6 +1390,7 @@ export default function App({ root }: { root: Element }) {
               )}
               {drafting && (
                 <Composer
+                  key={draft.key}
                   autoFocus
                   value={draft.body}
                   images={draft.images ?? []}
@@ -1408,10 +1403,7 @@ export default function App({ root }: { root: Element }) {
                   onAttach={(added) =>
                     setDraft(
                       (current) =>
-                        current &&
-                        (current.key === draft.key
-                          ? { ...current, images: adding(current.images, added) }
-                          : current),
+                        current && { ...current, images: adding(current.images, added) },
                     )
                   }
                   onDetach={(index) =>
@@ -1429,6 +1421,7 @@ export default function App({ root }: { root: Element }) {
               )}
               {replying && (
                 <Composer
+                  key={replying.id}
                   value={reply}
                   images={replyImages}
                   placeholder={
@@ -1448,7 +1441,6 @@ export default function App({ root }: { root: Element }) {
                   }
                   onAttach={(added) =>
                     setFollowUp((current) => {
-                      if (replyingTo.current !== replying.id) return current
                       const own = current?.id === replying.id ? current : undefined
                       return {
                         id: replying.id,

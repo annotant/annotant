@@ -6,6 +6,7 @@ import {
   type TextareaHTMLAttributes,
   Component,
   forwardRef,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -216,6 +217,15 @@ export function Composer({
     if (!blocked) onSubmit()
   }
   const attaching = !!onAttach && !disabled
+  // Images read once the box is gone are its draft's, or its thread's, which
+  // the reader left: keyed by either, the next box is another one.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const add = async (files: File[]) => {
     if (!onAttach) return
     const picked = pick(images.length + reading.current, files)
@@ -233,20 +243,21 @@ export function Composer({
       reading.current -= count
       setPending((current) => current - count)
     }
-    if (read) onAttach(read)
+    if (read && mounted.current) onAttach(read)
   }
+  // A file dragged over the box is its own, busy or not: the browser would
+  // open it in the app's place.
   const onDragOver = (event: DragEvent) => {
-    if (!attaching || !event.dataTransfer.types.includes('Files')) return
+    if (!onAttach || !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
-    event.dataTransfer.dropEffect = 'copy'
+    event.dataTransfer.dropEffect = attaching ? 'copy' : 'none'
   }
-  // Taken over, as the drag was: a file the box does not take is refused
-  // here, never opened by the browser in the app's place.
   const onDrop = (event: DragEvent) => {
-    if (!attaching || !event.dataTransfer.types.includes('Files')) return
+    if (!onAttach || !event.dataTransfer.types.includes('Files')) return
     event.preventDefault()
     const files = imageFiles(event.dataTransfer.files)
-    if (files.length) void add(files)
+    if (!attaching) toast('Wait for the message to be sent.', true)
+    else if (files.length) void add(files)
     else toast('Only images can be attached.', true)
   }
   return (
