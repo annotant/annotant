@@ -1,0 +1,11 @@
+{
+  "maxImages": 4,
+  "maxImageBytes": 5242880,
+  "types": {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp"
+  },
+  "named": "PNG, JPEG, GIF and WebP"
+}

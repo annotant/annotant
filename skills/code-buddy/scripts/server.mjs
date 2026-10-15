@@ -18,6 +18,16 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
+import { errorCode } from './lib/errors.mjs'
+import {
+  CONTENT_TYPES,
+  IMAGE_NAME,
+  ImageRefusal,
+  MAX_IMAGES,
+  MAX_IMAGE_BYTES,
+  imagesDir,
+  parseImages,
+} from './lib/images.mjs'
 import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
@@ -62,10 +72,12 @@ const LOCAL_ORIGIN =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|[\w-]+\.localhost)(:\d+)?$/
 const allowedOrigins = new Set(config.devOrigins ?? [])
 
+/** @param {string | undefined} origin */
+const isAllowed = (origin) =>
+  !!origin && (LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin))
+
 function corsHeaders(origin) {
-  if (!origin || !(LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin))) {
-    return {}
-  }
+  if (!isAllowed(origin)) return {}
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
@@ -89,6 +101,7 @@ function send(res, status, body, headers = {}) {
 /** What the server answers to a request the client got wrong, by status. */
 const CLIENT_ERRORS = /** @type {const} */ ({
   400: 'invalid JSON',
+  403: 'origin not allowed',
   413: 'body too large',
 })
 
@@ -104,26 +117,150 @@ class ClientError extends Error {
   }
 }
 
+/** The most a request's text may hold, its images aside. */
+const MAX_TEXT = 100_000
+/** The most a request may hold: its text, and its images in base64. */
+const MAX_BODY = MAX_TEXT + Math.ceil(MAX_IMAGE_BYTES / 3) * 4 * MAX_IMAGES
+
 async function readJson(req) {
+  if (Number(req.headers['content-length']) > MAX_BODY) throw new ClientError(413)
+  // Decoded as a whole: a character split between two chunks stays one.
+  req.setEncoding('utf8')
   let raw = ''
   for await (const chunk of req) {
     raw += chunk
-    if (raw.length > 100_000) throw new ClientError(413)
+    if (raw.length > MAX_BODY) throw new ClientError(413)
   }
+  let input
   try {
-    return raw ? JSON.parse(raw) : {}
+    input = raw ? JSON.parse(raw) : {}
   } catch {
     throw new ClientError(400)
   }
+  // Only images may take the room above the text's.
+  const { images: _, ...text } = input ?? {}
+  if (JSON.stringify(text).length > MAX_TEXT) throw new ClientError(413)
+  return input
 }
 
-function sanitiseElement(element) {
-  if (!element || typeof element.selector !== 'string') return undefined
+/**
+ * @typedef {import('./lib/format.mjs').AreaNode} AreaNode
+ * @typedef {import('./lib/format.mjs').Box} Box
+ * @typedef {import('./lib/format.mjs').Area} Area
+ */
+
+/** The most elements an area records as covered, and as crossed, as the widget caps them. */
+const MAX_COVERS = 10
+const MAX_CROSSES = 6
+/** The text an area's element keeps, as the widget cuts it. */
+const AREA_TEXT = 80
+const MAX_SELECTOR = 500
+
+/**
+ * An element the reader pointed at, or that a drawn area lies in, covers or
+ * crosses. The tag is normalised too: a line break in it would split the
+ * hooks' line.
+ * @param {any} node
+ * @param {number} textLength
+ * @returns {AreaNode | undefined}
+ */
+function sanitiseNode(node, textLength) {
+  if (!node || typeof node.selector !== 'string') return undefined
   return {
-    selector: element.selector.slice(0, 500),
-    tag: String(element.tag ?? '').slice(0, 20),
-    text: normaliseQuote(String(element.text ?? '')).slice(0, 200),
-    html: normaliseQuote(String(element.html ?? '')).slice(0, 600),
+    selector: node.selector.slice(0, MAX_SELECTOR),
+    tag: normaliseQuote(String(node.tag ?? '')).slice(0, 20),
+    text: normaliseQuote(String(node.text ?? '')).slice(0, textLength),
+  }
+}
+
+/** @param {any} element */
+function sanitiseElement(element) {
+  const node = sanitiseNode(element, 200)
+  return (
+    node && { ...node, html: normaliseQuote(String(element.html ?? '')).slice(0, 600) }
+  )
+}
+
+const MAX_PIXELS = 1_000_000
+
+/**
+ * A length, or with `signed` a position: negative on a right-to-left page.
+ * @param {unknown} value
+ * @param {boolean} [signed]
+ */
+const pixels = (value, signed = false) =>
+  Math.min(Math.max(Math.round(Number(value) || 0), signed ? -MAX_PIXELS : 0), MAX_PIXELS)
+
+/**
+ * @param {any} box
+ * @returns {Box}
+ */
+const sanitiseBox = (box) => ({
+  top: pixels(box?.top, true),
+  left: pixels(box?.left, true),
+  width: pixels(box?.width),
+  height: pixels(box?.height),
+})
+
+/**
+ * An element of a drawn area. A selector too long to keep whole is dropped,
+ * not cut: cut, it could point at another element, or at none.
+ * @param {any} node
+ */
+const sanitiseAreaNode = (node) =>
+  typeof node?.selector === 'string' && node.selector.length <= MAX_SELECTOR
+    ? sanitiseNode(node, AREA_TEXT)
+    : undefined
+
+/**
+ * @param {unknown} list
+ * @param {number} max
+ * @returns {AreaNode[]}
+ */
+const sanitiseNodes = (list, max) =>
+  (Array.isArray(list) ? list : []).slice(0, max).flatMap((node) => {
+    const sanitised = sanitiseAreaNode(node)
+    return sanitised ? [sanitised] : []
+  })
+
+/**
+ * A rectangle the reader drew over the page; one with no surface is none.
+ * Its holder (`within`) is kept only with where the area lies in it and a
+ * size to scale it by.
+ * @param {any} area
+ * @returns {Area | undefined}
+ */
+function sanitiseArea(area) {
+  if (!area || typeof area !== 'object') return undefined
+  const box = sanitiseBox(area)
+  if (!box.width || !box.height) return undefined
+  const within = sanitiseAreaNode(area.within)
+  const { offset, size } = area.within ?? {}
+  const holder = { width: pixels(size?.width), height: pixels(size?.height) }
+  const covers = Array.isArray(area.covers) ? area.covers : []
+  const crosses = Array.isArray(area.crosses) ? area.crosses : []
+  const truncated =
+    area.truncated === true || covers.length > MAX_COVERS || crosses.length > MAX_CROSSES
+  return {
+    ...box,
+    viewport: {
+      width: pixels(area.viewport?.width),
+      height: pixels(area.viewport?.height),
+      scrollX: pixels(area.viewport?.scrollX, true),
+      scrollY: pixels(area.viewport?.scrollY, true),
+    },
+    ...(within && offset && typeof offset === 'object' && holder.width && holder.height
+      ? {
+          within: {
+            ...within,
+            offset: { top: pixels(offset.top, true), left: pixels(offset.left, true) },
+            size: holder,
+          },
+        }
+      : {}),
+    covers: sanitiseNodes(covers, MAX_COVERS),
+    crosses: sanitiseNodes(crosses, MAX_CROSSES),
+    ...(truncated ? { truncated: true } : {}),
   }
 }
 
@@ -143,6 +280,7 @@ function sanitiseUrl(url) {
 /** The anchor of a new comment: where on the page it is. */
 function sanitiseAnchor(anchor = {}) {
   const element = sanitiseElement(anchor.element)
+  const area = sanitiseArea(anchor.area)
   return {
     section: String(anchor.section ?? '')
       .trim()
@@ -150,6 +288,7 @@ function sanitiseAnchor(anchor = {}) {
     quote: normaliseQuote(String(anchor.quote ?? '')).slice(0, 2000),
     occurrence: Math.max(0, Math.floor(Number(anchor.occurrence) || 0)),
     ...(element ? { element } : {}),
+    ...(area ? { area } : {}),
   }
 }
 
@@ -168,9 +307,16 @@ function sanitisePatch(input) {
       .filter((choice) => typeof choice === 'string')
       .slice(0, MAX_OPTIONS)
   }
-  if (typeof input.text === 'string' && input.text.trim()) {
-    patch.text = input.text.trim()
+  // With the reader's reply, the store files them under it: with words or
+  // options, or alone when no other move comes with them.
+  const anotherMove = patch.status || patch.cancelled !== undefined
+  if (patch.followUp || patch.choices || !anotherMove) {
+    const images = parseImages(input.images)
+    if (images.length) patch.images = images
   }
+  // Passed even empty: the store then clears the words of a message that has
+  // images, which goes again with them alone.
+  if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }
 
@@ -213,6 +359,10 @@ async function handle(req, res) {
   const cors = corsHeaders(req.headers.origin)
   const url = new URL(req.url, `http://${req.headers.host}`)
   if (req.method === 'OPTIONS') return send(res, 204, undefined, cors)
+  // A page of another site may send a request it cannot read the answer of:
+  // it would write comments and images, and start agents.
+  const { origin } = req.headers
+  if (req.method !== 'GET' && origin && !isAllowed(origin)) throw new ClientError(403)
 
   if (req.method === 'GET' && url.pathname === '/widget.js') {
     const source = await readFile(WIDGET, 'utf8')
@@ -226,6 +376,28 @@ async function handle(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
     return listen(req, res, cors)
+  }
+
+  // An image a reader attached, as the store wrote it.
+  const [, imageOf, image] = /^\/api\/images\/([\w-]+)\/([^/]+)$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && imageOf && image) {
+    if (!IMAGE_NAME.test(image)) return send(res, 404, { error: 'not found' }, cors)
+    const file = path.join(imagesDir(project, imageOf), image)
+    // Missing, it is not found; anything else is an error, logged.
+    const data = await readFile(file).catch((error) => {
+      if (errorCode(error) === 'ENOENT') return undefined
+      throw error
+    })
+    if (!data) return send(res, 404, { error: 'not found' }, cors)
+    res.writeHead(200, {
+      ...cors,
+      'content-type': CONTENT_TYPES[path.extname(image).slice(1)],
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      // A name is never written twice: a deleted comment's id is not reused.
+      'cache-control': 'private, max-age=86400, immutable',
+    })
+    return res.end(data)
   }
 
   if (url.pathname === '/api/health') {
@@ -283,14 +455,22 @@ async function handle(req, res) {
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
-      const body = input.body?.trim()
-      if (typeof input.route !== 'string' || !input.route || !body) {
-        return send(res, 400, { error: 'route and body are required' }, cors)
+      const body = typeof input.body === 'string' ? input.body.trim() : ''
+      // An image alone says enough, as in a prompt to Claude.
+      const images = parseImages(input.images)
+      if (typeof input.route !== 'string' || !input.route || (!body && !images.length)) {
+        return send(
+          res,
+          400,
+          { error: 'route and a body or an image are required' },
+          cors,
+        )
       }
       const comment = await store.create({
         route: input.route.slice(0, 500),
         url: sanitiseUrl(input.url),
         body,
+        images,
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),
@@ -400,15 +580,34 @@ function latestReply(comment) {
  */
 const quoted = (text) => JSON.stringify(text)
 
+/** @param {{ tag: string, text: string }} node */
+const nodeLabel = (node) => `<${node.tag}> ${node.text.slice(0, 40)}`.trim()
+
+/**
+ * Where the area is and what it holds, on the hooks' line: its size and corner
+ * on the page, the element it lies in, those it covers or crosses, and
+ * `truncated` when it held more than these lists keep.
+ * @param {Area} area
+ */
+function describeArea(area) {
+  const within = area.within ? ` within=${quoted(nodeLabel(area.within))}` : ''
+  /** @param {AreaNode[]} list */
+  const nodes = (list) => JSON.stringify(list.map(nodeLabel))
+  const truncated = area.truncated ? ' truncated' : ''
+  return `area=${area.width}x${area.height}@${area.left},${area.top}${within} covers=${nodes(area.covers)} crosses=${nodes(area.crosses)}${truncated}`
+}
+
 function describe(comment) {
-  const { element, quote, section: heading } = comment.anchor
+  const { element, area, quote, section: heading } = comment.anchor
   const where = element
     ? `element=<${element.tag}> ${quoted(element.text.slice(0, 80))}`
-    : quote
-      ? `quote=${quoted(quote.slice(0, 120))}`
-      : comment.route === APP_ROUTE
-        ? 'app-level'
-        : 'page-level'
+    : area
+      ? describeArea(area)
+      : quote
+        ? `quote=${quoted(quote.slice(0, 120))}`
+        : comment.route === APP_ROUTE
+          ? 'app-level'
+          : 'page-level'
   const section = heading ? ` section=${quoted(heading)}` : ''
   const url = comment.url ? ` url=${comment.url}` : ''
   const reply = latestReply(comment)
@@ -417,7 +616,12 @@ function describe(comment) {
   const text = reply
     ? `followup=${quoted(reply.body)}${choices} messages=${comment.messages.length}`
     : `body=${quoted(comment.messages[0]?.body ?? '')}`
-  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}`
+  // The images of that message, as files the agent opens with Read.
+  const attached = (reply ?? comment.messages[0])?.images ?? []
+  const images = attached.length
+    ? ` images=${JSON.stringify(attached.map((name) => path.join(imagesDir(project, comment.id), name)))}`
+    : ''
+  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}${images}`
 }
 
 /** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
@@ -614,6 +818,11 @@ const server = http.createServer((req, res) => {
     // format: the store's own words, meant for the reader.
     if (error instanceof StoreRefusal) {
       send(res, 409, { error: error.message }, cors)
+      return
+    }
+    // An image the server does not take: its own words, for the reader too.
+    if (error instanceof ImageRefusal) {
+      send(res, 422, { error: error.message }, cors)
       return
     }
     if (error instanceof ClientError) {

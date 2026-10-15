@@ -9,15 +9,19 @@ import {
   useState,
 } from 'react'
 import {
+  anchorFromArea,
   anchorFromElement,
   anchorFromSelection,
+  areaReady,
   elementFromAnchor,
   rangeFromAnchor,
+  scrollToArea,
   startRect,
 } from './anchors'
 import {
   createComment,
   deleteComment,
+  imageUrl,
   updateComment,
   useAllComments,
   useComments,
@@ -25,23 +29,37 @@ import {
 } from './api'
 import {
   APP_ROUTE,
+  type NewImage,
   type ReviewAnchor,
+  type ReviewArea,
+  type ReviewBox,
   type ReviewComment,
   type ReviewMessage,
   type ReviewProgress,
   answered,
+  gist,
   isActive,
   isAsking,
   isReply,
+  latestImages,
   latestText,
   modelOf,
   paused,
   statusOf,
 } from './domain'
+import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
-import { ElementMarks, ElementPicker, QuoteBubbles, TargetOutline } from './overlays'
+import {
+  AreaDrawer,
+  AreaMarks,
+  AreaOutline,
+  ElementMarks,
+  ElementPicker,
+  QuoteBubbles,
+  TargetOutline,
+} from './overlays'
 import {
   Boundary,
   Button,
@@ -356,8 +374,27 @@ function Question({
   )
 }
 
+/** The images attached so far, with those just pasted or dropped, up to the most taken. */
+const adding = (images: NewImage[] = [], added: NewImage[]) =>
+  [...images, ...added].slice(0, MAX_IMAGES)
+
+/** The images attached so far, but the one at `index`. */
+const removing = (images: NewImage[] = [], index: number) =>
+  images.filter((_, other) => other !== index)
+
+/** What the reader wrote or attached in a draft: Escape or a click away would lose it. */
+const written = (draft: Pick<Draft, 'body' | 'images'>) =>
+  !!draft.body.trim() || !!draft.images?.length
+
+/** Draft keys: each draft gets a message box of its own, its reads with it. */
+let drafts = 0
+
 interface Draft extends ReviewAnchor {
+  /** Which draft this is, from its start. */
+  key: number
   body: string
+  /** The images pasted or dropped in the message box. */
+  images?: NewImage[]
   app?: boolean
   /** The page the draft was started on: the app may navigate before it is saved. */
   route: string
@@ -417,6 +454,21 @@ function scopeLabel(comment: { route: string; url?: string }): string {
     : `Whole page · ${pagePath(comment.url) || comment.route}`
 }
 
+/** What a drawn area covers, in a few words: the elements inside it, else those it cuts through. */
+function areaContents(area: ReviewArea): string {
+  const nodes = area.covers.length ? area.covers : area.crosses
+  const shown = nodes.slice(0, 3).map((node) => `<${node.tag}>`)
+  const hidden = nodes.length - shown.length
+  const more = area.truncated ? ` +${hidden}…` : hidden ? ` +${hidden}` : ''
+  if (shown.length)
+    return `${area.covers.length ? 'covers' : 'across'} ${shown.join(' ')}${more}`
+  return area.within ? `in <${area.within.tag}>` : 'on the page'
+}
+
+function areaSummary(area: ReviewArea): string {
+  return `An area of ${area.width} × ${area.height} px, drawn in a ${area.viewport.width} × ${area.viewport.height} window`
+}
+
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
@@ -438,13 +490,21 @@ export default function App({ root }: { root: Element }) {
     left: number
   }>()
   const [picking, setPicking] = useState(false)
+  const [drawing, setDrawing] = useState(false)
   const [target, setTarget] = useState<Element>()
+  // A drawn area shown again: while its chip is hovered, or for a moment once it is clicked.
+  const [targetArea, setTargetArea] = useState<ReviewArea>()
+  const [flashArea, setFlashArea] = useState<ReviewArea>()
   const [pendingCenter, setPendingCenter] = useState(
     readSession<PendingCenter>(CENTER_KEY),
   )
   const [flash, setFlash] = useState<Element>()
   const [resend, setResend] = useState<{ id: string; body: string }>()
-  const [followUp, setFollowUp] = useState<{ id: string; body: string }>()
+  const [followUp, setFollowUp] = useState<{
+    id: string
+    body: string
+    images?: NewImage[]
+  }>()
   // The options ticked so far, under a question that takes several.
   const [picked, setPicked] = useState<{ id: string; labels: string[] }>()
   const [created, setCreated] = useState<ReviewComment>()
@@ -581,13 +641,34 @@ export default function App({ root }: { root: Element }) {
     document.addEventListener('mouseup', onUp)
   }
 
-  const spotlight = useCallback((element: Element, id?: string) => {
-    element.scrollIntoView(CENTER)
-    if (id) setActiveId(id)
+  // One flash at a time, an element's or an area's: the timer clears both.
+  const flashOn = useCallback((element?: Element, area?: ReviewArea) => {
     setFlash(element)
+    setFlashArea(area)
     clearTimeout(flashTimer.current)
-    flashTimer.current = setTimeout(() => setFlash(undefined), FLASH_MS)
+    flashTimer.current = setTimeout(() => {
+      setFlash(undefined)
+      setFlashArea(undefined)
+    }, FLASH_MS)
   }, [])
+
+  const spotlight = useCallback(
+    (element: Element, id?: string) => {
+      element.scrollIntoView(CENTER)
+      if (id) setActiveId(id)
+      flashOn(element)
+    },
+    [flashOn],
+  )
+
+  const spotlightArea = useCallback(
+    (area: ReviewArea, id?: string) => {
+      scrollToArea(root, area)
+      if (id) setActiveId(id)
+      flashOn(undefined, area)
+    },
+    [root, flashOn],
+  )
 
   useEffect(() => () => clearTimeout(flashTimer.current), [])
 
@@ -595,34 +676,45 @@ export default function App({ root }: { root: Element }) {
     if (!pendingCenter || route !== pendingCenter.path) return undefined
     const deadline = Date.now() + PENDING_CENTER_MS
     let frame = 0
+    const { anchor, id } = pendingCenter
     const attempt = () => {
-      const element = elementFromAnchor(root, pendingCenter.anchor)
-      if (element || Date.now() > deadline) {
-        if (element) spotlight(element, pendingCenter.id)
-        writeSession(CENTER_KEY, undefined)
-        setPendingCenter(undefined)
+      const { area } = anchor
+      const late = Date.now() > deadline
+      // An area waits for the page to be laid out; past the deadline, it shows where it was.
+      const element = area ? undefined : elementFromAnchor(root, anchor)
+      if (!late && !element && !(area && areaReady(root, area))) {
+        frame = requestAnimationFrame(attempt)
         return
       }
-      frame = requestAnimationFrame(attempt)
+      if (area) spotlightArea(area, id)
+      else if (element) spotlight(element, id)
+      writeSession(CENTER_KEY, undefined)
+      setPendingCenter(undefined)
     }
     attempt()
     return () => cancelAnimationFrame(frame)
-  }, [pendingCenter, root, route, spotlight])
+  }, [pendingCenter, root, route, spotlight, spotlightArea])
 
-  const startDraft = useCallback((anchor: ReviewAnchor) => {
-    setDraft({
-      ...anchor,
-      body: '',
-      route: window.location.pathname,
-      url: window.location.href,
-    })
-    setView('page')
-    setThreadId(undefined)
-    setOpen(true)
-    setPicking(false)
-    setSelectionButton(undefined)
-    window.getSelection()?.removeAllRanges()
-  }, [])
+  const startDraft = useCallback(
+    (anchor: ReviewAnchor, body = '', images?: NewImage[]) => {
+      setDraft({
+        ...anchor,
+        key: (drafts += 1),
+        body,
+        ...(images?.length ? { images } : {}),
+        route: window.location.pathname,
+        url: window.location.href,
+      })
+      setView('page')
+      setThreadId(undefined)
+      setOpen(true)
+      setPicking(false)
+      setDrawing(false)
+      setSelectionButton(undefined)
+      window.getSelection()?.removeAllRanges()
+    },
+    [],
+  )
 
   const pickElement = useCallback(
     (element: Element) => startDraft(anchorFromElement(root, element)),
@@ -630,6 +722,28 @@ export default function App({ root }: { root: Element }) {
   )
 
   const cancelPick = useCallback(() => setPicking(false), [])
+
+  // Drawn from a page-level draft, or over another area, the area joins what the
+  // reader had written and attached; a draft on a text or an element starts over,
+  // as when picking.
+  const kept =
+    view === 'page' && draft && draftHere && !draft.quote && !draft.element
+      ? draft
+      : undefined
+  const keptBody = kept?.body ?? ''
+  const keptImages = kept?.images
+  const drawArea = useCallback(
+    (rect: ReviewBox) => startDraft(anchorFromArea(root, rect), keptBody, keptImages),
+    [root, startDraft, keptBody, keptImages],
+  )
+
+  const cancelDraw = useCallback(() => setDrawing(false), [])
+
+  const startDrawing = () => {
+    setPicking(false)
+    setSelectionButton(undefined)
+    setDrawing(true)
+  }
 
   const run = async (task: () => Promise<unknown>) => {
     setBusy(true)
@@ -645,14 +759,15 @@ export default function App({ root }: { root: Element }) {
   }
 
   const save = async () => {
-    if (!draft?.body.trim()) return
-    const { app, body, route: startedOn, url, ...anchor } = draft
+    if (!draft || !written(draft)) return
+    const { key: _, app, body, images, route: startedOn, url, ...anchor } = draft
     await run(async () => {
       const comment = await createComment({
         anchor,
         body,
         route: app ? APP_ROUTE : startedOn,
         url,
+        ...(images?.length ? { images } : {}),
       })
       setCreated(comment)
       setDraft(undefined)
@@ -671,7 +786,7 @@ export default function App({ root }: { root: Element }) {
   /** A bubble on the page: its thread, in the panel, opened if it was closed. */
   const openFromPage = (comment: ReviewComment) => {
     // Like Escape, never at the cost of what the reader is writing.
-    if (draft?.body.trim()) return
+    if (draft && written(draft)) return
     setDraft(undefined)
     setView('page')
     setOpen(true)
@@ -694,6 +809,7 @@ export default function App({ root }: { root: Element }) {
       ? thread
       : undefined
   const reply = replying && followUp?.id === replying.id ? followUp.body : ''
+  const replyImages = (replying && followUp?.id === replying.id && followUp.images) || []
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
   const ticked = (comment: ReviewComment) =>
@@ -728,12 +844,15 @@ export default function App({ root }: { root: Element }) {
 
   const sendReply = (comment: ReviewComment, choices: string[], withText = true) =>
     void run(async () => {
-      const text = withText && followUp?.id === comment.id ? followUp.body.trim() : ''
+      const own = withText && followUp?.id === comment.id ? followUp : undefined
+      const text = own?.body.trim() ?? ''
+      const images = own?.images ?? []
       await updateComment(comment.id, {
         ...(choices.length ? { choices } : {}),
         ...(text ? { followUp: text } : {}),
+        ...(images.length ? { images } : {}),
       })
-      if (text) setFollowUp(undefined)
+      if (own) setFollowUp(undefined)
       setPicked(undefined)
       toLatest()
     })
@@ -870,6 +989,9 @@ export default function App({ root }: { root: Element }) {
     target ??
     flash ??
     (drafting && draftHere ? elementFromAnchor(root, draft) : undefined)
+  // And so does the area it was drawn on.
+  const outlinedArea =
+    targetArea ?? flashArea ?? (drafting && draftHere ? draft.area : undefined)
 
   const centerOn = (anchor: ReviewAnchor, id?: string) => {
     const element = elementFromAnchor(root, anchor)
@@ -908,6 +1030,34 @@ export default function App({ root }: { root: Element }) {
     )
   }
 
+  /** Like `elementChip`: hovered, the area shows again on the page; clicked, the page scrolls to it. */
+  const areaChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
+    const { area } = anchor
+    if (!area) return null
+    const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    return (
+      <span
+        className="cb-element cb-area-chip"
+        title={areaSummary(area)}
+        data-testid="cb-area-chip"
+        onMouseEnter={() => setTargetArea(onThisPage ? area : undefined)}
+        onMouseLeave={() => setTargetArea(undefined)}
+        onClick={(event) => {
+          event.stopPropagation()
+          if (onThisPage) return spotlightArea(area, id)
+          setTargetArea(undefined)
+          goToPage(href, anchor, id)
+        }}
+      >
+        <Icon name="frame" />
+        <code>
+          {area.width} × {area.height}
+        </code>
+        <span>{areaContents(area)}</span>
+      </span>
+    )
+  }
+
   const anchorDetails = (comment: ReviewComment) => {
     const { anchor } = comment
     return (
@@ -915,7 +1065,8 @@ export default function App({ root }: { root: Element }) {
         {anchor.section && <span className="cb-section">{anchor.section}</span>}
         {anchor.quote && <blockquote className="cb-quote">{anchor.quote}</blockquote>}
         {elementChip(anchor, pagePath(comment.url) || comment.route, comment.id)}
-        {!anchor.quote && !anchor.element && (
+        {areaChip(anchor, pagePath(comment.url) || comment.route, comment.id)}
+        {!anchor.quote && !anchor.element && !anchor.area && (
           <span className="cb-section">{scopeLabel(comment)}</span>
         )}
       </>
@@ -987,7 +1138,28 @@ export default function App({ root }: { root: Element }) {
             </div>
           ) : (
             <div key={message.id} className="cb-msg cb-msg--reader">
-              <div className="cb-bubble cb-bubble--reader">{message.body}</div>
+              {message.images?.length ? (
+                <div className="cb-images">
+                  {message.images.map((name, image) => (
+                    <a
+                      key={name}
+                      href={imageUrl(comment.id, name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open the image"
+                    >
+                      <img
+                        src={imageUrl(comment.id, name)}
+                        alt={`Attached image ${image + 1}`}
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+              {message.body && (
+                <div className="cb-bubble cb-bubble--reader">{message.body}</div>
+              )}
               <MessageTime at={message.at} />
             </div>
           ),
@@ -1035,7 +1207,8 @@ export default function App({ root }: { root: Element }) {
             const body = (
               resend?.id === comment.id ? resend.body : latestText(comment)
             ).trim()
-            if (!body) return
+            // With its images, the comment may go again with no words.
+            if (!body && !latestImages(comment).length) return
             void run(async () => {
               await updateComment(comment.id, { text: body, cancelled: false })
               setResend(undefined)
@@ -1126,7 +1299,7 @@ export default function App({ root }: { root: Element }) {
           </time>
           {deleteButton(comment)}
         </div>
-        <p>{comment.messages[0]?.body}</p>
+        <p>{gist(comment.messages[0])}</p>
         {(messages > 2 || model) && (
           <span className="cb-author">
             <ModelLabel comment={comment} />
@@ -1174,8 +1347,10 @@ export default function App({ root }: { root: Element }) {
   return (
     <div className="cb">
       <ElementMarks root={root} comments={comments} onOpen={openFromPage} />
+      <AreaMarks root={root} comments={comments} onOpen={openFromPage} />
       <QuoteBubbles root={root} comments={comments} onOpen={openFromPage} />
       {outlined && <TargetOutline element={outlined} />}
+      {outlinedArea && !drawing && <AreaOutline root={root} area={outlinedArea} />}
       {picking && (
         <ElementPicker root={root} onPick={pickElement} onCancel={cancelPick} />
       )}
@@ -1193,14 +1368,27 @@ export default function App({ root }: { root: Element }) {
         </Button>
       )}
 
+      {/* Under the dock, whose Cancel must stay within reach, and under the panel,
+          which is inert while it draws. */}
+      {drawing && <AreaDrawer root={root} onDraw={drawArea} onCancel={cancelDraw} />}
       {!open && (
         <div className="cb-dock cb-live">
           <Button variant="secondary" icon="chat" onClick={() => startDraft(PAGE_LEVEL)}>
             Comment
           </Button>
           <Button
+            variant="secondary"
+            icon={drawing ? 'x' : 'frame'}
+            onClick={() => (drawing ? setDrawing(false) : startDrawing())}
+          >
+            {drawing ? 'Cancel' : 'Draw area'}
+          </Button>
+          <Button
             icon={picking ? 'x' : 'cursor'}
-            onClick={() => setPicking((value) => !value)}
+            onClick={() => {
+              setDrawing(false)
+              setPicking((value) => !value)
+            }}
           >
             {picking ? 'Cancel' : 'Point at element'}
           </Button>
@@ -1212,7 +1400,9 @@ export default function App({ root }: { root: Element }) {
           className={`cb-panel cb-live ${docked ? 'cb-panel--docked' : ''}`}
           style={{ width }}
           data-closing={!open || undefined}
-          inert={!open}
+          data-drawing={drawing || undefined}
+          // While the reader draws, the message box must not take Escape or Enter.
+          inert={!open || drawing}
           data-testid="code-buddy-panel"
         >
           <div
@@ -1293,13 +1483,37 @@ export default function App({ root }: { root: Element }) {
                         <blockquote className="cb-quote">{draft.quote}</blockquote>
                       )}
                       {elementChip(draft)}
-                      {!draft.quote && !draft.element && (
-                        <Checkbox
-                          checked={!draft.app}
-                          onChange={(checked) => setDraft({ ...draft, app: !checked })}
-                        >
-                          Linked to the current page ({pagePath(draft.url)})
-                        </Checkbox>
+                      {draft.area && (
+                        <div className="cb-area-draft">
+                          {areaChip(draft)}
+                          <IconButton
+                            icon="x"
+                            label="Remove the area"
+                            onClick={() => {
+                              const { area: _, ...rest } = draft
+                              setTargetArea(undefined)
+                              setDraft({ ...rest, ...PAGE_LEVEL })
+                            }}
+                          />
+                        </div>
+                      )}
+                      {!draft.quote && !draft.element && !draft.area && (
+                        <div className="cb-draft-scope">
+                          <Checkbox
+                            checked={!draft.app}
+                            onChange={(checked) => setDraft({ ...draft, app: !checked })}
+                          >
+                            Linked to the current page ({pagePath(draft.url)})
+                          </Checkbox>
+                          <Button
+                            small
+                            variant="tertiary"
+                            icon="frame"
+                            onClick={startDrawing}
+                          >
+                            Draw an area
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1334,19 +1548,40 @@ export default function App({ root }: { root: Element }) {
               )}
               {drafting && (
                 <Composer
+                  key={draft.key}
                   autoFocus
                   value={draft.body}
+                  images={draft.images ?? []}
                   placeholder="What should change?"
                   sendLabel="Save"
                   disabled={busy}
-                  onChange={(body) => setDraft({ ...draft, body })}
+                  onChange={(body) =>
+                    setDraft((current) => current && { ...current, body })
+                  }
+                  onAttach={(added) =>
+                    setDraft(
+                      (current) =>
+                        current && { ...current, images: adding(current.images, added) },
+                    )
+                  }
+                  onDetach={(index) =>
+                    setDraft(
+                      (current) =>
+                        current && {
+                          ...current,
+                          images: removing(current.images, index),
+                        },
+                    )
+                  }
                   onSubmit={() => void save()}
-                  onEscape={() => !draft.body.trim() && backToList()}
+                  onEscape={() => !written(draft) && backToList()}
                 />
               )}
               {replying && (
                 <Composer
+                  key={replying.id}
                   value={reply}
+                  images={replyImages}
                   placeholder={
                     offered
                       ? 'Or answer in your own words…'
@@ -1355,7 +1590,32 @@ export default function App({ root }: { root: Element }) {
                         : 'Follow up, clarify, ask for a change…'
                   }
                   disabled={busy}
-                  onChange={(value) => setFollowUp({ id: replying.id, body: value })}
+                  onChange={(value) =>
+                    setFollowUp((current) => ({
+                      ...(current?.id === replying.id ? current : {}),
+                      id: replying.id,
+                      body: value,
+                    }))
+                  }
+                  onAttach={(added) =>
+                    setFollowUp((current) => {
+                      const own = current?.id === replying.id ? current : undefined
+                      return {
+                        id: replying.id,
+                        body: own?.body ?? '',
+                        images: adding(own?.images, added),
+                      }
+                    })
+                  }
+                  onDetach={(index) =>
+                    setFollowUp(
+                      (current) =>
+                        current && {
+                          ...current,
+                          images: removing(current.images, index),
+                        },
+                    )
+                  }
                   // Options already ticked go with the text.
                   onSubmit={() => sendReply(replying, offered ? ticked(replying) : [])}
                 />

@@ -17,6 +17,50 @@ export interface ReviewElement {
   html: string
 }
 
+/** An element an area covers or cuts through: enough to find it in the code. */
+export type ReviewNode = Omit<ReviewElement, 'html'>
+
+/** A box, in CSS pixels. */
+export interface ReviewBox {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+interface ReviewSize {
+  width: number
+  height: number
+}
+
+/**
+ * The smallest element holding a whole drawn area: the area is found again in
+ * it, its width scaled with the holder's, on another viewport or after a
+ * layout change.
+ */
+interface ReviewHolder extends ReviewNode {
+  /** Where the area's corner lies in the holder's content, its scroll included. */
+  offset: { top: number; left: number }
+  /** The holder's size when the area was drawn; never 0. */
+  size: ReviewSize
+}
+
+/** A rectangle the reader drew over the page; never empty. */
+export interface ReviewArea extends ReviewBox {
+  /** The viewport's size and scroll when it was drawn; `top` and `left` are from the page's corner. */
+  viewport: ReviewSize & { scrollX: number; scrollY: number }
+  within?: ReviewHolder
+  /** Elements wholly inside the area, the outermost ones only: 10 at most. */
+  covers: ReviewNode[]
+  /**
+   * Elements the area cuts through: its holder's children, and the innermost
+   * ones in them, such as the two buttons around a gap; 6 at most.
+   */
+  crosses: ReviewNode[]
+  /** The area held more elements than `covers` and `crosses` keep. */
+  truncated?: true
+}
+
 export interface ReviewAnchor {
   /** Heading the quote sits under, for a human reader of the JSON file. */
   section: string
@@ -26,6 +70,8 @@ export interface ReviewAnchor {
   occurrence: number
   /** Set when the reader pointed at an element instead of selecting text. */
   element?: ReviewElement
+  /** Set when the reader drew a rectangle over the page. */
+  area?: ReviewArea
 }
 
 /** How much work a comment needs, as the hooks' classifier sorts it. */
@@ -71,6 +117,8 @@ export interface ReviewMessage {
   multiple?: boolean
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
+  /** Reader only: the images they attached, file names the server serves. */
+  images?: string[]
 }
 
 interface ReviewCancellation {
@@ -130,8 +178,17 @@ interface ReviewLine {
   line: string
 }
 
+/** An image the reader attaches to a message, before it is sent. */
+export interface NewImage {
+  /** One of the types of scripts/lib/image-limits.json. */
+  type: string
+  /** Its bytes, in base64. */
+  data: string
+}
+
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {
   body: string
+  images?: NewImage[]
 }
 
 /** What the reader asks of a comment; the server turns it into a move. */
@@ -144,6 +201,11 @@ export interface ReviewCommentPatch {
   followUp?: string
   /** Answers Claude's question with options it offered, before any `followUp` text. */
   choices?: string[]
+  /**
+   * The images the reader attached to their reply: with `followUp` or
+   * `choices`, or alone; ignored with only `status` or `cancelled`.
+   */
+  images?: NewImage[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
 }
@@ -191,9 +253,26 @@ export function statusOf(
   return comment.state === 'working' ? 'claimed' : 'open'
 }
 
+const latestOwn = (comment: Pick<ReviewComment, 'messages'>) =>
+  comment.messages.findLast((message) => message.author === 'reader')
+
 /** The reader's latest words: their comment, or what they wrote since. */
 export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
-  return comment.messages.findLast((message) => message.author === 'reader')?.body ?? ''
+  return latestOwn(comment)?.body ?? ''
+}
+
+/** The images of the reader's latest message. */
+export function latestImages(comment: Pick<ReviewComment, 'messages'>): string[] {
+  return latestOwn(comment)?.images ?? []
+}
+
+/** What a message says, in one line: its words, or the images that are all it holds. */
+export function gist(
+  message: Pick<ReviewMessage, 'body' | 'images'> | undefined,
+): string {
+  if (!message) return ''
+  if (message.body || !message.images?.length) return message.body
+  return message.images.length === 1 ? 'An image' : `${message.images.length} images`
 }
 
 export function normaliseQuote(text: string): string {

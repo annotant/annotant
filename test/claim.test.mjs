@@ -68,6 +68,29 @@ test('prints the comment it claimed, and no other', async (t) => {
   assert.doesNotMatch(claimed.stdout, /Another thread/)
 })
 
+test("prints the reader's images as files the agent opens", async (t) => {
+  const root = await tempProject(t)
+  const project = projects.project(root)
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: '',
+    images: [{ data: Buffer.from('89504e470d0a1a0a', 'hex'), ext: 'png' }],
+  })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
+  assert.deepEqual(printed(claimed.stdout).messages[0].images, [
+    path.join(dir, 'm1-1.png'),
+  ])
+})
+
 test('prints the files a stopped run left changed', async (t) => {
   const root = await tempProject(t)
   const project = projects.project(root)

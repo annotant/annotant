@@ -292,6 +292,12 @@ function classifiedText(comment: CommentsFile['comments'][number]) {
   ].join('\n')
 }
 
+/** Whether the reader's latest message holds images and no words. */
+function onlyImages(comment: CommentsFile['comments'][number]) {
+  const said = comment.messages?.findLast((message) => message.author === 'reader')
+  return !!said?.images?.length && !said.body.trim()
+}
+
 /** The comment's label, or undefined: routing never blocks a comment. */
 async function classify($: $, text: string): Promise<Complexity | undefined> {
   const label = await Promise.race([
@@ -301,16 +307,34 @@ async function classify($: $, text: string): Promise<Complexity | undefined> {
   return COMPLEXITIES.find((known) => known === label)
 }
 
-/** The model a comment's agent is to start on, and why; none to keep the caller's. */
-async function routeComment($: $, project: Project, id: string) {
+/**
+ * A comment of images alone, which the classifier cannot read: the session's
+ * model, at this effort, routing on or off.
+ */
+const IMAGES_ONLY_EFFORT = 'medium'
+
+/**
+ * The model a comment's agent is to start on, its effort, and why; none to
+ * keep the caller's.
+ */
+async function routeComment(
+  $: $,
+  project: Project,
+  id: string,
+): Promise<{ complexity?: Complexity; model?: string; effort?: string }> {
+  const comment = await readComment($, project, id)
+  if (comment && onlyImages(comment)) return { effort: IMAGES_ONLY_EFFORT }
   const routing = COMPLEXITIES.some(
     (label) => (project.models[label] ?? INHERIT) !== INHERIT,
   )
-  const comment = routing ? await readComment($, project, id) : undefined
-  const text = comment && classifiedText(comment)
-  const complexity = text ? await classify($, text) : undefined
+  const text = routing && comment && classifiedText(comment)
+  if (!text) return {}
+  const complexity = await classify($, text)
   const model = complexity && project.models[complexity]
-  return { complexity, model: model && model !== INHERIT ? model : undefined }
+  return {
+    ...(complexity && { complexity }),
+    ...(model && model !== INHERIT && { model }),
+  }
 }
 
 /** The projects watched, and the agents at work on comments. */
@@ -352,6 +376,7 @@ async function registerCommentAgent(
   project: Project,
   id: string,
   model: string | undefined,
+  effort?: string,
 ) {
   const hook = (mode: string) =>
     [
@@ -373,6 +398,7 @@ async function registerCommentAgent(
     description: `Code Buddy: comment ${tag(id)}. Only the plugin's hooks start it.`,
     prompt: await readWorkerPrompt($),
     ...(model && { model }),
+    ...(effort && { effort }),
     hooks: {
       PreToolUse: [{ matcher: PRE_TOOLS, hooks: run('pre') }],
       PostToolUse: [{ matcher: '*', hooks: run('post') }],
@@ -527,7 +553,7 @@ function pump($: $) {
 async function registerAgain($: $, id: string, worker: Worker) {
   const project = await loadProject($, worker.root).catch(() => undefined)
   if (!project) return false
-  return registerCommentAgent($, project, id, worker.model).then(
+  return registerCommentAgent($, project, id, worker.model, worker.effort).then(
     () => true,
     async (error: unknown) => {
       await debug(
@@ -622,13 +648,15 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     const { project, ...route } = started.route
     await $.fs.write(routeFile(project, id), JSON.stringify({ ...route, agent }))
     const label = route.complexity ? `, the comment classified ${route.complexity}` : ''
-    await debug($, agent, id, `started on ${route.model}${label}`)
+    const effort = route.effort ? ` at ${route.effort} effort` : ''
+    await debug($, agent, id, `started on ${route.model}${effort}${label}`)
   }
   const worker = {
     agent,
     root: watched.root,
     running: true,
     ...(started.route && { model: started.route.model }),
+    ...(started.route?.effort && { effort: started.route.effort }),
   }
   await setWorker($, id, worker)
   await debug($, agent, id, `started for ${line.split(' ')[0]}`)
@@ -638,13 +666,14 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
 
 /**
  * Picks the comment's model, registers its agent type and starts it. `route`:
- * what claim.mjs is to record on the run, the agent aside.
+ * what claim.mjs is to record on the run, the agent aside, with the effort
+ * the type was registered with, which claim.mjs leaves out.
  */
 async function spawnWorker($: $, watched: Watch, id: string, name: string, line: string) {
   const project = await loadProject($, watched.root)
-  const { model, complexity } = await routeComment($, project, id)
+  const { model, complexity, effort } = await routeComment($, project, id)
   const started = await $.agent.spawn({
-    subagentType: await registerCommentAgent($, project, id, model),
+    subagentType: await registerCommentAgent($, project, id, model, effort),
     name,
     description: `Code Buddy comment ${tag(id)}`,
     // The paths first: the reader's line is data, and comes last.
@@ -659,7 +688,12 @@ async function spawnWorker($: $, watched: Watch, id: string, name: string, line:
       : (model ?? (await $.session.model()))
   return {
     ...started,
-    route: { project, model: resolved, ...(complexity && { complexity }) },
+    route: {
+      project,
+      model: resolved,
+      ...(complexity && { complexity }),
+      ...(effort && { effort }),
+    },
   }
 }
 

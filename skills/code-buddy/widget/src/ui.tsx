@@ -1,14 +1,19 @@
 import {
   type ButtonHTMLAttributes,
+  type DragEvent,
   type FormEvent,
   type ReactNode,
   type TextareaHTMLAttributes,
   Component,
   forwardRef,
+  useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from 'react'
+import type { NewImage } from './domain'
+import { imageFiles, pick, preview, readImages } from './images'
 
 const PATHS = {
   x: 'M6 6l12 12M18 6L6 18',
@@ -18,6 +23,7 @@ const PATHS = {
   chats: 'M3 4h12v9H8l-5 4zM9 16v1h7l5 4V8h-3',
   chat: 'M4 5h16v11H9l-5 4z',
   cursor: 'M6 3l13 10-6 1-3 6z',
+  frame: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
   'expand-horizontal': 'M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4',
   'collapse-horizontal': 'M12 4v16M3 12h6M21 12h-6M6 9l3 3-3 3M18 9l-3 3 3 3',
   external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
@@ -161,25 +167,37 @@ export const Textarea = forwardRef<
   return <textarea ref={ref} className={`cb-textarea ${className}`} {...props} />
 })
 
-/** The message box at the panel's foot: Enter sends, Shift+Enter breaks the line. */
+/**
+ * The message box at the panel's foot: Enter sends, Shift+Enter breaks the
+ * line. An image pasted or dropped in it is attached to the message, shown
+ * as a thumbnail until it is sent.
+ */
 export function Composer({
   value,
   placeholder,
   disabled,
   autoFocus,
   sendLabel = 'Send',
+  images,
   onChange,
   onSubmit,
   onEscape,
+  onAttach,
+  onDetach,
 }: {
   value: string
   placeholder: string
   disabled: boolean
   autoFocus?: boolean
   sendLabel?: string
+  images: NewImage[]
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
+  /** Without it, the box takes no image. */
+  onAttach?: (images: NewImage[]) => void
+  /** Removes the attached image at `index`. */
+  onDetach?: (index: number) => void
 }) {
   const box = useRef<HTMLTextAreaElement>(null)
   // Grows with its text up to the CSS max-height, then scrolls.
@@ -190,13 +208,82 @@ export function Composer({
     // Empty, it keeps the CSS height: one line.
     if (value) textarea.style.height = `${textarea.scrollHeight}px`
   }, [value])
-  const blocked = disabled || !value.trim()
+  // The images being read, not attached yet: counted against the limit, and
+  // the message waits for them.
+  const reading = useRef(0)
+  const [pending, setPending] = useState(0)
+  const blocked = disabled || pending > 0 || (!value.trim() && !images.length)
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!blocked) onSubmit()
   }
+  const attaching = !!onAttach && !disabled
+  // Images read once the box is gone are its draft's, or its thread's, which
+  // the reader left: keyed by either, the next box is another one.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const add = async (files: File[]) => {
+    if (!onAttach) return
+    const picked = pick(images.length + reading.current, files)
+    if (picked.refused) toast(picked.refused, true)
+    if (!picked.files.length) return
+    const count = picked.files.length
+    reading.current += count
+    setPending((current) => current + count)
+    let read: NewImage[] | undefined
+    try {
+      read = await readImages(picked.files)
+    } catch {
+      toast('The image could not be read.', true)
+    } finally {
+      reading.current -= count
+      setPending((current) => current - count)
+    }
+    if (read && mounted.current) onAttach(read)
+  }
+  // A file dragged over the box is its own, busy or not: the browser would
+  // open it in the app's place.
+  const onDragOver = (event: DragEvent) => {
+    if (!onAttach || !event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = attaching ? 'copy' : 'none'
+  }
+  const onDrop = (event: DragEvent) => {
+    if (!onAttach || !event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    const files = imageFiles(event.dataTransfer.files)
+    if (!attaching) toast('Wait for the message to be sent.', true)
+    else if (files.length) void add(files)
+    else toast('Only images can be attached.', true)
+  }
   return (
-    <form className="cb-composer-box" onSubmit={submit}>
+    <form
+      className="cb-composer-box"
+      onSubmit={submit}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {images.length > 0 && (
+        <div className="cb-attachments" data-testid="cb-attachments">
+          {images.map((image, index) => (
+            // oxlint-disable-next-line react/no-array-index-key -- the same image twice is two attachments: only its place tells them apart
+            <div key={index} className="cb-attachment">
+              <img src={preview(image)} alt={`Attached image ${index + 1}`} />
+              <IconButton
+                icon="x"
+                label={`Remove image ${index + 1}`}
+                className="cb-attachment-remove"
+                onClick={() => onDetach?.(index)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       <textarea
         ref={box}
         rows={1}
@@ -205,6 +292,13 @@ export function Composer({
         aria-label={placeholder}
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
+        onPaste={(event) => {
+          const files = imageFiles(event.clipboardData.files)
+          if (!attaching || !files.length || pastesText(event.clipboardData, files))
+            return
+          event.preventDefault()
+          void add(files)
+        }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return
           if (event.key === 'Escape') return onEscape?.()
@@ -224,6 +318,16 @@ export function Composer({
       </button>
     </form>
   )
+}
+
+/**
+ * Whether a paste brings text of its own beside its images: cells copied from
+ * a spreadsheet come with a picture of them, which the text wins over. A file
+ * copied brings only its name as text, and the image goes in.
+ */
+function pastesText(clipboard: DataTransfer, files: File[]) {
+  const text = clipboard.getData('text/plain').trim()
+  return !!text && !files.some((file) => file.name === text)
 }
 
 export function Checkbox({

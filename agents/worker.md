@@ -27,14 +27,20 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    cancelled, resolved or is waiting on the reader, stop and reply
    `CANCELLED`.
 2. Read the comment claim.mjs prints after its `claimed` line, as JSON:
-   `route`, `url`, and `anchor`: `section`, a text `quote` or a pointed
-   `element` (selector from `body`, tag, text, HTML excerpt). `route` `*`
-   means the whole app. `messages` holds the thread, the reader's comment
-   first (`elided` says how many older ones are left out): your earlier
-   answers (`claude`) were applied; act on the reader's last message. A
-   `cancellation` field lists files an earlier, stopped agent left changed:
-   keep, finish or revert them to match the current text. When the element
-   is unclear, screenshot it with Playwright on `devUrl`.
+   `route`, `url`, and `anchor`: `section`, a text `quote`, a pointed
+   `element` (selector from `body`, tag, text, HTML excerpt) or a drawn
+   `area` (its box on the page, the `viewport` it was drawn in, the element it
+   lies `within`, and those it `covers` or `crosses`, a sample when
+   `truncated`: find these in the code). `route` `*` means the whole app.
+   `messages` holds the thread, the reader's comment first (`elided` says how
+   many older ones are left out): your earlier answers (`claude`) were
+   applied; act on the reader's last message. A message's `images` are the
+   files the reader attached to it (a screenshot, a mockup), which may be all
+   it holds, with an empty body: open each of the last message's with Read
+   before changing anything. A `cancellation` field lists files an earlier,
+   stopped agent left changed: keep, finish or revert them to match the
+   current text. When the element is unclear, screenshot it with Playwright
+   on `devUrl`.
 3. Make the change, only under `editable`, with the Edit and Write tools:
    never write files from Bash (`sed -i`, scripts, redirections). Other
    agents may edit the project at the same time: a hook locks every file you

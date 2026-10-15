@@ -5,6 +5,8 @@
 // working without resolving, an agent asks the reader a question with ask.mjs.
 // Then prints the comment as JSON, the only one the agent reads: never the
 // comments file, which holds every other thread.
+import path from 'node:path'
+import { imagesDir } from './lib/images.mjs'
 import { findProject, positional } from './lib/project.mjs'
 import { StoreRefusal, createStore, readRoute } from './lib/store.mjs'
 
@@ -13,11 +15,19 @@ const MAX_MESSAGES = 20
 
 /**
  * The comment as its agent reads it: where it is, its thread, capped to its
- * first message and the latest ones, and the run an earlier agent left.
+ * first message and the latest ones, its images as files the agent opens with
+ * Read, and the run an earlier agent left.
+ * @param {{ commentsFile: string }} project
  * @param {import('./lib/format.mjs').CommentV2} comment
  */
-function thread(comment) {
-  const { route, url, anchor, messages, state, cancellation } = comment
+function thread(project, comment) {
+  const { route, url, anchor, state, cancellation } = comment
+  const dir = imagesDir(project, comment.id)
+  const messages = comment.messages.map((message) =>
+    message.images
+      ? { ...message, images: message.images.map((name) => path.join(dir, name)) }
+      : message,
+  )
   const elided = Math.max(0, messages.length - MAX_MESSAGES)
   return {
     route,
@@ -49,7 +59,7 @@ try {
   })
   // The project found and the run started, for the agent and the logs.
   console.log(`claimed ${id} (${comment.route}) project=${project.root} run=${run}`)
-  console.log(JSON.stringify(thread(comment), null, 2))
+  console.log(JSON.stringify(thread(project, comment), null, 2))
 } catch (error) {
   if (!(error instanceof StoreRefusal)) throw error
   console.error(`${error.message}; stop working on it`)

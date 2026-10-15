@@ -47,11 +47,9 @@ export const TRANSITIONS = {
 export const COMPLEXITIES = ['trivial', 'standard', 'hard']
 
 /**
- * @typedef {object} Element
- * @property {string} selector From `body`, unique when it was recorded.
- * @property {string} tag
- * @property {string} text Visible text, normalised and truncated.
- * @property {string} html Outer HTML, whitespace-collapsed and truncated.
+ * @typedef {AreaNode & { html: string }} Element `selector` is from `body`,
+ * unique when it was recorded; `text` and `html` (the outer HTML) are
+ * whitespace-collapsed and truncated.
  */
 
 /**
@@ -61,6 +59,35 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {string} quote The selected text; empty for a page-level comment.
  * @property {number} occurrence Which occurrence of the quote on the page.
  * @property {Element} [element] Set when the reader pointed at an element.
+ * @property {Area} [area] Set when the reader drew a rectangle over the page.
+ */
+
+/**
+ * An element a drawn area covers or crosses: no HTML, an area may hold many;
+ * its text is cut to 80 characters.
+ * @typedef {{ selector: string, tag: string, text: string }} AreaNode
+ * @typedef {{ top: number, left: number, width: number, height: number }} Box
+ * @typedef {{ width: number, height: number }} Size
+ */
+
+/**
+ * The smallest element holding a drawn area: where the area's corner lies in
+ * its content (scroll included), and its size then, never 0, to scale the
+ * area's width with it on another viewport.
+ * @typedef {AreaNode & { offset: { top: number, left: number }, size: Size }} Holder
+ */
+
+/**
+ * A rectangle the reader drew, from the page's corner, in CSS pixels, never
+ * empty. `covers` keeps at most 10 elements and `crosses` 6; `truncated` says
+ * the area held more.
+ * @typedef {Box & {
+ *   viewport: Size & { scrollX: number, scrollY: number },
+ *   within?: Holder,
+ *   covers: AreaNode[],
+ *   crosses: AreaNode[],
+ *   truncated?: true,
+ * }} Area
  */
 
 /**
@@ -81,6 +108,8 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {Option[]} [options] A question only: the answers it offers.
  * @property {boolean} [multiple] With `options`: the reader may pick several.
  * @property {string[]} [choices] Reader only: the options they picked.
+ * @property {string[]} [images] Reader only: the images they attached, file
+ *   names in `images/<comment id>/` beside the comments file (images.mjs).
  */
 
 /**

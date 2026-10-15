@@ -29,10 +29,10 @@
 ---
 
 You comment directly on your dev app in the browser: select text, point at an
-element, or write about the page or the whole app. For each comment, Claude
-starts a background agent that makes the change, shows you its progress live
-under your comment, and answers in the same thread. Reply to follow up; cancel
-to stop it.
+element, draw an area, or write about the page or the whole app. For each
+comment, Claude starts a background agent that makes the change, shows you its
+progress live under your comment, and answers in the same thread. Reply to
+follow up; cancel to stop it.
 
 ## How it works
 
@@ -65,7 +65,9 @@ to stop it.
   classifier sorts the comment as `trivial`, `standard` or `hard`, and
   `models` in `.code-buddy.json` picks the model for it (by default Haiku,
   the session's own model, and Opus). The widget names it on the thread
-  ("haiku · trivial"). See [Models](docs/comments-file.md#models).
+  ("haiku · trivial"). A comment of images alone is not classified: it
+  starts on the session's model at a medium effort. See
+  [Models](docs/comments-file.md#models).
 
 ## Install
 
@@ -122,9 +124,19 @@ directory, else from the repository root.
 - **Point at element** to anchor it to an element. A bubble then marks the
   element too; hovering the element chip later outlines it on the page,
   clicking it scrolls to it (navigating first if it lives on another page).
+- **Draw area** to frame a part of the page no single element holds: the gap
+  between two blocks, a misaligned group, empty space. Drag a rectangle
+  (scroll the page while dragging to stretch it past the window); the elements
+  it covers are outlined as it grows. A page-level comment can get one too, with _Draw an
+  area_. Claude receives its box, the window it was drawn in, the element it
+  lies in and the elements it covers or cuts through. The area is found again
+  in that element, on another window size or after the layout changes.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
-  around an element or behind a text, marks a comment Claude has yet to
-  resolve; once its thread is resolved, the mark goes away.
+  around an element or an area or behind a text, marks a comment Claude has
+  yet to resolve; once its thread is first resolved, the mark goes away.
+- **Paste or drop an image** (a screenshot, a mockup) in the message box of a
+  comment or a reply: it goes with the message, or alone, and Claude opens
+  it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
 - **All comments** lists every discussion, newest first, filtered by status.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
@@ -185,7 +197,7 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 | `run ended …`, `agent stopped …`                            | The agent answered, asked, or stopped: its locks are released.                                                                                 |
 | `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |
 | `hook.mjs failed: <error>`                                  | The agent's hook could not run: its tool ran without a lock or a step.                                                                         |
-| `started on <model>, …`                                     | The model the comment's agent runs on, and how the classifier sorted the comment.                                                              |
+| `started on <model>, …`                                     | The model the comment's agent runs on, its effort when routing set one (`at medium effort`), and how the classifier sorted the comment.        |
 | `started for NEW`, `sent the follow-up`                     | `/code-buddy` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
 | `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
 | `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
@@ -194,11 +206,14 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 ## Security
 
 - The server listens on `127.0.0.1` only and accepts cross-origin requests
-  from `localhost` origins only.
+  from `localhost` origins only (and `devOrigins`); it refuses any change
+  from another origin (403).
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
-- Comments hold page text and HTML excerpts; they stay in your project folder.
+- Comments hold page text and HTML excerpts; they stay in your project folder,
+  with the images attached to them (`.code-buddy/images/`), which the server
+  checks are images by their bytes.
 
 To report a vulnerability, see the [security policy](SECURITY.md).
 

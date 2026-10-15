@@ -29,6 +29,7 @@ export function comment({
   quote = '',
   occurrence = 0,
   element,
+  area,
   ...fields
 }: Fields = {}): ReviewComment {
   const createdAt = fields.createdAt ?? '2026-01-01T10:00:00.000Z'
@@ -37,7 +38,13 @@ export function comment({
     id: 'c1',
     route: PAGE,
     url: `http://localhost${PAGE}`,
-    anchor: { section, quote, occurrence, ...(element ? { element } : {}) },
+    anchor: {
+      section,
+      quote,
+      occurrence,
+      ...(element ? { element } : {}),
+      ...(area ? { area } : {}),
+    },
     state: 'open',
     createdAt,
     messages: [

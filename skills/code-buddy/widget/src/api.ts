@@ -3,6 +3,7 @@ import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './doma
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
 const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
+const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -19,9 +20,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
 }
 
-/** The server's own words for a refusal (409: a move the comment cannot make), else the status. */
+/**
+ * The server's own words for a refusal (409: a move the comment cannot make;
+ * 422: an image it does not take), else the status. A body too large (413)
+ * may come with none, the server closing the connection.
+ */
 async function failure(response: Response): Promise<string> {
-  if (response.status === 409) {
+  if (response.status === 413) return 'The message is too large to send.'
+  if (response.status === 409 || response.status === 422) {
     const body: unknown = await response.json().catch(() => undefined)
     if (
       body &&
@@ -169,6 +175,10 @@ export async function updateComment(
   changed()
   return comment
 }
+
+/** Where the server serves image `name` of comment `id`. */
+export const imageUrl = (id: string, name: string) =>
+  `${IMAGES}${encodeURIComponent(id)}/${encodeURIComponent(name)}`
 
 export async function deleteComment(id: string): Promise<void> {
   await request<void>(`${API}/${id}`, { method: 'DELETE' })

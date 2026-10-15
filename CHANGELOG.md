@@ -73,6 +73,13 @@ released to the `stable` branch.
 
 ### Added
 
+- **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
+  message box, of a new comment or a reply: it shows as a thumbnail, goes
+  with the message and shows in its bubble; an image alone is a message too.
+  Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each: a request may now
+  hold them on top of its 100,000 characters of text. The server keeps them
+  beside the comments file (`.code-buddy/images/<id>/`), deleted with the
+  comment, and the comment's agent opens them with Read.
 - **Each comment gets a model that fits it.** Before a comment's agent
   starts, the hooks ask Claude Code's small fast model to sort the comment:
   `trivial` (copy, spacing, colour, one element), `standard` (a component's
@@ -82,7 +89,9 @@ released to the `stable` branch.
   `{ "trivial": "haiku", "standard": "inherit", "hard": "opus" }`; `inherit`
   keeps the managing session's model, and `{ "trivial": "inherit" }` turns
   routing off. A failed classifier never holds a comment back: its agent
-  starts on the session's model. A follow-up keeps the thread's model.
+  starts on the session's model. A comment of images alone, which the
+  classifier cannot read, starts on the session's model at a medium effort,
+  unlabelled, routing on or off. A follow-up keeps the thread's model.
 - **The widget names the model.** A thread and its line in the list show the
   model its agent works on and the classifier's label ("haiku · trivial"),
   and its Started step says "Started on haiku". The comments file records
@@ -100,6 +109,16 @@ released to the `stable` branch.
   a follow-up) says "Claude has your reply, an agent is picking it up…"
   instead: the manager hands it to the thread's agent when it still has one.
   The debug panel marks each hand-over and how long the claim took after it.
+- **Draw an area on the page** (_Draw area_, or _Draw an area_ in a page-level
+  comment) when the feedback is about a part of the page no single element
+  holds. The page dims around the rectangle, the elements it covers are
+  outlined as it grows, and scrolling the page stretches it. It stays outlined
+  while the comment is written, turns into a rainbow frame with a bubble until
+  Claude resolves the thread, and its chip in the thread shows it again (hover)
+  or scrolls to it (click). Claude gets its box, the window size and scroll,
+  the element it lies in, the elements it covers and those it cuts through,
+  down to the innermost (the two buttons around a gap); the area is kept relative to that
+  element, so it is found again on another window size.
 - **The hook log**, to check what the plugin's hooks do in a real session:
   `/code-buddy-debug on` turns it on in every session, `tail -f
   ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last
@@ -209,6 +228,14 @@ released to the `stable` branch.
 - Two processes could break the same abandoned lock on the comments file and
   both write it, losing one change.
 - Claude's answers no longer carry the run's steps in `comments.json`.
+
+### Security
+
+- **The server refuses changes from other origins.** A request that would
+  change comments (`POST`, `PATCH`, `DELETE`) from a page whose origin the
+  server does not let in gets 403: a page of another site could otherwise
+  write comments and images, and start agents, without reading the answer.
+  Requests with no origin (scripts, curl) still pass.
 
 ## 0.1.0 - 2026-09-29
 
