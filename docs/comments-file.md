@@ -157,7 +157,7 @@ stateDiagram-v2
 
 | Move | Trigger | `by` | Also writes |
 | --- | --- | --- | --- |
-| `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out) and `cancellation`. |
+| `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out) and `cancellation`; `url`, `elided` and `cancellation` only when set. |
 | `working → asking` | `ask.mjs` | agent | A `claude` message with `question` and `run`. |
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |

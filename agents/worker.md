@@ -30,12 +30,11 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    `route`, `url`, and `anchor`: `section`, a text `quote` or a pointed
    `element` (selector from `body`, tag, text, HTML excerpt). `route` `*`
    means the whole app. `messages` holds the thread, the reader's comment
-   first (`elided` says how many older ones are left out): your earlier answers
-   (`claude`) were applied; act on the reader's last message. `state` says
-   where it stands. A `cancellation` field lists files an earlier, stopped
-   agent left changed: keep, finish or revert them to match the current
-   text. When the element is unclear, screenshot it with Playwright on
-   `devUrl`.
+   first (`elided` says how many older ones are left out): your earlier
+   answers (`claude`) were applied; act on the reader's last message. A
+   `cancellation` field lists files an earlier, stopped agent left changed:
+   keep, finish or revert them to match the current text. When the element
+   is unclear, screenshot it with Playwright on `devUrl`.
 3. Make the change, only under `editable`, with the Edit and Write tools:
    never write files from Bash (`sed -i`, scripts, redirections). Other
    agents may edit the project at the same time: a hook locks every file you

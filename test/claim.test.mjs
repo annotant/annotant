@@ -99,21 +99,56 @@ test('prints the files a stopped run left changed', async (t) => {
     root,
   ])
   assert.equal(claimed.code, 0, claimed.stderr)
-  assert.deepEqual(printed(claimed.stdout).cancellation.changed, ['src/app.css'])
+  const shown = printed(claimed.stdout)
+  assert.equal('url' in shown, false)
+  const [saved] = await comments.readAll()
+  assert.deepEqual(shown.cancellation, saved.cancellation)
+  assert.deepEqual(shown.cancellation.changed, ['src/app.css'])
 })
 
-test('keeps the reader comment and the latest messages of a long thread', async (t) => {
+test('prints the thread again when the agent claims the comment it works on', async (t) => {
   const root = await tempProject(t)
   const comments = store.createStore(projects.project(root))
   const comment = await comments.create({
     route: '/',
     anchor: { section: '', quote: '', occurrence: 0 },
-    body: 'reply 0',
+    body: 'Make it blue',
   })
-  for (let n = 1; n < 25; n++) {
+  await comments.claim(comment.id)
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  assert.match(claimed.stdout, /^claimed .* run=r1\n/)
+  const shown = printed(claimed.stdout)
+  assert.equal(shown.state, 'working')
+  assert.deepEqual(
+    shown.messages.map((/** @type {{ body: string }} */ message) => message.body),
+    ['Make it blue'],
+  )
+})
+
+/**
+ * Claims, with claim.mjs, a comment whose thread holds `count` messages (odd:
+ * the reader's last), `message 1` first.
+ * @param {import('node:test').TestContext} t
+ * @param {number} count
+ */
+async function claimThread(t, count) {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'message 1',
+  })
+  for (let n = 2; n <= count; n += 2) {
     await comments.claim(comment.id)
-    await comments.answer(comment.id, `answer ${n}`)
-    await comments.update(comment.id, { followUp: `reply ${n}` })
+    await comments.answer(comment.id, `message ${n}`)
+    await comments.update(comment.id, { followUp: `message ${n + 1}` })
   }
   const claimed = await run(process.execPath, [
     path.join(SCRIPTS, 'claim.mjs'),
@@ -123,11 +158,32 @@ test('keeps the reader comment and the latest messages of a long thread', async 
   ])
   assert.equal(claimed.code, 0, claimed.stderr)
   const shown = printed(claimed.stdout)
-  // 49 messages: the reader's comment and the 19 latest.
-  assert.equal(shown.elided, '[29 earlier messages elided]')
-  assert.equal(shown.messages.length, 20)
-  assert.equal(shown.messages[0].body, 'reply 0')
-  assert.equal(shown.messages.at(-1).body, 'reply 24')
+  return {
+    elided: shown.elided,
+    bodies: shown.messages.map((/** @type {{ body: string }} */ message) => message.body),
+  }
+}
+
+test('keeps the reader comment and the latest messages of a long thread', async (t) => {
+  const { elided, bodies } = await claimThread(t, 49)
+  assert.equal(elided, '[29 earlier messages elided]')
+  assert.deepEqual(bodies, [
+    'message 1',
+    ...Array.from({ length: 19 }, (_, n) => `message ${n + 31}`),
+  ])
+})
+
+test('elides one message from a thread one over the cap', async (t) => {
+  const { elided, bodies } = await claimThread(t, 21)
+  assert.equal(elided, '[1 earlier messages elided]')
+  assert.deepEqual(bodies.slice(0, 2), ['message 1', 'message 3'])
+  assert.equal(bodies.length, 20)
+})
+
+test('prints a thread under the cap whole', async (t) => {
+  const { elided, bodies } = await claimThread(t, 19)
+  assert.equal(elided, undefined)
+  assert.equal(bodies.length, 19)
 })
 
 test('records the agent the hooks name in the run it opens', async (t) => {
@@ -170,6 +226,8 @@ test('refuses a comment that waits on the reader, and says to stop', async (t) =
     root,
   ])
   assert.equal(claimed.code, 1)
+  // An agent told to stop sees no thread.
+  assert.equal(claimed.stdout, '')
   assert.equal(
     claimed.stderr,
     `comment ${comment.id} is waiting on the reader's answer; stop working on it\n`,
