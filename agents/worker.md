@@ -30,7 +30,7 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    `route`, `url`, and `anchor`: `section`, a text `quote` or a pointed
    `element` (selector from `body`, tag, text, HTML excerpt). `route` `*`
    means the whole app. `messages` holds the thread, the reader's comment
-   first (`elided` counts the older ones left out): your earlier answers
+   first (`elided` says how many older ones are left out): your earlier answers
    (`claude`) were applied; act on the reader's last message. `state` says
    where it stands. A `cancellation` field lists files an earlier, stopped
    agent left changed: keep, finish or revert them to match the current
