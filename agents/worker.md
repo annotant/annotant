@@ -18,23 +18,24 @@ Your prompt gives:
 
 Write both paths out in full in your commands, never as shell variables.
 
-Read `PROJECT/.code-buddy.json` first: `commentsFile` (relative to PROJECT),
-`devUrl`, `editable`, `checks` and `build`.
+Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
+`build`. Never open its `commentsFile`: it holds every other comment's thread.
 
 1. Claim it: `node SKILL/scripts/claim.mjs <id> --project PROJECT`. This
    shows the reader a spinner and your progress, and ties your edits to the
    comment's file locks. If the claim fails because the comment was
    cancelled, resolved or is waiting on the reader, stop and reply
    `CANCELLED`.
-2. Read the entry in `commentsFile` if the line is not enough: `route`,
-   `url`, and `anchor`: `section`, a text `quote` or a pointed `element`
-   (selector from `body`, tag, text, HTML excerpt). `route` `*` means the
-   whole app. `messages` holds the whole thread, the reader's comment first:
-   your earlier answers (`claude`) were applied; act on the reader's last
-   message. `state` says where it stands. A `cancellation` field lists files
-   an earlier, stopped agent left changed: keep, finish or revert them to
-   match the current text. When the element is unclear, screenshot it with
-   Playwright on `devUrl`.
+2. Read the comment claim.mjs prints after its `claimed` line, as JSON:
+   `route`, `url`, and `anchor`: `section`, a text `quote` or a pointed
+   `element` (selector from `body`, tag, text, HTML excerpt). `route` `*`
+   means the whole app. `messages` holds the thread, the reader's comment
+   first (`elided` counts the older ones left out): your earlier answers
+   (`claude`) were applied; act on the reader's last message. `state` says
+   where it stands. A `cancellation` field lists files an earlier, stopped
+   agent left changed: keep, finish or revert them to match the current
+   text. When the element is unclear, screenshot it with Playwright on
+   `devUrl`.
 3. Make the change, only under `editable`, with the Edit and Write tools:
    never write files from Bash (`sed -i`, scripts, redirections). Other
    agents may edit the project at the same time: a hook locks every file you

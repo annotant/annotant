@@ -31,7 +31,103 @@ test('prints the project it found, for the hooks, which cannot see the shell dir
   assert.equal(claimed.code, 0)
   // The shell's directory, as the operating system names it (/private/var on macOS).
   const found = await realpath(root)
-  assert.equal(claimed.stdout, `claimed ${comment.id} (/) project=${found} run=r1\n`)
+  const [line] = claimed.stdout.split('\n')
+  assert.equal(line, `claimed ${comment.id} (/) project=${found} run=r1`)
+})
+
+/** The comment claim.mjs prints after its `claimed` line. */
+const printed = (/** @type {string} */ stdout) =>
+  JSON.parse(stdout.slice(stdout.indexOf('\n') + 1))
+
+test('prints the comment it claimed, and no other', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const anchor = { section: 'Hero', quote: 'Fresh coffee', occurrence: 0 }
+  const comment = await comments.create({
+    route: '/',
+    url: 'http://localhost/',
+    anchor,
+    body: 'Make it blue',
+  })
+  await comments.create({ route: '/about', anchor, body: 'Another thread' })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const [message] = (await comments.readAll())[0].messages
+  assert.deepEqual(printed(claimed.stdout), {
+    route: '/',
+    url: 'http://localhost/',
+    anchor,
+    state: 'working',
+    messages: [message],
+  })
+  assert.doesNotMatch(claimed.stdout, /Another thread/)
+})
+
+test('prints the files a stopped run left changed', async (t) => {
+  const root = await tempProject(t)
+  const project = projects.project(root)
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '*',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Make it blue',
+  })
+  await comments.claim(comment.id)
+  const progress = store.progressPath(project, comment.id)
+  await mkdir(path.dirname(progress), { recursive: true })
+  await writeFile(
+    progress,
+    JSON.stringify({
+      at: 1,
+      id: 'a',
+      kind: 'edit',
+      label: 'src/app.css',
+      state: 'done',
+    }) + '\n',
+  )
+  await comments.update(comment.id, { cancelled: true })
+  await comments.update(comment.id, { cancelled: false })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  assert.deepEqual(printed(claimed.stdout).cancellation.changed, ['src/app.css'])
+})
+
+test('keeps the reader comment and the latest messages of a long thread', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'reply 0',
+  })
+  for (let n = 1; n < 25; n++) {
+    await comments.claim(comment.id)
+    await comments.answer(comment.id, `answer ${n}`)
+    await comments.update(comment.id, { followUp: `reply ${n}` })
+  }
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const shown = printed(claimed.stdout)
+  // 49 messages: the reader's comment and the 19 latest.
+  assert.equal(shown.elided, '[29 earlier messages elided]')
+  assert.equal(shown.messages.length, 20)
+  assert.equal(shown.messages[0].body, 'reply 0')
+  assert.equal(shown.messages.at(-1).body, 'reply 24')
 })
 
 test('records the agent the hooks name in the run it opens', async (t) => {

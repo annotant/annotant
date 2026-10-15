@@ -482,10 +482,10 @@ const agentName = (id: string) => `cb-${tag(id)}`
 /** The follow-up message, the reader's line in it. */
 const followUp = (id: string, line: string) =>
   `The reader followed up on comment ${id}: ${line}\n` +
-  'Claim it again, act on the follow-up, run the checks, then resolve it with your answer, as before.'
+  'Claim it again, which prints the thread anew, act on the follow-up, run the checks, then resolve it with your answer, as before.'
 const edited = (id: string, line: string) =>
   `The reader edited comment ${id} while you work on it: ${line}\n` +
-  'Act on the new text instead.'
+  'Claim it again, which prints the thread anew, and act on the new text instead.'
 
 async function setWorker($: $, id: string, worker: Worker) {
   await update($, workers, (all) => ({ ...all, [id]: worker }))
