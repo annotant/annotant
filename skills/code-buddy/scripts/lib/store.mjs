@@ -282,9 +282,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
   }
 
   /**
-   * Runs `work`, which files images of comment `id`: failing, it leaves none
-   * behind, those `filed()` names by then (all of the comment's when it
-   * names none).
+   * Runs `work`, which files images of comment `id`: failing, it removes
+   * those `filed()` names by then, or all of the comment's when it returns
+   * undefined, and throws the work's error.
    * @param {string} id
    * @param {() => string[] | undefined} filed
    * @param {() => Promise<void>} work

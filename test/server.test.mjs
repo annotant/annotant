@@ -399,12 +399,55 @@ test('rejects malformed JSON with 400, and never echoes an exception', async () 
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
 })
 
-test('rejects an oversized body with 413, closing the connection', async () => {
+test('rejects text over its limit with 413, closing the connection', async () => {
   const response = await post(JSON.stringify({ body: 'x'.repeat(200_000) }))
   assert.equal(response.status, 413)
   assert.deepEqual(await json(response), { error: 'body too large' })
-  // Its body is left unread: a request reusing the connection would hang.
+  // As after any 413: a body left unread would hang a request reusing it.
   assert.equal(response.headers.get('connection'), 'close')
+})
+
+test('rejects a body with no length that outgrows the limit as it is read', async () => {
+  const status = await new Promise((resolve, reject) => {
+    // No content-length: sent in chunks until the server answers.
+    const request = http.request(`${base}/api/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    })
+    const chunk = 'x'.repeat(1024 * 1024)
+    let answered = false
+    request.on('response', (response) => {
+      answered = true
+      response.resume()
+      resolve(response.statusCode)
+      request.destroy()
+    })
+    request.on('error', (error) => (answered ? undefined : reject(error)))
+    request.write('{"body":"')
+    for (let sent = 0; sent < 40; sent += 1) request.write(chunk)
+  })
+  assert.equal(status, 413)
+})
+
+test('keeps a character split between two chunks of the body', async () => {
+  const bytes = Buffer.from(JSON.stringify({ route: '/utf8', body: 'Café au lait' }))
+  const split = bytes.indexOf(0xc3) + 1
+  const status = await new Promise((resolve, reject) => {
+    const request = http.request(`${base}/api/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': bytes.length },
+    })
+    request.on('response', (response) => {
+      response.resume()
+      resolve(response.statusCode)
+    })
+    request.on('error', reject)
+    request.write(bytes.subarray(0, split))
+    // Apart, so the server reads é's two bytes in two chunks.
+    setTimeout(() => request.end(bytes.subarray(split)), 50)
+  })
+  assert.equal(status, 201)
+  assert.equal((await firstOn('%2Futf8')).messages[0].body, 'Café au lait')
 })
 
 test('answers an internal error with a fixed message', async () => {
@@ -681,6 +724,58 @@ test('sends a stopped comment again with its image alone, the words removed', as
   assert.equal(resent.messages[0].body, '')
   const event = await nextLine(`NEW ${created.id} `, printed)
   assert.match(event, / body="" images=\[".*\/m1-1\.png"\]$/)
+})
+
+test('takes 4 images of 5 MB each in one message', async () => {
+  const full = Buffer.alloc(5 * 1024 * 1024)
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(full)
+  const image = { type: 'image/png', data: full.toString('base64') }
+  const response = await post(
+    JSON.stringify({
+      route: '/images',
+      body: 'All of them',
+      images: Array.from({ length: 4 }, () => image),
+    }),
+  )
+  assert.equal(response.status, 201)
+})
+
+test('an image it cannot read is an error, not a missing image', async () => {
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/images',
+        body: 'Like this',
+        images: [{ type: 'image/png', data: PNG }],
+      }),
+    ),
+  )
+  await mkdir(path.join(root, '.code-buddy', 'images', created.id, 'm1-2.png'))
+  const served = await fetch(`${base}/api/images/${created.id}/m1-2.png`)
+  assert.equal(served.status, 500)
+})
+
+test("a follow-up in words gives the agent none of the comment's images", async () => {
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/images',
+        body: 'Like this',
+        images: [{ type: 'image/png', data: PNG }],
+      }),
+    ),
+  )
+  const patch = (body) =>
+    fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  await patch({ status: 'resolved' })
+  const printed = output.length
+  await patch({ followUp: 'Bigger' })
+  const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
+  assert.ok(!event.includes('images='), event)
 })
 
 test('takes JPEG, GIF and WebP by their bytes, and refuses one over 5 MB', async () => {

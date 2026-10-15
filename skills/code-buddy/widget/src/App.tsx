@@ -373,7 +373,12 @@ const removing = (images: NewImage[] = [], index: number) =>
 const written = (draft: Pick<Draft, 'body' | 'images'>) =>
   !!draft.body.trim() || !!draft.images?.length
 
+/** Draft keys: images read after their draft was left are not the next one's. */
+let drafts = 0
+
 interface Draft extends ReviewAnchor {
+  /** Which draft this is, from its start. */
+  key: number
   body: string
   /** The images pasted or dropped in the message box. */
   images?: NewImage[]
@@ -635,6 +640,7 @@ export default function App({ root }: { root: Element }) {
   const startDraft = useCallback((anchor: ReviewAnchor) => {
     setDraft({
       ...anchor,
+      key: (drafts += 1),
       body: '',
       route: window.location.pathname,
       url: window.location.href,
@@ -669,7 +675,7 @@ export default function App({ root }: { root: Element }) {
 
   const save = async () => {
     if (!draft || !written(draft)) return
-    const { app, body, images, route: startedOn, url, ...anchor } = draft
+    const { key: _, app, body, images, route: startedOn, url, ...anchor } = draft
     await run(async () => {
       const comment = await createComment({
         anchor,
@@ -1402,7 +1408,10 @@ export default function App({ root }: { root: Element }) {
                   onAttach={(added) =>
                     setDraft(
                       (current) =>
-                        current && { ...current, images: adding(current.images, added) },
+                        current &&
+                        (current.key === draft.key
+                          ? { ...current, images: adding(current.images, added) }
+                          : current),
                     )
                   }
                   onDetach={(index) =>

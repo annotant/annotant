@@ -224,14 +224,16 @@ export function Composer({
     const count = picked.files.length
     reading.current += count
     setPending((current) => current + count)
+    let read: NewImage[] | undefined
     try {
-      onAttach(await readImages(picked.files))
+      read = await readImages(picked.files)
     } catch {
       toast('The image could not be read.', true)
     } finally {
       reading.current -= count
       setPending((current) => current - count)
     }
+    if (read) onAttach(read)
   }
   const onDragOver = (event: DragEvent) => {
     if (!attaching || !event.dataTransfer.types.includes('Files')) return

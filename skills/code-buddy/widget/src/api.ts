@@ -22,9 +22,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 /**
  * The server's own words for a refusal (409: a move the comment cannot make;
- * 422: an image it does not take), else the status.
+ * 422: an image it does not take), else the status. A body too large (413)
+ * may come with none, the server closing the connection.
  */
 async function failure(response: Response): Promise<string> {
+  if (response.status === 413) return 'The message is too large to send.'
   if (response.status === 409 || response.status === 422) {
     const body: unknown = await response.json().catch(() => undefined)
     if (

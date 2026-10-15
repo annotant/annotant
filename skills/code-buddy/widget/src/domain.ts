@@ -134,7 +134,7 @@ interface ReviewLine {
 
 /** An image the reader attaches to a message, before it is sent. */
 export interface NewImage {
-  /** `image/png`, `image/jpeg`, `image/gif` or `image/webp`. */
+  /** One of the types of scripts/lib/image-limits.json. */
   type: string
   /** Its bytes, in base64. */
   data: string
@@ -155,7 +155,10 @@ export interface ReviewCommentPatch {
   followUp?: string
   /** Answers Claude's question with options it offered, before any `followUp` text. */
   choices?: string[]
-  /** With `followUp` or `choices`: the images the reader attached to that reply. */
+  /**
+   * The images the reader attached to their reply: with `followUp` or
+   * `choices`, or alone; ignored with only `status` or `cancelled`.
+   */
   images?: NewImage[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string

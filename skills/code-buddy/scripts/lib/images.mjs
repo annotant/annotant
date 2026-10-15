@@ -14,8 +14,8 @@ export const MAX_IMAGE_BYTES = limits.maxImageBytes
 
 /**
  * How the file of each type taken starts: the bytes decide, never the type
- * the widget claims.
- * @type {Record<string, (data: Buffer) => boolean>}
+ * the widget claims. One per type of image-limits.json, which tsc checks.
+ * @type {{ [type in keyof typeof limits.types]: (data: Buffer) => boolean }}
  */
 const SIGNATURES = {
   'image/png': (data) =>
@@ -33,7 +33,10 @@ const SIGNATURES = {
  */
 const TYPES = Object.fromEntries(
   Object.entries(limits.types).map(([type, ext]) => {
-    const matches = SIGNATURES[type]
+    const matches =
+      /** @type {Record<string, ((data: Buffer) => boolean) | undefined>} */ (SIGNATURES)[
+        type
+      ]
     if (!matches) throw new Error(`no signature for ${type}`)
     return [type, { ext, matches }]
   }),
@@ -104,26 +107,36 @@ export async function saveImages(project, id, message, images) {
   if (!images.length) return []
   const dir = imagesDir(project, id)
   const names = images.map(({ ext }, index) => `${message}-${index + 1}.${ext}`)
-  try {
-    await mkdir(dir, { recursive: true })
-    await Promise.all(
-      names.map((name, index) => writeFile(path.join(dir, name), images[index].data)),
-    )
-  } catch (error) {
+  await mkdir(dir, { recursive: true })
+  // Every write ended before any is removed: none lands after the cleanup.
+  const written = await Promise.allSettled(
+    names.map((name, index) => writeFile(path.join(dir, name), images[index].data)),
+  )
+  const failed = written.find((result) => result.status === 'rejected')
+  if (failed) {
     await removeImages(project, id, names)
-    throw error
+    throw failed.reason
   }
   return names
 }
 
 /**
- * Removes comment `id`'s images: all of them, or those named.
+ * Removes comment `id`'s images: all of them, or those named. At best: a
+ * file it cannot remove is logged, never thrown over the error or the
+ * change that called it.
  * @param {{ commentsFile: string }} project
  * @param {string} id
  * @param {string[]} [names]
  */
 export async function removeImages(project, id, names) {
   const dir = imagesDir(project, id)
-  if (!names) return rm(dir, { recursive: true, force: true })
-  await Promise.all(names.map((name) => rm(path.join(dir, name), { force: true })))
+  const paths = names ? names.map((name) => path.join(dir, name)) : [dir]
+  const removed = await Promise.allSettled(
+    paths.map((file) => rm(file, { recursive: !names, force: true })),
+  )
+  removed.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error(`code-buddy: could not remove ${paths[index]}: ${result.reason}`)
+    }
+  })
 }

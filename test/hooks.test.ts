@@ -491,6 +491,21 @@ test('a comment of an image alone goes to the hard model, unclassified', async (
   await w.exit(0)
 })
 
+test('a comment of words and an image is classified on its words', async ($, on) => {
+  const w = world(on, [
+    {
+      ...titleComment,
+      messages: [{ author: 'reader', body: 'make it like this', images: ['m1-1.png'] }],
+    },
+  ])
+  await watch($, w)
+  w.classifyAs('trivial')
+  await w.print(newLine('c1'))
+  expect(w.classified).toHaveLength(1)
+  expect(w.spawned[0]?.model).toBe('haiku')
+  await w.exit(0)
+})
+
 test('a classifier that fails never blocks the comment: its agent starts on the parent model', async ($, on) => {
   const w = world(on, [titleComment])
   w.classifyAs(new Error('overloaded'))

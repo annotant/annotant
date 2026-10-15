@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, chmod, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { tempDir, tempProject } from './helpers.mjs'
@@ -508,7 +508,8 @@ test('a reply with an image that cannot be written leaves none behind', async (t
   await claim(comments, comment.id)
   await comments.answer(comment.id, 'Done.')
   const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
-  // The second image's place is taken: the first, written, goes too.
+  // The second image's place is taken: the first, written, goes too, and the
+  // error is the write's, not the cleanup's.
   await mkdir(path.join(dir, 'm3-2.png'), { recursive: true })
   await assert.rejects(
     comments.update(comment.id, {
@@ -518,6 +519,7 @@ test('a reply with an image that cannot be written leaves none behind', async (t
         { data: PNG, ext: 'png' },
       ],
     }),
+    { code: 'EISDIR' },
   )
   assert.equal(existsSync(path.join(dir, 'm3-1.png')), false)
   const kept = await comments.list()
@@ -546,4 +548,59 @@ test('a stopped comment without an image keeps its words when sent again with no
   await update(comments, comment.id, { cancelled: true })
   const resent = await update(comments, comment.id, { cancelled: false, text: '' })
   assert.equal(resent.messages[0].body, 'Make it blue')
+})
+
+test("a reply left unsaved removes its images, not the thread's earlier ones", async (t) => {
+  const project = projects.project(await tempProject(t))
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Like this',
+    images: [{ data: PNG, ext: 'png' }],
+  })
+  await claim(comments, comment.id)
+  await comments.answer(comment.id, 'Done.')
+  // The comments file cannot be written: its temp file's place is taken.
+  await mkdir(`${project.commentsFile}.${process.pid}.tmp`, { recursive: true })
+  await assert.rejects(
+    comments.update(comment.id, {
+      followUp: 'And this',
+      images: [{ data: PNG, ext: 'png' }],
+    }),
+  )
+  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
+  assert.deepEqual(await readdir(dir), ['m1-1.png'])
+})
+
+test("a reply's options and images go together", async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await comments.answer(comment.id, 'Which layout?', { question: true, options: LAYOUTS })
+  const answered = await update(comments, comment.id, {
+    choices: [LAYOUTS[0].label],
+    images: [{ data: PNG, ext: 'png' }],
+  })
+  const reply = lastOf(answered.messages)
+  assert.deepEqual([reply.choices, reply.images], [[LAYOUTS[0].label], ['m3-1.png']])
+})
+
+test('a comment whose images cannot be removed is still deleted', async (t) => {
+  const project = projects.project(await tempProject(t))
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Like this',
+    images: [{ data: PNG, ext: 'png' }],
+  })
+  const images = path.join(path.dirname(project.commentsFile), 'images')
+  // Its folder cannot go: the folder holding it is read-only.
+  await chmod(images, 0o555)
+  try {
+    assert.equal(await comments.remove(comment.id), true)
+  } finally {
+    await chmod(images, 0o755)
+  }
+  assert.deepEqual(await comments.list(), [])
 })

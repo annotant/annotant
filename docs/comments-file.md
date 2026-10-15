@@ -254,12 +254,12 @@ with the message, a new comment (`POST /api/comments`) or a reply (`PATCH`
 with `followUp` or `choices`, or alone), as `images`: `{ type, data }`
 objects, `data` in base64. An image alone is a message, with an empty `body`.
 The server takes up to 4 per message, PNG, JPEG, GIF or WebP, up to 5 MB
-each, and checks the bytes, not only the type; it answers 422 with its reason
-otherwise, which the widget shows. These limits live in
+each, and checks the bytes, not only the type; it refuses any other image
+with 422 and its reason, which the widget shows. These limits live in
 `scripts/lib/image-limits.json`, which the widget bundles to refuse an image
 before sending it. A request may then hold up to
-100,000 characters of text besides its images. Images sent with any
-other move are ignored. The server refuses any change (403) from a page whose
+100,000 characters of text besides its images. Images sent with only
+another move (`status`, `cancelled`) are ignored. The server refuses any change (403) from a page whose
 origin it does not let in: a page of another site could send one without
 reading the answer.
 
@@ -268,8 +268,8 @@ The store writes them beside the comments file, as
 comment), and lists their names on the message. The server serves them at
 `GET /api/images/<comment id>/<name>`, for the thread's bubbles, and adds
 their full paths to the comment's line for the hooks (`NEW`, `OPEN`,
-`FOLLOWUP`): ` images=["/…/.code-buddy/images/<id>/m1-1.png"]`, after
-`body` or `followup`, for the images of that message. The agent opens them
+`FOLLOWUP`, `EDIT`): ` images=["/…/.code-buddy/images/<id>/m1-1.png"]`, at
+the end of the line, for the images of the message it carries. The agent opens them
 with Read. Deleting the comment deletes its folder.
 
 ## What the server adds

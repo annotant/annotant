@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
@@ -84,7 +84,7 @@ test('pastes in quick succession count each other against the limit', async () =
   await screen.findByRole('img', { name: 'Attached image 4' })
 })
 
-test("the server's refusal of an image shows in its words", async () => {
+test("the server's refusal of an image shows in its words, and keeps the draft", async () => {
   const server = fakeServer([])
   const serve = server.fetch.getMockImplementation()
   server.fetch.mockImplementation(async (input: string, init?: RequestInit) =>
@@ -98,6 +98,8 @@ test("the server's refusal of an image shows in its words", async () => {
   fireEvent.change(box, { target: { value: 'Like this' } })
   fireEvent.keyDown(box, { key: 'Enter' })
   expect(await screen.findByText('not a image/png image')).toBeTruthy()
+  expect(screen.getByRole('img', { name: 'Attached image 1' })).toBeTruthy()
+  expect(box).toHaveProperty('value', 'Like this')
 })
 
 test('a paste with no image is left to the text box', async () => {
@@ -324,4 +326,68 @@ test('options ticked and an image go together', async () => {
       },
     ]),
   )
+})
+
+test('an image that cannot be read says so, and leaves the message free to go', async () => {
+  const server = fakeServer([])
+  vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementationOnce(function (
+    this: FileReader,
+  ) {
+    setTimeout(() => this.dispatchEvent(new ProgressEvent('error')))
+  })
+  const box = await newComment()
+  paste(box, [png()])
+  expect(await screen.findByText('The image could not be read.')).toBeTruthy()
+  fireEvent.change(box, { target: { value: 'In words, then' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(sent(server, 'POST')).toMatchObject({ body: 'In words, then' }),
+  )
+  expect(screen.queryByTestId('cb-attachments')).toBeNull()
+})
+
+test('an image copied from a file goes in, though its name comes as text', async () => {
+  fakeServer([])
+  const box = await newComment()
+  const pasted = fireEvent.paste(box, {
+    clipboardData: {
+      files: [png('shot.png')],
+      types: ['text/plain', 'Files'],
+      getData: (type: string) => (type === 'text/plain' ? 'shot.png' : ''),
+    },
+  })
+  expect(pasted).toBe(false)
+  expect(await screen.findByRole('img', { name: 'Attached image 1' })).toBeTruthy()
+})
+
+test('an image over 5 MB is refused before it is sent', async () => {
+  fakeServer([])
+  const box = await newComment()
+  const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.png', {
+    type: 'image/png',
+  })
+  paste(box, [big])
+  expect(await screen.findByText('An image may hold at most 5 MB.')).toBeTruthy()
+  expect(screen.queryByTestId('cb-attachments')).toBeNull()
+})
+
+test('an image read after its draft was left stays out of the next one', async () => {
+  fakeServer([])
+  // The first read waits: the test finishes it, the next call reading for real.
+  let held: { reader: FileReader; blob: Blob } | undefined
+  vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementationOnce(function (
+    this: FileReader,
+    blob: Blob,
+  ) {
+    held = { reader: this, blob }
+  })
+  const box = await newComment()
+  paste(box, [png()])
+  // Left before the image is read, then a new comment.
+  fireEvent.keyDown(box, { key: 'Escape' })
+  fireEvent.click((await screen.findAllByRole('button', { name: 'New comment' }))[0]!)
+  await screen.findByRole('textbox', { name: 'What should change?' })
+  held?.reader.readAsDataURL(held.blob)
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(screen.queryByTestId('cb-attachments')).toBeNull()
 })

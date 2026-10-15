@@ -18,6 +18,7 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
+import { errorCode } from './lib/errors.mjs'
 import {
   CONTENT_TYPES,
   IMAGE_NAME,
@@ -193,8 +194,8 @@ function sanitisePatch(input) {
       .filter((choice) => typeof choice === 'string')
       .slice(0, MAX_OPTIONS)
   }
-  // With the reader's reply only, the store files them under it: words,
-  // options, or the images alone, sent with no other move.
+  // With the reader's reply, the store files them under it: with words or
+  // options, or alone when no other move comes with them.
   const anotherMove = patch.status || patch.cancelled !== undefined
   if (patch.followUp || patch.choices || !anotherMove) {
     const images = parseImages(input.images)
@@ -268,7 +269,11 @@ async function handle(req, res) {
   if (req.method === 'GET' && imageOf && image) {
     if (!IMAGE_NAME.test(image)) return send(res, 404, { error: 'not found' }, cors)
     const file = path.join(imagesDir(project, imageOf), image)
-    const data = await readFile(file).catch(() => undefined)
+    // Missing, it is not found; anything else is an error, logged.
+    const data = await readFile(file).catch((error) => {
+      if (errorCode(error) === 'ENOENT') return undefined
+      throw error
+    })
     if (!data) return send(res, 404, { error: 'not found' }, cors)
     res.writeHead(200, {
       ...cors,

@@ -32,7 +32,8 @@ function read(file: File): Promise<NewImage> {
 /**
  * Of `files`, those `count` images attached already leave room for: the
  * ones the server takes, up to MAX_IMAGES in all, and why the others are
- * left out. At once: a second paste counts the first's.
+ * left out. `count` holds the images still being read too: a second paste
+ * before the first is read counts it.
  */
 export function pick(count: number, files: File[]): { files: File[]; refused?: string } {
   const taken = files.filter((file) => TYPES.has(file.type))
