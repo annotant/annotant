@@ -463,6 +463,11 @@ const watches = new Map<string, Watch>()
  * or the reader's latest edit or follow-up, handed over once it started.
  */
 const starting = new Map<string, { stop: boolean; message?: Queued }>()
+/**
+ * The comments' agent types a send is resuming: Claude Code resumes an agent
+ * whose turn ended as the Agent tool does, through `agent.offer`.
+ */
+const resuming = new Set<string>()
 let rearmed = false
 let dispatching: Promise<void> = Promise.resolve()
 
@@ -550,12 +555,15 @@ async function registerRunning($: $) {
 async function send($: $, worker: Worker, { id, line, kind }: Queued) {
   // The message resumes the agent with its hooks again.
   await registerAgain($, id, worker)
+  const type = `code-buddy:cb-${tag(id)}`
+  resuming.add(type)
   const sent = await $.session
     .send({
       to: { agentId: worker.agent },
       text: kind === 'edit' ? edited(id, line) : followUp(id, line),
     })
     .catch(() => undefined)
+    .finally(() => resuming.delete(type))
   await debug(
     $,
     worker.agent,
@@ -1084,9 +1092,12 @@ export const register: Register = (on) => {
     return next(e)
   })
 
-  // Comments' agents are the hooks' alone: the model is never offered them.
+  // Comments' agents are the hooks' alone: the model is never offered them,
+  // only a send that resumes one is.
   on('agent.offer', async ($, e, next) =>
-    e.agent === WORKER || COMMENT_AGENT.test(e.agent) ? { isOffered: false } : next(e),
+    e.agent === WORKER || (COMMENT_AGENT.test(e.agent) && !resuming.has(e.agent))
+      ? { isOffered: false }
+      : next(e),
   )
 
   // The agent's thinking (often redacted, then an empty label) and the

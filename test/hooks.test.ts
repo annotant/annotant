@@ -88,11 +88,29 @@ function world(
   })
   const sent: { to: string; text: string }[] = []
   let delivering = true
-  on('session.send', (_$, e) => {
+  // Agents whose turn ended: a message resumes one as the Agent tool does,
+  // through `agent.offer` at dispatch (once `resumesThrough` names the engine).
+  const ended = new Set<string>()
+  let engine: { agent: { offer: EngineInterface['agent']['offer'] } } | undefined
+  on('session.send', async (_$, e) => {
     sent.push({ to: e.to, text: e.text })
-    return delivering
-      ? { isDelivered: true as const }
-      : { isDelivered: false as const, reason: 'no agent by that id' }
+    if (!delivering) return { isDelivered: false as const, reason: 'no agent by that id' }
+    const type = spawned[Number(e.to.slice(1)) - 1]?.type
+    if (engine && type && ended.has(e.to)) {
+      const { isOffered } = await engine.agent.offer({
+        agent: type,
+        description: '',
+        source: 'plugin',
+        provider: { plugin: 'code-buddy', tier: 'plugin' },
+      })
+      if (!isOffered)
+        return {
+          isDelivered: false as const,
+          reason: `Agent type '${type}' is not offered in this session.`,
+        }
+      ended.delete(e.to)
+    }
+    return { isDelivered: true as const }
   })
   on('session.version', () => ({ value: { version: '2.1.287' } }))
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
@@ -157,7 +175,12 @@ function world(
     if (e.tool === 'TaskStop') stopped.push(e.task_id ?? '')
     return { result: 'ok' }
   })
-  on('turn.complete', () => ({ text: '' }))
+  // Claude Code offers the model every agent type no hook keeps from it.
+  on('agent.offer', () => ({ isOffered: true }))
+  on('turn.complete', (_$, e) => {
+    if (e.agentId) ended.add(e.agentId)
+    return { text: '' }
+  })
   // The agent types the plugin defines, by full name.
   const registered = new Map<string, AgentSpec>()
   on('agent.register', (_$, e) => {
@@ -238,6 +261,9 @@ function world(
     print,
     refuseSends: () => {
       delivering = false
+    },
+    resumesThrough: (next: typeof engine) => {
+      engine = next
     },
     holdSpawns: () => {
       held = new Promise<void>((done) => (release = done))
@@ -771,6 +797,26 @@ test("a message resumes the comment's agent with its hooks, which a reload unloa
       hooks: expect.objectContaining({ PreToolUse: expect.any(Array) }),
     }),
   )
+  await w.exit(0)
+})
+
+test('a reply resumes the agent that finished its turn, a type the model is never offered', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.resumesThrough($)
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
+  w.classifyAs('hard')
+  await w.print(followUpLine('c1'))
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  // The model still never sees it.
+  const offer = { description: '', source: 'plugin' }
+  const provider = { plugin: 'code-buddy', tier: 'plugin' as const }
+  expect(await $.agent.offer({ ...offer, provider, agent: 'code-buddy:cb-c1' })).toEqual({
+    isOffered: false,
+  })
   await w.exit(0)
 })
 
