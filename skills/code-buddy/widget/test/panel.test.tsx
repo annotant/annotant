@@ -158,5 +158,7 @@ test('a stopped comment shows a Stopped chip, in the page list and in all commen
 
   expect(await summaryChip()).toBe('Stopped')
   fireEvent.click(screen.getByRole('button', { name: 'All comments' }))
+  // Only All comments links each comment's page.
+  await screen.findByRole('link', { name: '/' })
   expect(await summaryChip()).toBe('Stopped')
 })
