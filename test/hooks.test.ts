@@ -21,7 +21,7 @@ type Comment = {
   state: string
   route?: string
   anchor?: { quote: string; element?: { tag: string; text: string } }
-  messages?: { author: string; body: string }[]
+  messages?: { author: string; body: string; images?: string[] }[]
   events?: { by: string }[]
 }
 
@@ -506,6 +506,75 @@ test('a hard comment goes to opus, a standard one keeps the parent model', async
     complexity: 'standard',
     agent: 'a2',
   })
+  await w.exit(0)
+})
+
+const imageOnly: Comment = {
+  ...titleComment,
+  messages: [{ author: 'reader', body: '', images: ['m1-1.png'] }],
+}
+
+test("a comment of an image alone starts on the session's model at a medium effort, unclassified", async ($, on) => {
+  const w = world(on, [imageOnly])
+  await watch($, w)
+  w.classifyAs('trivial')
+  await w.print(newLine('c1'))
+  expect(w.classified).toEqual([])
+  expect(w.spawned[0]?.model).toBeUndefined()
+  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  expect(w.route('c1')).toEqual({
+    model: 'claude-sonnet-5-5',
+    effort: 'medium',
+    agent: 'a1',
+  })
+  await w.exit(0)
+})
+
+test('a comment of an image alone gets its medium effort with routing off too', async ($, on) => {
+  const w = world(on, [imageOnly])
+  w.write(
+    `${ROOT}/.code-buddy.json`,
+    JSON.stringify({
+      commentsFile: '.code-buddy/comments.json',
+      models: { trivial: 'inherit' },
+    }),
+  )
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  await w.exit(0)
+})
+
+test('the medium effort of an image alone holds when its agent is resumed or reloaded', async ($, on) => {
+  const w = world(on, [imageOnly])
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  await watch($, w)
+  await w.print(newLine('c1'))
+  await $.turn.complete(ended('a1', 'QUESTION: Which part?'))
+  w.registered.clear()
+  await w.print(followUpLine('c1'))
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+
+  w.registered.clear()
+  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+  await w.clock.settle()
+  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  await w.exit(0)
+})
+
+test('a comment of words and an image is classified on its words', async ($, on) => {
+  const w = world(on, [
+    {
+      ...titleComment,
+      messages: [{ author: 'reader', body: 'make it like this', images: ['m1-1.png'] }],
+    },
+  ])
+  await watch($, w)
+  w.classifyAs('trivial')
+  await w.print(newLine('c1'))
+  expect(w.classified).toHaveLength(1)
+  expect(w.spawned[0]?.model).toBe('haiku')
   await w.exit(0)
 })
 

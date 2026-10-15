@@ -7,11 +7,13 @@ Code Buddy keeps two kinds of files for a project:
 | `comments.json` | In the project, at `commentsFile` of `.code-buddy.json` (`.code-buddy/comments.json` by default; `CODE_BUDDY_COMMENTS_FILE` overrides it) | The discussions: every comment, its thread, its state and the history of its moves | The store (`scripts/lib/store.mjs`), for the server and the agents' scripts |
 | `<id>.jsonl` | In the state folder, `<state>/<hash>/progress/` | The steps of the run in progress on comment `<id>` | The hooks (`hooks/register.ts`) |
 | `<id>.history.jsonl` | Next to it | The steps of every run that ended, with a dev build of the widget only | The store, when a run ends |
+| `images/<id>/m<n>-<k>.<ext>` | Beside `comments.json` | The images the reader attached to message `m<n>` of comment `<id>` | The store, from the widget's request |
 
 `<state>` is `CODE_BUDDY_STATE_DIR`, else `$XDG_CACHE_HOME/code-buddy`, else
 `~/.cache/code-buddy`. `<hash>` is the first 12 hex digits of the SHA-1 of the
 project's root: each project has its own folder. Deleting a comment deletes
-its step files; `comments.json` never holds a step.
+its step files and its images; `comments.json` never holds a step nor an
+image's bytes.
 
 The reference for the comments file is
 [`skills/code-buddy/scripts/lib/format.mjs`](../skills/code-buddy/scripts/lib/format.mjs):
@@ -95,6 +97,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
+| `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
 
 ### An event
 
@@ -163,7 +166,7 @@ stateDiagram-v2
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
 | `asking`, `answered` or `resolved → open` | PATCH `followUp` and/or `choices` | reader | A `reader` message. |
-| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | With `text`, the last `reader` message's new words, its `choices` dropped. |
+| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | With `text`, the last `reader` message's new words, its `choices` dropped; empty, its images alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
 The store refuses any other move, and writes nothing: the server answers 409
@@ -199,12 +202,14 @@ it, the default is:
 A `models` object is read whole: a label it leaves out inherits, so
 `{ "trivial": "inherit" }` turns routing off, and the classifier is not
 asked. A classifier that fails or takes more than 5 seconds leaves the agent
-on the session's model. Either way the hooks write the agent, the model it
-runs on and the label in the state folder (`routes/<id>.json`, beside
-`progress/`), and `claim.mjs` records them on the `working` event
-(`CODE_BUDDY_AGENT`, `CODE_BUDDY_MODEL` and `CODE_BUDDY_COMPLEXITY` override
-them). A follow-up resumes the same agent, with no new start: it keeps its
-model.
+on the session's model. A comment of images alone, which the classifier
+cannot read, is not classified, routing on or off: its agent starts on the
+session's model at a `medium` effort, with no label. In every case the hooks
+write the agent, the model it runs on and the label in the state folder
+(`routes/<id>.json`, beside `progress/`), and `claim.mjs` records them on the
+`working` event (`CODE_BUDDY_AGENT`, `CODE_BUDDY_MODEL` and
+`CODE_BUDDY_COMPLEXITY` override them). A follow-up resumes the same agent,
+with no new start: it keeps its model and its effort.
 
 ## The step files
 
@@ -241,6 +246,31 @@ comments: `progress`, the last 10 steps of the run in progress, and with
 `history=1` (the debug panel), `history`, every step of every run. With a dev
 widget, `GET /api/debug/steps/<id>` serves both files as they are on disk,
 history first, which the debug panel opens in a tab.
+
+## Images
+
+The reader pastes or drops an image in the widget's message box: it goes with
+the message, a new comment (`POST /api/comments`) or a reply (`PATCH` with
+`followUp` or `choices`, or alone), as `images`: `{ type, data }` objects,
+`data` in base64. An image alone is a message, with an empty `body`. The
+server takes up to 4 per message, PNG, JPEG, GIF or WebP, up to 5 MB each, and
+checks the bytes, not only the type; it refuses any other image with 422 and
+its reason, which the widget shows. These limits live in
+`scripts/lib/image-limits.json`, which the widget bundles to refuse an image
+before sending it. A request may then hold up to 100,000 characters of text
+besides its images. Images sent with only another move (`status`, `cancelled`)
+are ignored. The server refuses any change (403) from a page whose origin it
+does not let in: a page of another site could send one without reading the
+answer.
+
+The store writes them beside the comments file, as
+`images/<comment id>/m<n>-<k>.<ext>` (`m1-1.png`: the first image of the
+comment), and lists their names on the message. The server serves them at
+`GET /api/images/<comment id>/<name>`, for the thread's bubbles, and adds their
+full paths to the comment's line for the hooks (`NEW`, `OPEN`, `FOLLOWUP`,
+`EDIT`): ` images=["/…/.code-buddy/images/<id>/m1-1.png"]`, at the end of the
+line, for the images of the message it carries. The agent opens them with
+Read. Deleting the comment deletes its folder.
 
 ## What the server adds
 

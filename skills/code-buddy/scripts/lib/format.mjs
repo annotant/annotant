@@ -81,6 +81,8 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {Option[]} [options] A question only: the answers it offers.
  * @property {boolean} [multiple] With `options`: the reader may pick several.
  * @property {string[]} [choices] Reader only: the options they picked.
+ * @property {string[]} [images] Reader only: the images they attached, file
+ *   names in `images/<comment id>/` beside the comments file (images.mjs).
  */
 
 /**

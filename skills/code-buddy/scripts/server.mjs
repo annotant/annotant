@@ -18,6 +18,16 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
+import { errorCode } from './lib/errors.mjs'
+import {
+  CONTENT_TYPES,
+  IMAGE_NAME,
+  ImageRefusal,
+  MAX_IMAGES,
+  MAX_IMAGE_BYTES,
+  imagesDir,
+  parseImages,
+} from './lib/images.mjs'
 import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
@@ -62,10 +72,12 @@ const LOCAL_ORIGIN =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|[\w-]+\.localhost)(:\d+)?$/
 const allowedOrigins = new Set(config.devOrigins ?? [])
 
+/** @param {string | undefined} origin */
+const isAllowed = (origin) =>
+  !!origin && (LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin))
+
 function corsHeaders(origin) {
-  if (!origin || !(LOCAL_ORIGIN.test(origin) || allowedOrigins.has(origin))) {
-    return {}
-  }
+  if (!isAllowed(origin)) return {}
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
@@ -89,6 +101,7 @@ function send(res, status, body, headers = {}) {
 /** What the server answers to a request the client got wrong, by status. */
 const CLIENT_ERRORS = /** @type {const} */ ({
   400: 'invalid JSON',
+  403: 'origin not allowed',
   413: 'body too large',
 })
 
@@ -104,17 +117,30 @@ class ClientError extends Error {
   }
 }
 
+/** The most a request's text may hold, its images aside. */
+const MAX_TEXT = 100_000
+/** The most a request may hold: its text, and its images in base64. */
+const MAX_BODY = MAX_TEXT + Math.ceil(MAX_IMAGE_BYTES / 3) * 4 * MAX_IMAGES
+
 async function readJson(req) {
+  if (Number(req.headers['content-length']) > MAX_BODY) throw new ClientError(413)
+  // Decoded as a whole: a character split between two chunks stays one.
+  req.setEncoding('utf8')
   let raw = ''
   for await (const chunk of req) {
     raw += chunk
-    if (raw.length > 100_000) throw new ClientError(413)
+    if (raw.length > MAX_BODY) throw new ClientError(413)
   }
+  let input
   try {
-    return raw ? JSON.parse(raw) : {}
+    input = raw ? JSON.parse(raw) : {}
   } catch {
     throw new ClientError(400)
   }
+  // Only images may take the room above the text's.
+  const { images: _, ...text } = input ?? {}
+  if (JSON.stringify(text).length > MAX_TEXT) throw new ClientError(413)
+  return input
 }
 
 function sanitiseElement(element) {
@@ -168,9 +194,16 @@ function sanitisePatch(input) {
       .filter((choice) => typeof choice === 'string')
       .slice(0, MAX_OPTIONS)
   }
-  if (typeof input.text === 'string' && input.text.trim()) {
-    patch.text = input.text.trim()
+  // With the reader's reply, the store files them under it: with words or
+  // options, or alone when no other move comes with them.
+  const anotherMove = patch.status || patch.cancelled !== undefined
+  if (patch.followUp || patch.choices || !anotherMove) {
+    const images = parseImages(input.images)
+    if (images.length) patch.images = images
   }
+  // Passed even empty: the store then clears the words of a message that has
+  // images, which goes again with them alone.
+  if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }
 
@@ -213,6 +246,10 @@ async function handle(req, res) {
   const cors = corsHeaders(req.headers.origin)
   const url = new URL(req.url, `http://${req.headers.host}`)
   if (req.method === 'OPTIONS') return send(res, 204, undefined, cors)
+  // A page of another site may send a request it cannot read the answer of:
+  // it would write comments and images, and start agents.
+  const { origin } = req.headers
+  if (req.method !== 'GET' && origin && !isAllowed(origin)) throw new ClientError(403)
 
   if (req.method === 'GET' && url.pathname === '/widget.js') {
     const source = await readFile(WIDGET, 'utf8')
@@ -226,6 +263,28 @@ async function handle(req, res) {
 
   if (req.method === 'GET' && url.pathname === '/api/events') {
     return listen(req, res, cors)
+  }
+
+  // An image a reader attached, as the store wrote it.
+  const [, imageOf, image] = /^\/api\/images\/([\w-]+)\/([^/]+)$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && imageOf && image) {
+    if (!IMAGE_NAME.test(image)) return send(res, 404, { error: 'not found' }, cors)
+    const file = path.join(imagesDir(project, imageOf), image)
+    // Missing, it is not found; anything else is an error, logged.
+    const data = await readFile(file).catch((error) => {
+      if (errorCode(error) === 'ENOENT') return undefined
+      throw error
+    })
+    if (!data) return send(res, 404, { error: 'not found' }, cors)
+    res.writeHead(200, {
+      ...cors,
+      'content-type': CONTENT_TYPES[path.extname(image).slice(1)],
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; sandbox",
+      // A name is never written twice: a deleted comment's id is not reused.
+      'cache-control': 'private, max-age=86400, immutable',
+    })
+    return res.end(data)
   }
 
   if (url.pathname === '/api/health') {
@@ -283,14 +342,22 @@ async function handle(req, res) {
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
-      const body = input.body?.trim()
-      if (typeof input.route !== 'string' || !input.route || !body) {
-        return send(res, 400, { error: 'route and body are required' }, cors)
+      const body = typeof input.body === 'string' ? input.body.trim() : ''
+      // An image alone says enough, as in a prompt to Claude.
+      const images = parseImages(input.images)
+      if (typeof input.route !== 'string' || !input.route || (!body && !images.length)) {
+        return send(
+          res,
+          400,
+          { error: 'route and a body or an image are required' },
+          cors,
+        )
       }
       const comment = await store.create({
         route: input.route.slice(0, 500),
         url: sanitiseUrl(input.url),
         body,
+        images,
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),
@@ -417,7 +484,12 @@ function describe(comment) {
   const text = reply
     ? `followup=${quoted(reply.body)}${choices} messages=${comment.messages.length}`
     : `body=${quoted(comment.messages[0]?.body ?? '')}`
-  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}`
+  // The images of that message, as files the agent opens with Read.
+  const attached = (reply ?? comment.messages[0])?.images ?? []
+  const images = attached.length
+    ? ` images=${JSON.stringify(attached.map((name) => path.join(imagesDir(project, comment.id), name)))}`
+    : ''
+  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}${images}`
 }
 
 /** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
@@ -614,6 +686,11 @@ const server = http.createServer((req, res) => {
     // format: the store's own words, meant for the reader.
     if (error instanceof StoreRefusal) {
       send(res, 409, { error: error.message }, cors)
+      return
+    }
+    // An image the server does not take: its own words, for the reader too.
+    if (error instanceof ImageRefusal) {
+      send(res, 422, { error: error.message }, cors)
       return
     }
     if (error instanceof ClientError) {

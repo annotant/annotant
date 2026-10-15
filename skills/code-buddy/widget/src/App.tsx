@@ -18,6 +18,7 @@ import {
 import {
   createComment,
   deleteComment,
+  imageUrl,
   updateComment,
   useAllComments,
   useComments,
@@ -25,19 +26,23 @@ import {
 } from './api'
 import {
   APP_ROUTE,
+  type NewImage,
   type ReviewAnchor,
   type ReviewComment,
   type ReviewMessage,
   type ReviewProgress,
   answered,
+  gist,
   isActive,
   isAsking,
   isReply,
+  latestImages,
   latestText,
   modelOf,
   paused,
   statusOf,
 } from './domain'
+import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
@@ -356,8 +361,27 @@ function Question({
   )
 }
 
+/** The images attached so far, with those just pasted or dropped, up to the most taken. */
+const adding = (images: NewImage[] = [], added: NewImage[]) =>
+  [...images, ...added].slice(0, MAX_IMAGES)
+
+/** The images attached so far, but the one at `index`. */
+const removing = (images: NewImage[] = [], index: number) =>
+  images.filter((_, other) => other !== index)
+
+/** What the reader wrote or attached in a draft: Escape or a click away would lose it. */
+const written = (draft: Pick<Draft, 'body' | 'images'>) =>
+  !!draft.body.trim() || !!draft.images?.length
+
+/** Draft keys: each draft gets a message box of its own, its reads with it. */
+let drafts = 0
+
 interface Draft extends ReviewAnchor {
+  /** Which draft this is, from its start. */
+  key: number
   body: string
+  /** The images pasted or dropped in the message box. */
+  images?: NewImage[]
   app?: boolean
   /** The page the draft was started on: the app may navigate before it is saved. */
   route: string
@@ -444,7 +468,11 @@ export default function App({ root }: { root: Element }) {
   )
   const [flash, setFlash] = useState<Element>()
   const [resend, setResend] = useState<{ id: string; body: string }>()
-  const [followUp, setFollowUp] = useState<{ id: string; body: string }>()
+  const [followUp, setFollowUp] = useState<{
+    id: string
+    body: string
+    images?: NewImage[]
+  }>()
   // The options ticked so far, under a question that takes several.
   const [picked, setPicked] = useState<{ id: string; labels: string[] }>()
   const [created, setCreated] = useState<ReviewComment>()
@@ -612,6 +640,7 @@ export default function App({ root }: { root: Element }) {
   const startDraft = useCallback((anchor: ReviewAnchor) => {
     setDraft({
       ...anchor,
+      key: (drafts += 1),
       body: '',
       route: window.location.pathname,
       url: window.location.href,
@@ -645,14 +674,15 @@ export default function App({ root }: { root: Element }) {
   }
 
   const save = async () => {
-    if (!draft?.body.trim()) return
-    const { app, body, route: startedOn, url, ...anchor } = draft
+    if (!draft || !written(draft)) return
+    const { key: _, app, body, images, route: startedOn, url, ...anchor } = draft
     await run(async () => {
       const comment = await createComment({
         anchor,
         body,
         route: app ? APP_ROUTE : startedOn,
         url,
+        ...(images?.length ? { images } : {}),
       })
       setCreated(comment)
       setDraft(undefined)
@@ -671,7 +701,7 @@ export default function App({ root }: { root: Element }) {
   /** A bubble on the page: its thread, in the panel, opened if it was closed. */
   const openFromPage = (comment: ReviewComment) => {
     // Like Escape, never at the cost of what the reader is writing.
-    if (draft?.body.trim()) return
+    if (draft && written(draft)) return
     setDraft(undefined)
     setView('page')
     setOpen(true)
@@ -694,6 +724,7 @@ export default function App({ root }: { root: Element }) {
       ? thread
       : undefined
   const reply = replying && followUp?.id === replying.id ? followUp.body : ''
+  const replyImages = (replying && followUp?.id === replying.id && followUp.images) || []
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
   const ticked = (comment: ReviewComment) =>
@@ -728,12 +759,15 @@ export default function App({ root }: { root: Element }) {
 
   const sendReply = (comment: ReviewComment, choices: string[], withText = true) =>
     void run(async () => {
-      const text = withText && followUp?.id === comment.id ? followUp.body.trim() : ''
+      const own = withText && followUp?.id === comment.id ? followUp : undefined
+      const text = own?.body.trim() ?? ''
+      const images = own?.images ?? []
       await updateComment(comment.id, {
         ...(choices.length ? { choices } : {}),
         ...(text ? { followUp: text } : {}),
+        ...(images.length ? { images } : {}),
       })
-      if (text) setFollowUp(undefined)
+      if (own) setFollowUp(undefined)
       setPicked(undefined)
       toLatest()
     })
@@ -987,7 +1021,28 @@ export default function App({ root }: { root: Element }) {
             </div>
           ) : (
             <div key={message.id} className="cb-msg cb-msg--reader">
-              <div className="cb-bubble cb-bubble--reader">{message.body}</div>
+              {message.images?.length ? (
+                <div className="cb-images">
+                  {message.images.map((name, image) => (
+                    <a
+                      key={name}
+                      href={imageUrl(comment.id, name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open the image"
+                    >
+                      <img
+                        src={imageUrl(comment.id, name)}
+                        alt={`Attached image ${image + 1}`}
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+              {message.body && (
+                <div className="cb-bubble cb-bubble--reader">{message.body}</div>
+              )}
               <MessageTime at={message.at} />
             </div>
           ),
@@ -1035,7 +1090,8 @@ export default function App({ root }: { root: Element }) {
             const body = (
               resend?.id === comment.id ? resend.body : latestText(comment)
             ).trim()
-            if (!body) return
+            // With its images, the comment may go again with no words.
+            if (!body && !latestImages(comment).length) return
             void run(async () => {
               await updateComment(comment.id, { text: body, cancelled: false })
               setResend(undefined)
@@ -1126,7 +1182,7 @@ export default function App({ root }: { root: Element }) {
           </time>
           {deleteButton(comment)}
         </div>
-        <p>{comment.messages[0]?.body}</p>
+        <p>{gist(comment.messages[0])}</p>
         {(messages > 2 || model) && (
           <span className="cb-author">
             <ModelLabel comment={comment} />
@@ -1334,19 +1390,40 @@ export default function App({ root }: { root: Element }) {
               )}
               {drafting && (
                 <Composer
+                  key={draft.key}
                   autoFocus
                   value={draft.body}
+                  images={draft.images ?? []}
                   placeholder="What should change?"
                   sendLabel="Save"
                   disabled={busy}
-                  onChange={(body) => setDraft({ ...draft, body })}
+                  onChange={(body) =>
+                    setDraft((current) => current && { ...current, body })
+                  }
+                  onAttach={(added) =>
+                    setDraft(
+                      (current) =>
+                        current && { ...current, images: adding(current.images, added) },
+                    )
+                  }
+                  onDetach={(index) =>
+                    setDraft(
+                      (current) =>
+                        current && {
+                          ...current,
+                          images: removing(current.images, index),
+                        },
+                    )
+                  }
                   onSubmit={() => void save()}
-                  onEscape={() => !draft.body.trim() && backToList()}
+                  onEscape={() => !written(draft) && backToList()}
                 />
               )}
               {replying && (
                 <Composer
+                  key={replying.id}
                   value={reply}
+                  images={replyImages}
                   placeholder={
                     offered
                       ? 'Or answer in your own words…'
@@ -1355,7 +1432,32 @@ export default function App({ root }: { root: Element }) {
                         : 'Follow up, clarify, ask for a change…'
                   }
                   disabled={busy}
-                  onChange={(value) => setFollowUp({ id: replying.id, body: value })}
+                  onChange={(value) =>
+                    setFollowUp((current) => ({
+                      ...(current?.id === replying.id ? current : {}),
+                      id: replying.id,
+                      body: value,
+                    }))
+                  }
+                  onAttach={(added) =>
+                    setFollowUp((current) => {
+                      const own = current?.id === replying.id ? current : undefined
+                      return {
+                        id: replying.id,
+                        body: own?.body ?? '',
+                        images: adding(own?.images, added),
+                      }
+                    })
+                  }
+                  onDetach={(index) =>
+                    setFollowUp(
+                      (current) =>
+                        current && {
+                          ...current,
+                          images: removing(current.images, index),
+                        },
+                    )
+                  }
                   // Options already ticked go with the text.
                   onSubmit={() => sendReply(replying, offered ? ticked(replying) : [])}
                 />

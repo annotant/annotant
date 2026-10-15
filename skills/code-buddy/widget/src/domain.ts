@@ -71,6 +71,8 @@ export interface ReviewMessage {
   multiple?: boolean
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
+  /** Reader only: the images they attached, file names the server serves. */
+  images?: string[]
 }
 
 interface ReviewCancellation {
@@ -130,8 +132,17 @@ interface ReviewLine {
   line: string
 }
 
+/** An image the reader attaches to a message, before it is sent. */
+export interface NewImage {
+  /** One of the types of scripts/lib/image-limits.json. */
+  type: string
+  /** Its bytes, in base64. */
+  data: string
+}
+
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {
   body: string
+  images?: NewImage[]
 }
 
 /** What the reader asks of a comment; the server turns it into a move. */
@@ -144,6 +155,11 @@ export interface ReviewCommentPatch {
   followUp?: string
   /** Answers Claude's question with options it offered, before any `followUp` text. */
   choices?: string[]
+  /**
+   * The images the reader attached to their reply: with `followUp` or
+   * `choices`, or alone; ignored with only `status` or `cancelled`.
+   */
+  images?: NewImage[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
 }
@@ -191,9 +207,26 @@ export function statusOf(
   return comment.state === 'working' ? 'claimed' : 'open'
 }
 
+const latestOwn = (comment: Pick<ReviewComment, 'messages'>) =>
+  comment.messages.findLast((message) => message.author === 'reader')
+
 /** The reader's latest words: their comment, or what they wrote since. */
 export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
-  return comment.messages.findLast((message) => message.author === 'reader')?.body ?? ''
+  return latestOwn(comment)?.body ?? ''
+}
+
+/** The images of the reader's latest message. */
+export function latestImages(comment: Pick<ReviewComment, 'messages'>): string[] {
+  return latestOwn(comment)?.images ?? []
+}
+
+/** What a message says, in one line: its words, or the images that are all it holds. */
+export function gist(
+  message: Pick<ReviewMessage, 'body' | 'images'> | undefined,
+): string {
+  if (!message) return ''
+  if (message.body || !message.images?.length) return message.body
+  return message.images.length === 1 ? 'An image' : `${message.images.length} images`
 }
 
 export function normaliseQuote(text: string): string {

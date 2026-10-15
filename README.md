@@ -65,7 +65,9 @@ to stop it.
   classifier sorts the comment as `trivial`, `standard` or `hard`, and
   `models` in `.code-buddy.json` picks the model for it (by default Haiku,
   the session's own model, and Opus). The widget names it on the thread
-  ("haiku · trivial"). See [Models](docs/comments-file.md#models).
+  ("haiku · trivial"). A comment of images alone is not classified: it
+  starts on the session's model at a medium effort. See
+  [Models](docs/comments-file.md#models).
 
 ## Install
 
@@ -125,6 +127,9 @@ directory, else from the repository root.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or behind a text, marks a comment Claude has yet to
   resolve; once its thread is resolved, the mark goes away.
+- **Paste or drop an image** (a screenshot, a mockup) in the message box of a
+  comment or a reply: it goes with the message, or alone, and Claude opens
+  it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
 - **All comments** lists every discussion, newest first, filtered by status.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
@@ -185,7 +190,7 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 | `run ended …`, `agent stopped …`                            | The agent answered, asked, or stopped: its locks are released.                                                                                 |
 | `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |
 | `hook.mjs failed: <error>`                                  | The agent's hook could not run: its tool ran without a lock or a step.                                                                         |
-| `started on <model>, …`                                     | The model the comment's agent runs on, and how the classifier sorted the comment.                                                              |
+| `started on <model>, …`                                     | The model the comment's agent runs on, its effort when routing set one (`at medium effort`), and how the classifier sorted the comment.        |
 | `started for NEW`, `sent the follow-up`                     | `/code-buddy` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
 | `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
 | `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
@@ -194,11 +199,14 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 ## Security
 
 - The server listens on `127.0.0.1` only and accepts cross-origin requests
-  from `localhost` origins only.
+  from `localhost` origins only (and `devOrigins`); it refuses any change
+  from another origin (403).
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
-- Comments hold page text and HTML excerpts; they stay in your project folder.
+- Comments hold page text and HTML excerpts; they stay in your project folder,
+  with the images attached to them (`.code-buddy/images/`), which the server
+  checks are images by their bytes.
 
 To report a vulnerability, see the [security policy](SECURITY.md).
 
