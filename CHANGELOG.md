@@ -150,6 +150,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- An item of an open dropdown could not be picked: pressing "Point at
+  element" reached the page, and a menu closing on a press outside it (Radix,
+  MUI) closed first. Presses on the widget now stay in it, and its buttons
+  leave the focus where it is. (#97)
 - A comment on an element with a generated id (React's `useId`, MUI, Ember,
   Headless UI, Vue, Angular Material…), or inside one, lost its element after
   a reload: its selector named the id, which the next load changes. Such ids

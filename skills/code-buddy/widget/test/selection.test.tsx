@@ -199,3 +199,8 @@ test('the quote being written is not marked on another page', async () => {
 
   await waitFor(() => expect(highlights.get('code-buddy-draft')?.size ?? 0).toBe(0))
 })
+
+test('pressing Comment keeps the selection: the press takes no focus', async () => {
+  const { button } = await selectAcrossBlocks()
+  expect(fireEvent.mouseDown(button)).toBe(false)
+})

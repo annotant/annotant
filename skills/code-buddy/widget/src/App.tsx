@@ -1,6 +1,7 @@
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  type SyntheticEvent,
   Fragment,
   useCallback,
   useEffect,
@@ -470,6 +471,23 @@ function areaContents(area: ReviewArea): string {
 
 function areaSummary(area: ReviewArea): string {
   return `An area of ${area.width} × ${area.height} px, drawn in a ${area.viewport.width} × ${area.viewport.height} window`
+}
+
+/**
+ * A press on the widget stays in it: a menu of the page closing on a press
+ * outside it (Radix, MUI) stays open, so its items can be picked. A button
+ * leaves the focus where it is, for the menus closing when the focus leaves.
+ */
+function keepPress(event: SyntheticEvent) {
+  event.stopPropagation()
+  const target = event.target
+  if (
+    event.type === 'mousedown' &&
+    target instanceof Element &&
+    target.closest('button')
+  ) {
+    event.preventDefault()
+  }
 }
 
 export default function App({ root }: { root: Element }) {
@@ -1355,7 +1373,15 @@ export default function App({ root }: { root: Element }) {
   )
 
   return (
-    <div className="cb">
+    <div
+      className="cb"
+      // Not the ups: the area drawer and the panel's resize end on the page's.
+      onPointerDown={keepPress}
+      onMouseDown={keepPress}
+      onClick={keepPress}
+      onTouchStart={keepPress}
+      onTouchEnd={keepPress}
+    >
       <ElementMarks root={root} comments={comments} onOpen={openFromPage} />
       <AreaMarks root={root} comments={comments} onOpen={openFromPage} />
       <QuoteBubbles root={root} comments={comments} onOpen={openFromPage} />
@@ -1371,7 +1397,6 @@ export default function App({ root }: { root: Element }) {
           className="cb-selection cb-live"
           data-testid="cb-selection"
           style={{ top: selectionButton.top, left: selectionButton.left }}
-          onMouseDown={(event) => event.preventDefault()}
           onClick={() => pendingAnchor.current && startDraft(pendingAnchor.current)}
         >
           Comment
