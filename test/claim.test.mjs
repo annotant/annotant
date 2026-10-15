@@ -31,7 +31,182 @@ test('prints the project it found, for the hooks, which cannot see the shell dir
   assert.equal(claimed.code, 0)
   // The shell's directory, as the operating system names it (/private/var on macOS).
   const found = await realpath(root)
-  assert.equal(claimed.stdout, `claimed ${comment.id} (/) project=${found} run=r1\n`)
+  const [line] = claimed.stdout.split('\n')
+  assert.equal(line, `claimed ${comment.id} (/) project=${found} run=r1`)
+})
+
+/** The comment claim.mjs prints after its `claimed` line. */
+const printed = (/** @type {string} */ stdout) =>
+  JSON.parse(stdout.slice(stdout.indexOf('\n') + 1))
+
+test('prints the comment it claimed, and no other', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const anchor = { section: 'Hero', quote: 'Fresh coffee', occurrence: 0 }
+  const comment = await comments.create({
+    route: '/',
+    url: 'http://localhost/',
+    anchor,
+    body: 'Make it blue',
+  })
+  await comments.create({ route: '/about', anchor, body: 'Another thread' })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const [message] = (await comments.readAll())[0].messages
+  assert.deepEqual(printed(claimed.stdout), {
+    route: '/',
+    url: 'http://localhost/',
+    anchor,
+    state: 'working',
+    messages: [message],
+  })
+  assert.doesNotMatch(claimed.stdout, /Another thread/)
+})
+
+test("prints the reader's images as files the agent opens", async (t) => {
+  const root = await tempProject(t)
+  const project = projects.project(root)
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: '',
+    images: [{ data: Buffer.from('89504e470d0a1a0a', 'hex'), ext: 'png' }],
+  })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
+  assert.deepEqual(printed(claimed.stdout).messages[0].images, [
+    path.join(dir, 'm1-1.png'),
+  ])
+})
+
+test('prints the files a stopped run left changed', async (t) => {
+  const root = await tempProject(t)
+  const project = projects.project(root)
+  const comments = store.createStore(project)
+  const comment = await comments.create({
+    route: '*',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Make it blue',
+  })
+  await comments.claim(comment.id)
+  const progress = store.progressPath(project, comment.id)
+  await mkdir(path.dirname(progress), { recursive: true })
+  await writeFile(
+    progress,
+    JSON.stringify({
+      at: 1,
+      id: 'a',
+      kind: 'edit',
+      label: 'src/app.css',
+      state: 'done',
+    }) + '\n',
+  )
+  await comments.update(comment.id, { cancelled: true })
+  await comments.update(comment.id, { cancelled: false })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const shown = printed(claimed.stdout)
+  assert.equal('url' in shown, false)
+  const [saved] = await comments.readAll()
+  assert.deepEqual(shown.cancellation, saved.cancellation)
+  assert.deepEqual(shown.cancellation.changed, ['src/app.css'])
+})
+
+test('prints the thread again when the agent claims the comment it works on', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Make it blue',
+  })
+  await comments.claim(comment.id)
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  assert.match(claimed.stdout, /^claimed .* run=r1\n/)
+  const shown = printed(claimed.stdout)
+  assert.equal(shown.state, 'working')
+  assert.deepEqual(
+    shown.messages.map((/** @type {{ body: string }} */ message) => message.body),
+    ['Make it blue'],
+  )
+})
+
+/**
+ * Claims, with claim.mjs, a comment whose thread holds `count` messages (odd:
+ * the reader's last), `message 1` first.
+ * @param {import('node:test').TestContext} t
+ * @param {number} count
+ */
+async function claimThread(t, count) {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'message 1',
+  })
+  for (let n = 2; n <= count; n += 2) {
+    await comments.claim(comment.id)
+    await comments.answer(comment.id, `message ${n}`)
+    await comments.update(comment.id, { followUp: `message ${n + 1}` })
+  }
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const shown = printed(claimed.stdout)
+  return {
+    elided: shown.elided,
+    bodies: shown.messages.map((/** @type {{ body: string }} */ message) => message.body),
+  }
+}
+
+test('keeps the reader comment and the latest messages of a long thread', async (t) => {
+  const { elided, bodies } = await claimThread(t, 49)
+  assert.equal(elided, '[29 earlier messages elided]')
+  assert.deepEqual(bodies, [
+    'message 1',
+    ...Array.from({ length: 19 }, (_, n) => `message ${n + 31}`),
+  ])
+})
+
+test('elides one message from a thread one over the cap', async (t) => {
+  const { elided, bodies } = await claimThread(t, 21)
+  assert.equal(elided, '[1 earlier messages elided]')
+  assert.deepEqual(bodies.slice(0, 2), ['message 1', 'message 3'])
+  assert.equal(bodies.length, 20)
+})
+
+test('prints a thread under the cap whole', async (t) => {
+  const { elided, bodies } = await claimThread(t, 19)
+  assert.equal(elided, undefined)
+  assert.equal(bodies.length, 19)
 })
 
 test('records the agent the hooks name in the run it opens', async (t) => {
@@ -74,6 +249,8 @@ test('refuses a comment that waits on the reader, and says to stop', async (t) =
     root,
   ])
   assert.equal(claimed.code, 1)
+  // An agent told to stop sees no thread.
+  assert.equal(claimed.stdout, '')
   assert.equal(
     claimed.stderr,
     `comment ${comment.id} is waiting on the reader's answer; stop working on it\n`,
