@@ -100,9 +100,10 @@ test('the bubbles follow the page when an attribute moves its text', async () =>
 
   const bubble = await screen.findByRole('button', { name: /Open the comment/ })
   expect(bubble.style.left).toBe('120px')
-  // A docked panel pads the page: no node changes, no resize, no scroll.
+  // A docked panel squeezes the page through its root element: no node changes, no resize, no scroll.
   x = 80
-  document.querySelector('main')?.setAttribute('style', 'padding-right: 380px')
+  document.documentElement.style.marginRight = '380px'
+  onTestFinished(() => document.documentElement.removeAttribute('style'))
   await waitFor(() => expect(bubble.style.left).toBe('80px'))
 })
 

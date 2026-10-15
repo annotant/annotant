@@ -50,6 +50,7 @@ import {
 import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
+import { saveInlineStyle } from './inline'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
 import {
   AreaDrawer,
@@ -522,7 +523,9 @@ export default function App({ root }: { root: Element }) {
   const hintHeight = useRef(0)
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const pendingAnchor = useRef<ReviewAnchor>(undefined)
-  const paddingAnimation = useRef<Animation>(undefined)
+  const marginAnimation = useRef<Animation>(undefined)
+  // Puts back the page's own inline margin, while the docked panel squeezes it.
+  const restoreMargin = useRef<() => void>(undefined)
   const layout = useRef({ open, docked })
 
   const page = useComments(route)
@@ -582,16 +585,23 @@ export default function App({ root }: { root: Element }) {
 
   // Floating: the panel floats over the page, which is left untouched. Docked: the page is squeezed,
   // in step with the panel as it opens, closes, widens or narrows; at once while it is dragged.
+  // Through `html`'s margin, which hosts leave alone: libraries pad `body` for a modal's scrollbar.
   useEffect(() => {
-    const body = document.body
-    const from = getComputedStyle(body).paddingRight
-    paddingAnimation.current?.cancel()
-    body.style.paddingRight = open && docked ? `${width}px` : ''
+    const html = document.documentElement
+    const from = getComputedStyle(html).marginRight
+    marginAnimation.current?.cancel()
+    if (open && docked) {
+      restoreMargin.current ??= saveInlineStyle(html, 'margin-right')
+      html.style.marginRight = `${width}px`
+    } else {
+      restoreMargin.current?.()
+      restoreMargin.current = undefined
+    }
     const moved = open !== layout.current.open || docked !== layout.current.docked
     layout.current = { open, docked }
     if (!moved || matchMedia(REDUCED_MOTION).matches) return
-    if (getComputedStyle(body).paddingRight === from) return
-    paddingAnimation.current = body.animate([{ paddingRight: from, offset: 0 }], {
+    if (getComputedStyle(html).marginRight === from) return
+    marginAnimation.current = html.animate([{ marginRight: from, offset: 0 }], {
       duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
       easing: open ? 'ease-out' : 'ease-in',
     })
@@ -599,8 +609,9 @@ export default function App({ root }: { root: Element }) {
 
   useEffect(
     () => () => {
-      paddingAnimation.current?.cancel()
-      document.body.style.paddingRight = ''
+      marginAnimation.current?.cancel()
+      restoreMargin.current?.()
+      restoreMargin.current = undefined
     },
     [],
   )
@@ -628,15 +639,18 @@ export default function App({ root }: { root: Element }) {
   const startResize = (event: ReactMouseEvent) => {
     event.preventDefault()
     setDragging(true)
+    const html = document.documentElement
+    const restoreCursor = saveInlineStyle(html, 'cursor')
+    const restoreSelect = saveInlineStyle(html, 'user-select')
     const onUp = () => {
       setDragging(false)
       document.removeEventListener('mousemove', resizeTo)
       document.removeEventListener('mouseup', onUp)
-      document.documentElement.style.cursor = ''
-      document.documentElement.style.userSelect = ''
+      restoreCursor()
+      restoreSelect()
     }
-    document.documentElement.style.cursor = 'col-resize'
-    document.documentElement.style.userSelect = 'none'
+    html.style.cursor = 'col-resize'
+    html.style.userSelect = 'none'
     document.addEventListener('mousemove', resizeTo)
     document.addEventListener('mouseup', onUp)
   }
