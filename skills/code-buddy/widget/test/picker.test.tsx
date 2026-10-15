@@ -181,3 +181,16 @@ test('a press on nothing to pick reaches the page', () => {
 
   expect(reached).toHaveBeenCalledOnce()
 })
+
+test("the picker puts the host's cursor back", () => {
+  const { root } = page()
+  document.documentElement.style.cursor = 'wait'
+  onTestFinished(() => document.documentElement.removeAttribute('style'))
+  const { unmount } = render(
+    <ElementPicker root={root} onPick={() => {}} onCancel={() => {}} />,
+  )
+  expect(document.documentElement.style.cursor).toBe('crosshair')
+
+  unmount()
+  expect(document.documentElement.style.cursor).toBe('wait')
+})
