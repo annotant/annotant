@@ -24,6 +24,11 @@ released to the `stable` branch.
   comment's thread as JSON, capped to the reader's comment and the 19 latest
   messages, and the agent is told never to open the comments file, with every
   other thread in it: fewer tokens, and no feedback that is not its own. (#123)
+- **The reader's words and the page's text reach agents fenced as data.**
+  The thread `claim.mjs` prints and the server line in an agent's prompt, its
+  follow-ups and edits sit behind a header naming a marker made for them, on
+  each line: text the app renders, or a comment, cannot pass for instructions
+  to the agent, nor widen its task beyond `editable`. (#124)
 - **Changes show in the widget at once.** The server watches the comments
   file's and the step files' folders, and pushes each change to the widget on
   `GET /api/events` (server-sent events): a new step, state or answer shows in
