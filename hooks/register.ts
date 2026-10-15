@@ -464,10 +464,11 @@ const watches = new Map<string, Watch>()
  */
 const starting = new Map<string, { stop: boolean; message?: Queued }>()
 /**
- * The comments' agent types a send is resuming: Claude Code resumes an agent
- * whose turn ended as the Agent tool does, through `agent.offer`.
+ * The comments' agent types sends are resuming, and how many sends each:
+ * Claude Code resumes an agent whose turn ended as the Agent tool does,
+ * through `agent.offer`.
  */
-const resuming = new Set<string>()
+const resuming = new Map<string, number>()
 let rearmed = false
 let dispatching: Promise<void> = Promise.resolve()
 
@@ -556,14 +557,18 @@ async function send($: $, worker: Worker, { id, line, kind }: Queued) {
   // The message resumes the agent with its hooks again.
   await registerAgain($, id, worker)
   const type = `code-buddy:cb-${tag(id)}`
-  resuming.add(type)
+  resuming.set(type, (resuming.get(type) ?? 0) + 1)
   const sent = await $.session
     .send({
       to: { agentId: worker.agent },
       text: kind === 'edit' ? edited(id, line) : followUp(id, line),
     })
     .catch(() => undefined)
-    .finally(() => resuming.delete(type))
+    .finally(() => {
+      const left = (resuming.get(type) ?? 1) - 1
+      if (left) resuming.set(type, left)
+      else resuming.delete(type)
+    })
   await debug(
     $,
     worker.agent,
