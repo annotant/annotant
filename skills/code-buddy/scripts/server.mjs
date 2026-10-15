@@ -177,7 +177,72 @@ function sanitiseNode(node, textLength) {
 function sanitiseElement(element) {
   const node = sanitiseNode(element, 200)
   return (
-    node && { ...node, html: normaliseQuote(String(element.html ?? '')).slice(0, 600) }
+    node && {
+      ...node,
+      html: redactHtml(normaliseQuote(String(element.html ?? '')).slice(0, 600)),
+    }
+  )
+}
+
+/** A name that may hold a secret: a token, a password, a signature, a nonce. */
+const SECRET =
+  /token|secret|passw|pwd|csrf|xsrf|nonce|api[-_]?key|session|signature|jwt|credential|^(?:auth|code|key|otp|sig)$/i
+
+/** @param {string} name A parameter or an attribute, maybe percent-encoded. */
+function isSecret(name) {
+  try {
+    return SECRET.test(decodeURIComponent(name))
+  } catch {
+    return SECRET.test(name)
+  }
+}
+
+/**
+ * `link` with the values of its secret-looking parameters, in its query or
+ * its hash, replaced by `redacted`.
+ * @param {string} link
+ */
+function redactParams(link) {
+  return link.replace(/([?&#;])([^=&#;]*)=[^&#;]*/g, (param, separator, name) =>
+    isSecret(name) ? `${separator}${name}=redacted` : param,
+  )
+}
+
+/** The attributes that hold a link. */
+const LINKS = new Set([
+  'href',
+  'src',
+  'action',
+  'formaction',
+  'poster',
+  'ping',
+  'xlink:href',
+])
+
+/**
+ * An element's outer HTML, as the browser writes it (values double-quoted),
+ * without what may be a secret: no `value` (a hidden CSRF field's) or
+ * `content` (a meta tag's), no secret-looking attribute, and links with their
+ * secret-looking parameters redacted. A value the truncation cut is still
+ * one.
+ * @param {string} html
+ */
+function redactHtml(html) {
+  return html.replace(/<[a-z][^\s/>]*(?:\s+[^\s"'>/=]+(?:="[^"]*"?)?)*/gi, (tag) =>
+    tag.replace(
+      /\s+([^\s"'>/=]+)(?:="([^"]*)("?))?/g,
+      (attribute, name, value, close) => {
+        if (
+          name === 'value' ||
+          name === 'content' ||
+          isSecret(name.replace(/^data-/, ''))
+        )
+          return ''
+        return LINKS.has(name) && value
+          ? ` ${name}="${redactParams(value)}${close}`
+          : attribute
+      },
+    ),
   )
 }
 
@@ -266,14 +331,15 @@ function sanitiseArea(area) {
 
 /**
  * The page of a new comment, when it is one: an http or https URL, as the
- * parser writes it, up to 2000 characters. Anything else is dropped, and the
- * comment keeps its route.
+ * parser writes it, up to 2000 characters, without its credentials or hash
+ * and with its secret-looking parameters redacted. Anything else is dropped,
+ * and the comment keeps its route.
  * @param {unknown} url
  */
 function sanitiseUrl(url) {
   const parsed = typeof url === 'string' ? URL.parse(url.slice(0, 2000)) : null
   return parsed && /^https?:$/.test(parsed.protocol)
-    ? parsed.href.slice(0, 2000)
+    ? `${parsed.origin}${parsed.pathname}${redactParams(parsed.search)}`.slice(0, 2000)
     : undefined
 }
 

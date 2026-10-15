@@ -185,6 +185,21 @@ test('a comment is filed on the page where it was started, not where it is saved
   ])
 })
 
+test('a comment is filed without the hash of its page', async () => {
+  const comments: ReviewComment[] = []
+  const before = window.location.href
+  history.pushState(null, '', '/?tab=2#access_token=secret')
+  onTestFinished(() => history.pushState(null, '', before))
+  const { selection, button } = await selectAcrossBlocks(comments)
+  fireEvent.click(button)
+  selection.removeAllRanges()
+  fireEvent.change(await screen.findByRole('textbox'), { target: { value: 'Shorter' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  await screen.findByText('Comment saved')
+  expect(comments.map(({ url }) => url)).toEqual([`${window.location.origin}/?tab=2`])
+})
+
 test('the quote being written is not marked on another page', async () => {
   const highlights = stubHighlights()
   const startedOn = window.location.href

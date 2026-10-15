@@ -731,7 +731,8 @@ export default function App({ root }: { root: Element }) {
         body,
         ...(images?.length ? { images } : {}),
         route: window.location.pathname,
-        url: window.location.href,
+        // Never the hash, where a sign-in may leave its token.
+        url: window.location.origin + window.location.pathname + window.location.search,
       })
       setView('page')
       setThreadId(undefined)

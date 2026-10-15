@@ -38,7 +38,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 {
   "id": "b96fae58-5cc3-426b-9632-77f3a7f8f866",
   "route": "/",                              // "*": about the whole app
-  "url": "http://localhost:5190/",           // the page, query and hash included
+  "url": "http://localhost:5190/",           // the page and its query, no hash
   "anchor": {
     "section": "Coffee roasted the week you drink it", // the heading above it
     "quote": "",                             // the selected text; "" when none
@@ -62,11 +62,11 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | --- | --- | --- |
 | `id` | string | A UUID. |
 | `route` | string | The page's path, or `*` for the whole app. |
-| `url` | string, optional | An `http` or `https` URL, up to 2000 characters; the server drops any other. |
+| `url` | string, optional | An `http` or `https` URL, up to 2000 characters, without credentials or hash; the server drops any other, and replaces the values of the query's secret-looking parameters (`token`, `code`, `session`…) with `redacted`. |
 | `anchor.section` | string | Up to 300 characters. |
 | `anchor.quote` | string | Whitespace-collapsed, up to 2000 characters. |
 | `anchor.occurrence` | integer ≥ 0 | |
-| `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. |
+| `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links. |
 | `state` | State | See [States](#states-and-moves). |
 | `createdAt` | ISO date | Lists sort by it. |
 | `messages` | Message[] | The whole thread, the reader's comment first. |
