@@ -266,6 +266,10 @@ code { font-family: var(--cb-mono); }
 .cb-element:hover { background: var(--cb-surface-2); }
 .cb-element code { color: var(--cb-accent); }
 .cb-element span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-area-chip svg { flex-shrink: 0; align-self: center; width: 14px; height: 14px; color: var(--cb-accent); }
+.cb-area-chip code { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cb-area-draft { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.cb-draft-scope { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 
 /* In progress: the comment is open, until Claude resolves its thread. A rainbow
    turns around it (--code-buddy-angle is registered in PAGE_CSS: a shadow root cannot). */
@@ -290,6 +294,16 @@ code { font-family: var(--cb-mono); }
 .cb-hover[data-hidden] { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .cb-hover { transition: none; animation: none; } }
 .cb-hover span { position: absolute; top: -22px; left: -2px; padding: 1px 4px; border-radius: 3px; background: var(--cb-accent); color: #fff; font: 12px var(--cb-mono); white-space: nowrap; }
+/* A drawn area: dashed, where an element's outline is solid. */
+.cb-outline--area, .cb-mark--area { border-radius: 2px; }
+.cb-outline--area { border-style: dashed; }
+/* Drawing: the page under a veil, but for the area being drawn and what it covers. */
+.cb-draw { position: fixed; inset: 0; cursor: crosshair; }
+.cb-draw-box { position: fixed; border: 2px solid var(--cb-accent); border-radius: 2px; background: rgba(var(--cb-accent-rgb), .06); box-shadow: 0 0 0 100vmax rgba(16, 36, 74, .28); }
+.cb-draw-box span { position: absolute; top: calc(100% + 6px); right: -2px; padding: 1px 6px; border-radius: 3px; background: var(--cb-accent); color: #fff; font: 12px var(--cb-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cb-draw-covered { position: fixed; pointer-events: none; border: 1px dashed rgba(var(--cb-accent-rgb), .7); border-radius: 2px; }
+/* While the reader draws, the panel steps back: the page is what they look at, and draw over. */
+.cb-panel[data-drawing] { opacity: .35; pointer-events: none; }
 .cb-hint { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; pointer-events: none; }
 
 .cb-toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; }

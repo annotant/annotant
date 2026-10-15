@@ -105,6 +105,15 @@ released to the `stable` branch.
   a follow-up) says "Claude has your reply, an agent is picking it up…"
   instead: the manager hands it to the thread's agent when it still has one.
   The debug panel marks each hand-over and how long the claim took after it.
+- **Draw an area on the page** (_Draw area_, or _Draw an area_ in a page-level
+  comment) when the feedback is about a part of the page no single element
+  holds. The page dims around the rectangle, the elements it covers are
+  outlined as it grows, and scrolling stretches it. It stays outlined while the
+  comment is written, turns into a rainbow frame with a bubble until Claude
+  resolves the thread, and its chip in the thread shows it again (hover) or
+  scrolls to it (click). Claude gets its box, the window size and scroll, the
+  element it lies in, and the elements it covers or cuts through; the area is
+  kept relative to that element, so it is found again on another window size.
 - **The hook log**, to check what the plugin's hooks do in a real session:
   `/code-buddy-debug on` turns it on in every session, `tail -f
   ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last

@@ -61,6 +61,24 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {string} quote The selected text; empty for a page-level comment.
  * @property {number} occurrence Which occurrence of the quote on the page.
  * @property {Element} [element] Set when the reader pointed at an element.
+ * @property {Area} [area] Set when the reader drew a rectangle over the page.
+ */
+
+/**
+ * An element a drawn area covers or crosses: no HTML, an area may hold many.
+ * @typedef {{ selector: string, tag: string, text: string }} AreaNode
+ * @typedef {{ top: number, left: number, width: number, height: number }} Box
+ */
+
+/**
+ * A rectangle the reader drew, from the page's corner, in CSS pixels; `within`
+ * places it in the smallest element holding it, for another viewport.
+ * @typedef {Box & {
+ *   viewport: { width: number, height: number, scrollX: number, scrollY: number },
+ *   within?: AreaNode & { offset: Box, size: { width: number, height: number } },
+ *   covers: AreaNode[],
+ *   crosses: AreaNode[],
+ * }} Area
  */
 
 /**

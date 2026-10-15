@@ -29,10 +29,10 @@
 ---
 
 You comment directly on your dev app in the browser: select text, point at an
-element, or write about the page or the whole app. For each comment, Claude
-starts a background agent that makes the change, shows you its progress live
-under your comment, and answers in the same thread. Reply to follow up; cancel
-to stop it.
+element, draw an area, or write about the page or the whole app. For each
+comment, Claude starts a background agent that makes the change, shows you its
+progress live under your comment, and answers in the same thread. Reply to
+follow up; cancel to stop it.
 
 ## How it works
 
@@ -124,6 +124,13 @@ directory, else from the repository root.
 - **Point at element** to anchor it to an element. A bubble then marks the
   element too; hovering the element chip later outlines it on the page,
   clicking it scrolls to it (navigating first if it lives on another page).
+- **Draw area** to frame a part of the page no single element holds: the gap
+  between two blocks, a misaligned group, empty space. Drag a rectangle (scroll
+  while dragging to stretch it past the window); the elements it covers are
+  outlined as it grows. A page-level comment can get one too, with _Draw an
+  area_. Claude receives its box, the window it was drawn in, the element it
+  lies in and the elements it covers or cuts through. The area is found again
+  in that element, on another window size or after the layout changes.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or behind a text, marks a comment Claude has yet to
   resolve; once its thread is resolved, the mark goes away.
