@@ -464,9 +464,9 @@ const watches = new Map<string, Watch>()
  */
 const starting = new Map<string, { stop: boolean; message?: Queued }>()
 /**
- * The comments' agent types sends are resuming, and how many sends each:
- * Claude Code resumes an agent whose turn ended as the Agent tool does,
- * through `agent.offer`.
+ * How many sends are resuming each comment's agent type. Claude Code resumes
+ * an agent whose turn ended the way the Agent tool does, through
+ * `agent.offer`, so the type must be offered while a send is under way.
  */
 const resuming = new Map<string, number>()
 let rearmed = false
@@ -563,7 +563,7 @@ async function send($: $, worker: Worker, { id, line, kind }: Queued) {
       to: { agentId: worker.agent },
       text: kind === 'edit' ? edited(id, line) : followUp(id, line),
     })
-    .catch(() => undefined)
+    .catch((error: unknown) => ({ isDelivered: false, reason: String(error) }))
     .finally(() => {
       const left = (resuming.get(type) ?? 1) - 1
       if (left) resuming.set(type, left)
@@ -1097,8 +1097,8 @@ export const register: Register = (on) => {
     return next(e)
   })
 
-  // Comments' agents are the hooks' alone: the model is never offered them,
-  // only a send that resumes one is.
+  // Comments' agents are the hooks' alone: the model is not offered them,
+  // except while a send resumes one (Claude Code offers the type then).
   on('agent.offer', async ($, e, next) =>
     e.agent === WORKER || (COMMENT_AGENT.test(e.agent) && !resuming.has(e.agent))
       ? { isOffered: false }

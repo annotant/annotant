@@ -89,14 +89,15 @@ function world(
   const sent: { to: string; text: string }[] = []
   let delivering = true
   // Agents whose turn ended: a message resumes one as the Agent tool does,
-  // through `agent.offer` at dispatch (once `resumesThrough` names the engine).
-  const ended = new Set<string>()
+  // through `agent.offer` at dispatch (once `resumesThrough` names the engine,
+  // as `watch` does).
+  const idle = new Set<string>()
   let engine: { agent: { offer: EngineInterface['agent']['offer'] } } | undefined
   on('session.send', async (_$, e) => {
     sent.push({ to: e.to, text: e.text })
     if (!delivering) return { isDelivered: false as const, reason: 'no agent by that id' }
     const type = spawned[Number(e.to.slice(1)) - 1]?.type
-    if (engine && type && ended.has(e.to)) {
+    if (engine && type && idle.has(e.to)) {
       const { isOffered } = await engine.agent.offer({
         agent: type,
         description: '',
@@ -108,7 +109,7 @@ function world(
           isDelivered: false as const,
           reason: `Agent type '${type}' is not offered in this session.`,
         }
-      ended.delete(e.to)
+      idle.delete(e.to)
     }
     return { isDelivered: true as const }
   })
@@ -178,7 +179,7 @@ function world(
   // Claude Code offers the model every agent type no hook keeps from it.
   on('agent.offer', () => ({ isOffered: true }))
   on('turn.complete', (_$, e) => {
-    if (e.agentId) ended.add(e.agentId)
+    if (e.agentId) idle.add(e.agentId)
     return { text: '' }
   })
   // The agent types the plugin defines, by full name.
@@ -345,6 +346,7 @@ async function watch(
   $: Parameters<Parameters<typeof test>[1]>[0],
   w: ReturnType<typeof world>,
 ) {
+  w.resumesThrough($)
   const answer = $.command.run(watchCommand())
   await w.print(READY)
   return (await answer).text
@@ -660,6 +662,7 @@ test('a comment the reader resolves stops its agent; one its agent resolved does
 
 test('a server that cannot start says why, and /code-buddy tries again', async ($, on) => {
   const w = world(on, [])
+  w.resumesThrough($)
   const answer = $.command.run(watchCommand())
   await w.print('PORT_BUSY 4599 is used by another program')
   expect((await answer).text).toMatch(
@@ -802,7 +805,6 @@ test("a message resumes the comment's agent with its hooks, which a reload unloa
 
 test('a reply resumes the agent that finished its turn, a type the model is never offered', async ($, on) => {
   const w = world(on, [titleComment])
-  w.resumesThrough($)
   w.classifyAs('trivial')
   await watch($, w)
   await w.print(newLine('c1'))
@@ -811,12 +813,13 @@ test('a reply resumes the agent that finished its turn, a type the model is neve
   await w.print(followUpLine('c1'))
   expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
   expect(w.sent.map((one) => one.to)).toEqual(['a1'])
-  // The model still never sees it.
+  // Once sent, the model is offered neither the comment's type nor the worker.
   const offer = { description: '', source: 'plugin' }
   const provider = { plugin: 'code-buddy', tier: 'plugin' as const }
-  expect(await $.agent.offer({ ...offer, provider, agent: 'code-buddy:cb-c1' })).toEqual({
-    isOffered: false,
-  })
+  for (const agent of ['code-buddy:cb-c1', 'code-buddy:worker'])
+    expect(await $.agent.offer({ ...offer, provider, agent })).toEqual({
+      isOffered: false,
+    })
   await w.exit(0)
 })
 
@@ -909,6 +912,7 @@ test("/code-buddy in a git worktree watches the main checkout's project", async 
     gitRoot: '/wt/feature',
     mainCheckout: '/repo',
   })
+  w.resumesThrough($)
   const answer = $.command.run(watchCommand())
   await w.print(READY)
   expect((await answer).text).toMatch(/watching \/repo\/web/)
