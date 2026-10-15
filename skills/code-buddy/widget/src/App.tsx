@@ -36,6 +36,7 @@ import {
   type ReviewComment,
   type ReviewMessage,
   type ReviewProgress,
+  type Status,
   answered,
   gist,
   isActive,
@@ -105,11 +106,12 @@ const CENTER_KEY = 'code-buddy:center'
 type View = 'page' | 'all'
 type StatusFilter = 'all' | 'open' | 'resolved'
 
-const STATUS_CHIPS: Record<ReturnType<typeof statusOf>, string> = {
+const STATUS_CHIPS: Record<Status, string> = {
   open: 'Open',
   claimed: 'In progress',
   asking: 'Needs you',
   answered: 'Answered',
+  stopped: 'Stopped',
   resolved: 'Resolved',
 }
 

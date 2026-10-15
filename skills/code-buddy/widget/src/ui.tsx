@@ -12,7 +12,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import type { NewImage } from './domain'
+import type { NewImage, Status } from './domain'
 import { imageFiles, pick, preview, readImages } from './images'
 
 const PATHS = {
@@ -120,7 +120,7 @@ export function Chip({
   small = false,
   children,
 }: {
-  tone: 'open' | 'claimed' | 'asking' | 'answered' | 'stopped' | 'resolved'
+  tone: Status
   /** The debug panel's: smaller, beside a line of text. */
   small?: boolean
   children: ReactNode
