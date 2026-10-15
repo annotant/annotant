@@ -814,12 +814,15 @@ test('a reply resumes the agent that finished its turn, a type the model is neve
   expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
   expect(w.sent.map((one) => one.to)).toEqual(['a1'])
   // Once sent, the model is offered neither the comment's type nor the worker.
-  const offer = { description: '', source: 'plugin' }
-  const provider = { plugin: 'code-buddy', tier: 'plugin' as const }
   for (const agent of ['code-buddy:cb-c1', 'code-buddy:worker'])
-    expect(await $.agent.offer({ ...offer, provider, agent })).toEqual({
-      isOffered: false,
-    })
+    expect(
+      await $.agent.offer({
+        agent,
+        description: '',
+        source: 'plugin',
+        provider: { plugin: 'code-buddy', tier: 'plugin' },
+      }),
+    ).toEqual({ isOffered: false })
   await w.exit(0)
 })
 

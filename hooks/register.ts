@@ -476,7 +476,7 @@ const ignore = () => undefined
 const skillDir = ($: $) => `${$.plugin.root}/skills/code-buddy`
 /** A comment's short id, as the agent's name carries it. */
 const tag = (id: string) => id.slice(0, 8)
-/** A comment's agent: its name, and its type the plugin's name before it. */
+/** A comment's agent's name; `code-buddy:` before it makes its type. */
 const agentName = (id: string) => `cb-${tag(id)}`
 
 /** The follow-up message, the reader's line in it. */
@@ -575,12 +575,12 @@ async function send($: $, worker: Worker, { id, line, kind }: Queued) {
     $,
     worker.agent,
     id,
-    sent?.isDelivered
+    sent.isDelivered
       ? `sent the ${kind === 'edit' ? 'edit' : 'follow-up'}`
-      : `could not send: ${sent?.reason ?? 'refused'}`,
+      : `could not send: ${sent.reason}`,
   )
-  if (sent?.isDelivered) await setWorker($, id, { ...worker, running: true })
-  return Boolean(sent?.isDelivered)
+  if (sent.isDelivered) await setWorker($, id, { ...worker, running: true })
+  return sent.isDelivered
 }
 
 /**
