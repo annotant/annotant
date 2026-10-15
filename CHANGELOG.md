@@ -155,6 +155,12 @@ released to the `stable` branch.
   a reload: its selector named the id, which the next load changes. Such ids
   are now skipped, and the selector climbs to a written id or the element's
   position.
+- Opening, closing or resizing the panel wiped the host page's own inline
+  styles: the `body` padding a MUI or Bootstrap modal sets for its hidden
+  scrollbar, which left the page shifted after the modal closed, and the
+  page's cursor and `user-select`. The docked panel now squeezes the page
+  through `html`'s padding, and the widget puts back every inline value it
+  changes. (#65)
 - The hook log lost lines when several processes wrote it at once (other
   sessions, the agents' own hooks): each line rewrote the whole log, dropping
   what was appended in between. Each line is now appended.

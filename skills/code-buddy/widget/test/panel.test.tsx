@@ -12,7 +12,7 @@ function renderOpenPanel() {
   )
   // An idle animation: happy-dom's own reject an unhandled promise once cancelled, as browsers' do not.
   const animate = vi
-    .spyOn(document.body, 'animate')
+    .spyOn(document.documentElement, 'animate')
     .mockImplementation(() => new Animation())
   onTestFinished(() => animate.mockRestore())
   renderWidget()
@@ -48,15 +48,15 @@ test('the panel reopened while it leaves stays', async () => {
 
 test('the page makes room for the widened panel in step with it', () => {
   const { animate } = renderOpenPanel()
-  const from = getComputedStyle(document.body).paddingRight
+  const from = getComputedStyle(document.documentElement).paddingRight
 
   fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
-  expect(document.body.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
+  expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
   expect(animate).toHaveBeenCalledOnce()
   expect(animate.mock.calls[0]?.[0]).toEqual([{ paddingRight: from, offset: 0 }])
 
   fireEvent.click(screen.getByRole('button', { name: 'Narrow panel' }))
-  expect(document.body.style.paddingRight).toBe('')
+  expect(document.documentElement.style.paddingRight).toBe('')
   expect(animate).toHaveBeenCalledTimes(2)
   expect(animate.mock.calls[1]?.[0]).toEqual([
     { paddingRight: `${window.innerWidth / 2}px`, offset: 0 },
@@ -74,7 +74,7 @@ test('the page follows a dragged panel at once', () => {
   fireEvent.mouseMove(document, { clientX: window.innerWidth - 500 })
   fireEvent.mouseUp(document)
 
-  expect(document.body.style.paddingRight).toBe('500px')
+  expect(document.documentElement.style.paddingRight).toBe('500px')
   expect(animate).not.toHaveBeenCalled()
 })
 
@@ -83,8 +83,62 @@ test('the page makes room at once when motion is reduced', () => {
   const { animate } = renderOpenPanel()
 
   fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
-  expect(document.body.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
+  expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
   expect(animate).not.toHaveBeenCalled()
+})
+
+/** Inline styles the host page set itself, taken off again after the test. */
+function hostStyles(element: HTMLElement, style: string) {
+  element.setAttribute('style', style)
+  onTestFinished(() => element.removeAttribute('style'))
+}
+
+test("the docked panel leaves the host's inline styles as it found them", async () => {
+  // A modal of the host's makes up for the scrollbar it hides.
+  hostStyles(document.body, 'padding-right: 15px')
+  hostStyles(document.documentElement, 'padding-right: 8px')
+  const { panel } = renderOpenPanel()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+  expect(document.body.style.paddingRight).toBe('15px')
+  expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
+
+  const handle = panel.querySelector('.cb-resize')
+  if (!handle) throw new Error('No resize handle')
+  fireEvent.mouseDown(handle)
+  fireEvent.mouseMove(document, { clientX: window.innerWidth - 500 })
+  fireEvent.mouseUp(document)
+  expect(document.documentElement.style.paddingRight).toBe('500px')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  expect(document.body.style.paddingRight).toBe('15px')
+  expect(document.documentElement.style.paddingRight).toBe('8px')
+  await waitFor(() => expect(screen.queryByTestId('code-buddy-panel')).toBeNull())
+})
+
+test('what the host writes while the panel is docked stays once it closes', () => {
+  hostStyles(document.documentElement, '')
+  renderOpenPanel()
+  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+
+  document.documentElement.style.paddingRight = '20px'
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  expect(document.documentElement.style.paddingRight).toBe('20px')
+})
+
+test("resizing the panel puts the host's cursor and selection back", () => {
+  hostStyles(document.documentElement, 'cursor: wait; user-select: text')
+  const { panel } = renderOpenPanel()
+
+  const handle = panel.querySelector('.cb-resize')
+  if (!handle) throw new Error('No resize handle')
+  fireEvent.mouseDown(handle)
+  expect(document.documentElement.style.cursor).toBe('col-resize')
+  expect(document.documentElement.style.userSelect).toBe('none')
+  fireEvent.mouseUp(document)
+
+  expect(document.documentElement.style.cursor).toBe('wait')
+  expect(document.documentElement.style.userSelect).toBe('text')
 })
 
 test('a comment with an invalid url shows its route, in the list and its thread', async () => {

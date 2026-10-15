@@ -24,6 +24,7 @@ import {
   type ReviewComment,
   wasResolved,
 } from './domain'
+import { setInlineStyle } from './inline'
 import { RAINBOW_PERIOD } from './styles'
 import { Icon } from './ui'
 
@@ -184,6 +185,8 @@ function useTracked<Found, Measured>(
       attributes: true,
       characterData: true,
     })
+    // The docked panel squeezes the page through `html`'s padding.
+    observer.observe(document.documentElement, { attributes: true })
     window.addEventListener('resize', update)
     document.addEventListener('scroll', update, true)
     return () => {
@@ -683,14 +686,14 @@ export function ElementPicker({
     for (const type of PRESSES) window.addEventListener(type, onPress, true)
     document.addEventListener('keydown', onKey)
     document.addEventListener('scroll', onScroll, true)
-    document.documentElement.style.cursor = 'crosshair'
+    const restoreCursor = setInlineStyle(document.documentElement, 'cursor', 'crosshair')
     return () => {
       clearTimeout(dwell)
       document.removeEventListener('mousemove', onMove)
       for (const type of PRESSES) window.removeEventListener(type, onPress, true)
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('scroll', onScroll, true)
-      document.documentElement.style.cursor = ''
+      restoreCursor()
     }
   }, [root, onPick, onCancel])
 
