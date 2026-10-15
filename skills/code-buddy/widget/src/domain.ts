@@ -17,6 +17,50 @@ export interface ReviewElement {
   html: string
 }
 
+/** An element an area covers or cuts through: enough to find it in the code. */
+export type ReviewNode = Omit<ReviewElement, 'html'>
+
+/** A box, in CSS pixels. */
+export interface ReviewBox {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+interface ReviewSize {
+  width: number
+  height: number
+}
+
+/**
+ * The smallest element holding a whole drawn area: the area is found again in
+ * it, its width scaled with the holder's, on another viewport or after a
+ * layout change.
+ */
+interface ReviewHolder extends ReviewNode {
+  /** Where the area's corner lies in the holder's content, its scroll included. */
+  offset: { top: number; left: number }
+  /** The holder's size when the area was drawn; never 0. */
+  size: ReviewSize
+}
+
+/** A rectangle the reader drew over the page; never empty. */
+export interface ReviewArea extends ReviewBox {
+  /** The viewport's size and scroll when it was drawn; `top` and `left` are from the page's corner. */
+  viewport: ReviewSize & { scrollX: number; scrollY: number }
+  within?: ReviewHolder
+  /** Elements wholly inside the area, the outermost ones only: 10 at most. */
+  covers: ReviewNode[]
+  /**
+   * Elements the area cuts through: its holder's children, and the innermost
+   * ones in them, such as the two buttons around a gap; 6 at most.
+   */
+  crosses: ReviewNode[]
+  /** The area held more elements than `covers` and `crosses` keep. */
+  truncated?: true
+}
+
 export interface ReviewAnchor {
   /** Heading the quote sits under, for a human reader of the JSON file. */
   section: string
@@ -26,6 +70,8 @@ export interface ReviewAnchor {
   occurrence: number
   /** Set when the reader pointed at an element instead of selecting text. */
   element?: ReviewElement
+  /** Set when the reader drew a rectangle over the page. */
+  area?: ReviewArea
 }
 
 /** How much work a comment needs, as the hooks' classifier sorts it. */

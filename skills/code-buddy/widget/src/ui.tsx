@@ -23,6 +23,7 @@ const PATHS = {
   chats: 'M3 4h12v9H8l-5 4zM9 16v1h7l5 4V8h-3',
   chat: 'M4 5h16v11H9l-5 4z',
   cursor: 'M6 3l13 10-6 1-3 6z',
+  frame: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
   'expand-horizontal': 'M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4',
   'collapse-horizontal': 'M12 4v16M3 12h6M21 12h-6M6 9l3 3-3 3M18 9l-3 3 3 3',
   external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',

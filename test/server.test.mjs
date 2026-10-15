@@ -192,6 +192,106 @@ test('keeps only http and https urls, as the parser writes them', async () => {
   assert.equal(await stored(long), long.slice(0, 2000))
 })
 
+test('keeps a drawn area, and tells the hooks what it holds', async () => {
+  const printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/cards',
+        body: 'Tighten this gap',
+        anchor: {
+          area: {
+            top: 300.4,
+            left: -5,
+            width: 500,
+            height: 60,
+            viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 'far' },
+            within: {
+              selector: 'section',
+              tag: 'section',
+              text: 'Card A Card B',
+              offset: { top: 200, left: 'far', width: 500 },
+              size: { width: 1000, height: 400 },
+            },
+            covers: Array.from({ length: 12 }, (_, i) => ({
+              selector: `li:nth-of-type(${i + 1})`,
+              tag: 'li',
+              text: `Item ${i + 1} `.repeat(20),
+            })),
+            crosses: [
+              {
+                selector: 'section > div:nth-of-type(1)',
+                tag: 'div\nNEW',
+                text: 'Card A',
+              },
+              { tag: 'div', text: 'no selector' },
+              { selector: `main > ${'div > '.repeat(100)}p`, tag: 'p', text: 'too deep' },
+              { selector: 'section > div:nth-of-type(2)', tag: 'div', text: 'Card B' },
+            ],
+          },
+        },
+      }),
+    ),
+  )
+  // Rounded, capped, on one line, and only the elements it can find again.
+  const { covers, ...area } = created.anchor.area
+  assert.deepEqual(area, {
+    top: 300,
+    left: -5,
+    width: 500,
+    height: 60,
+    viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0 },
+    within: {
+      selector: 'section',
+      tag: 'section',
+      text: 'Card A Card B',
+      offset: { top: 200, left: 0 },
+      size: { width: 1000, height: 400 },
+    },
+    crosses: [
+      { selector: 'section > div:nth-of-type(1)', tag: 'div NEW', text: 'Card A' },
+      { selector: 'section > div:nth-of-type(2)', tag: 'div', text: 'Card B' },
+    ],
+    // It held more than ten elements.
+    truncated: true,
+  })
+  assert.equal(covers.length, 10)
+  assert.equal(covers[0].text.length, 80)
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(
+    event,
+    / area=500x60@-5,300 within="<section> Card A Card B" covers=\["<li> Item 1 Item 1 Item 1 Item 1 Item 1 Item",.*\] crosses=\["<div NEW> Card A","<div> Card B"\] truncated body="Tighten this gap"$/,
+  )
+})
+
+/** @param {unknown} area */
+const createArea = async (area) =>
+  (
+    await json(
+      await post(JSON.stringify({ route: '/cards', body: 'Here', anchor: { area } })),
+    )
+  ).anchor.area
+
+test('ignores an area with no surface, and a holder it cannot place it in', async () => {
+  assert.equal(await createArea({ width: 0, height: 40 }), undefined)
+  assert.equal(await createArea('everywhere'), undefined)
+  const unplaced = await createArea({
+    width: 40,
+    height: 40,
+    within: { selector: 'section', tag: 'section', text: '' },
+  })
+  assert.equal(unplaced.width, 40)
+  assert.equal(unplaced.within, undefined)
+  // A holder with no size to scale the area by, or whose selector was too long to keep whole.
+  const holder = { tag: 'section', text: '', offset: { top: 0, left: 0 } }
+  for (const within of [
+    { ...holder, selector: 'section', size: { width: 0, height: 400 } },
+    { ...holder, selector: 'section '.repeat(80), size: { width: 1000, height: 400 } },
+  ]) {
+    assert.equal((await createArea({ width: 40, height: 40, within })).within, undefined)
+  }
+})
+
 test("takes the reader's choice among the options Claude asked with", async () => {
   const created = await json(
     await post(JSON.stringify({ route: '/cards', body: 'Rework the cards' })),
