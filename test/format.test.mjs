@@ -9,7 +9,9 @@ import {
   currentRun,
   nextMessageId,
   nextRunId,
+  openingOf,
   parseFile,
+  sentKey,
   wasResolved,
 } from '../skills/code-buddy/scripts/lib/format.mjs'
 
@@ -108,4 +110,20 @@ test('knows a comment resolved once, even open again', () => {
     }),
     true,
   )
+})
+
+test("keys a hand-over on the reader's latest message and when it was sent", () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const sentAt = '2026-01-01T11:00:00.000Z'
+  /** @type {import('../skills/code-buddy/scripts/lib/format.mjs').MessageV2[]} */
+  const messages = [
+    { id: 'm1', author: 'reader', body: 'Blue', at },
+    { id: 'm2', author: 'claude', body: 'Which?', at, question: true },
+    { id: 'm3', author: 'reader', body: 'Navy', at, sentAt },
+    { id: 'm4', author: 'claude', body: 'Done.', at },
+  ]
+  assert.equal(openingOf({ messages })?.id, 'm3')
+  assert.equal(sentKey(messages[2]), `m3@${sentAt}`)
+  // Written before sentAt was: its own date.
+  assert.equal(sentKey(messages[0]), `m1@${at}`)
 })

@@ -46,6 +46,7 @@ import {
   latestImages,
   latestText,
   modelOf,
+  openingOf,
   paused,
   statusOf,
 } from './domain'
@@ -254,7 +255,7 @@ const REPLY_WAITS = [
 /**
  * An open comment while a session watches: sent, then handed over to the
  * hooks, then, while no agent claims it, waiting for one, then not started.
- * Each return to `open` starts again, with its own `notifiedAt`; `reply` when
+ * Each return to `open` starts again, with its message's `notifiedAt`; `reply` when
  * it is the reader's reply.
  */
 function Waiting({
@@ -1209,7 +1210,7 @@ export default function App({ root }: { root: Element }) {
             <CurrentStep step={comment.progress?.at(-1)} />
           </div>
         ) : watching ? (
-          <Waiting notifiedAt={comment.notifiedAt} reply={isReply(comment)} />
+          <Waiting notifiedAt={openingOf(comment)?.notifiedAt} reply={isReply(comment)} />
         ) : (
           <div className="cb-idle" data-testid="cb-unwatched">
             No Claude session is watching. Run /code-buddy:code-buddy.

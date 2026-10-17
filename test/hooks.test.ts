@@ -206,8 +206,11 @@ function world(
   // Held, a spawn answers only once released: an agent slow to start.
   let held: Promise<void> | undefined
   let release = ignore
+  // Claude Code refuses the spawn, saying why.
+  let denied: string | undefined
   on('agent.spawn', async (_$, e) => {
     await held
+    if (denied !== undefined) return { deny: denied }
     // A plugin's spawn reaches here as the Agent tool's input.
     const input: Record<string, unknown> = { ...e }
     const type = String(input.subagent_type ?? e.subagentType)
@@ -268,6 +271,9 @@ function world(
     },
     resumesThrough: (next: typeof engine) => {
       engine = next
+    },
+    denySpawns: (why: string) => {
+      denied = why
     },
     holdSpawns: () => {
       held = new Promise<void>((done) => (release = done))
@@ -708,6 +714,34 @@ test("a follow-up or an edit goes to the comment's agent; none, one starts", asy
     ),
   })
   expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c2'])
+  await w.exit(0)
+})
+
+test('a message handed over again, as a server restart prints it, starts no agent', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(handOver('NEW', 'm1@2026-01-01T10:00:00.000Z'))
+  // Its agent ended its turn with the comment still open.
+  await $.turn.complete(ended('a1', 'Looking.'))
+  await w.clock.settle()
+
+  await w.print(handOver('OPEN', 'm1@2026-01-01T10:00:00.000Z'))
+  expect(w.spawned).toHaveLength(1)
+
+  // Sent again by the reader: a hand-over of its own.
+  await w.print(handOver('NEW', 'm1@2026-01-01T10:05:00.000Z'))
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  await w.exit(0)
+})
+
+test('a message whose agent could not start is handed over again', async ($, on) => {
+  const w = world(on, [open('c1')])
+  w.denySpawns('no room')
+  await watch($, w)
+  const line = `NEW c1 sent=m1@2026-01-01T10:00:00.000Z route=/ page-level body="hi"`
+  await w.print(line)
+  await w.print(line)
+  expect(w.toasts.filter((toast) => toast.includes('could not start'))).toHaveLength(2)
   await w.exit(0)
 })
 

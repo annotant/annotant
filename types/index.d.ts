@@ -48,6 +48,11 @@ declare module 'claude-code' {
        * module, and a reload starts them again.
        */
       watching: Record<string, true>
+      /**
+       * By comment id, the reader's message last handed to an agent,
+       * `<message id>@<sentAt>`: a line about it again starts nothing.
+       */
+      handed: Record<string, string>
     }
   }
 }

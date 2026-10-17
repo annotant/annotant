@@ -12,7 +12,9 @@ import {
   currentRun,
   nextMessageId,
   nextRunId,
+  openingOf,
   parseFile,
+  sentKey,
   wasResolved,
 } from './format.mjs'
 import { isDevWidget } from './project.mjs'
@@ -477,6 +479,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               author: 'reader',
               body,
               at,
+              sentAt: at,
             },
           ],
           events: [{ at, state: 'open', by: 'reader' }],
@@ -520,13 +523,20 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           comment.cancellation = await cancellationOf(id, at, run)
         }
         if (cancelled === false && comment.state === 'stopped') {
-          move(comment, 'open', { by: 'reader' })
-          const last = comment.messages.findLast((message) => message.author === 'reader')
-          if (text !== undefined && last && (text || last.images?.length)) {
-            // New words, or none on a message with images, which go alone; the
-            // options the reader had chosen go either way.
-            const { choices: _, ...kept } = last
-            comment.messages[comment.messages.indexOf(last)] = { ...kept, body: text }
+          const sentAt = move(comment, 'open', { by: 'reader' })
+          const last = openingOf(comment)
+          if (last) {
+            // Sent anew: a hand-over of its own, which the server notifies again.
+            const { notifiedAt: _, ...unsent } = last
+            /** @type {MessageV2} */
+            let resent = { ...unsent, sentAt }
+            if (text !== undefined && (text || last.images?.length)) {
+              // New words, or none on a message with images, which go alone; the
+              // options the reader had chosen go either way.
+              const { choices: __, ...kept } = resent
+              resent = { ...kept, body: text }
+            }
+            comment.messages[comment.messages.indexOf(last)] = resent
           }
         }
         const reply = readerReply(comment, followUp, choices, images.length > 0)
@@ -538,12 +548,13 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           () => names,
           async () => {
             if (reply) {
-              move(comment, 'open', {
+              const sentAt = move(comment, 'open', {
                 by: 'reader',
                 message: { author: 'reader', ...reply },
               })
               // Written once the move is taken: a refused one leaves no file behind.
               const message = comment.messages.at(-1)
+              if (message) message.sentAt = sentAt
               if (message) names = await saveImages(project, id, message.id, images)
               if (message && names.length) message.images = names
             }
@@ -556,6 +567,27 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           },
         )
         return comment
+      })
+    },
+
+    /**
+     * The server printed the hooks' line for the message `key` (format.mjs's
+     * sentKey) opens: dates its hand-over, once. Nothing when the comment no
+     * longer waits for that message (sent again, deleted) or it was dated
+     * already, as a restart prints the line again.
+     * @param {string} id
+     * @param {string} key
+     * @returns {Promise<boolean>} Whether it dated it.
+     */
+    notify(id, key) {
+      return exclusive(async () => {
+        const comments = await readAll()
+        const comment = comments.find((entry) => entry.id === id)
+        const message = comment && isActive(comment) ? openingOf(comment) : undefined
+        if (!message || message.notifiedAt || sentKey(message) !== key) return false
+        message.notifiedAt = new Date().toISOString()
+        await writeAll(comments)
+        return true
       })
     },
 

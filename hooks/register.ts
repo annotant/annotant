@@ -16,9 +16,9 @@
 // never edit the same file at once, and records its steps for the widget in
 // the progress file the server reads.
 //
-// The workers and the projects watched live in $.state, so they survive a
-// reload of the module and vanish with the session, like the agents
-// themselves.
+// The workers, the projects watched and the reader's messages handed over
+// live in $.state, so they survive a reload of the module and vanish with the
+// session, like the agents themselves.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
@@ -42,8 +42,10 @@ type Step = Record<string, unknown>
 
 const noWorkers: Record<string, Worker> = {}
 const noWatching: Record<string, true> = {}
+const noHanded: Record<string, string> = {}
 const workers = atom({ plugin: 'code-buddy', key: 'workers' } as const, noWorkers)
 const watching = atom({ plugin: 'code-buddy', key: 'watching' } as const, noWatching)
+const handed = atom({ plugin: 'code-buddy', key: 'handed' } as const, noHanded)
 
 /** The plugin's agent file, whose instructions every comment's agent gets. */
 const WORKER = 'code-buddy:worker'
@@ -465,6 +467,38 @@ const WORK: Record<string, Kind | undefined> = {
   FOLLOWUP: 'followup',
   EDIT: 'edit',
 }
+/**
+ * The reader's message an opening line hands over, `<message id>@<sentAt>`
+ * (lib/format.mjs's sentKey): none on a line from a server before it.
+ */
+const sentOf = (line: string) => /^\S+ \S+ sent=(\S+)/.exec(line)?.[1]
+
+/**
+ * Whether the reader's message the line hands over is new to this session,
+ * which takes it: a server restart prints the line again, and a reload
+ * replays nothing, so a message starts or messages an agent once.
+ */
+async function isNewHandOver($: $, id: string, line: string) {
+  const key = sentOf(line)
+  if (!key) return true
+  let fresh = false
+  await update($, handed, (all) => {
+    fresh = all[id] !== key
+    return fresh ? { ...all, [id]: key } : all
+  })
+  if (!fresh)
+    await debug($, 'main', id, `ignored ${line.split(' ')[0]}: ${key} was handed over`)
+  return fresh
+}
+
+/** The comment's message may be handed over again: its agent never started, or it is gone. */
+const forgetHandOver = ($: $, id: string) =>
+  update($, handed, (all) => {
+    if (!(id in all)) return all
+    const { [id]: _, ...rest } = all
+    return rest
+  })
+
 /** A comment waiting for a free agent, with the latest line about it. */
 type Queued = { id: string; line: string; kind: Kind }
 
@@ -652,6 +686,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
   const meanwhile = starting.get(id)
   starting.delete(id)
   if (!agent) {
+    await forgetHandOver($, id)
     const why = started.deny ?? 'no agent started'
     $.ui.toast(`Code Buddy could not start an agent for comment ${tag(id)}: ${why}`)
     await debug($, 'main', id, `could not start an agent: ${short(why, 160)}`)
@@ -778,13 +813,16 @@ async function onLine(
   watched.heard.set(id, heard)
   const work = WORK[kind]
   if (work) {
+    if (work !== 'edit' && !(await isNewHandOver($, id, line))) return
     const next = { id, line, kind: work }
     watched.asked.set(id, next)
     return dispatch($, watched, next)
   }
   switch (kind) {
     case 'CANCELLED':
+      return stopWorker($, watched, id)
     case 'DELETED':
+      await forgetHandOver($, id)
       return stopWorker($, watched, id)
     case 'RESOLVED':
       // The agent's own answer ends its turn.
