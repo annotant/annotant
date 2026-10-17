@@ -30,12 +30,14 @@ import {
 } from './api'
 import {
   APP_ROUTE,
+  MAX_PICKED,
   type NewImage,
   type ReviewAnchor,
   type ReviewArea,
   type ReviewBox,
   type ReviewComment,
   type ReviewMessage,
+  type ReviewPickedElement,
   type ReviewProgress,
   type Status,
   answered,
@@ -511,6 +513,8 @@ export default function App({ root }: { root: Element }) {
     left: number
   }>()
   const [picking, setPicking] = useState(false)
+  // The thread whose reply an element in the page is being picked for.
+  const [attachingTo, setAttachingTo] = useState<string>()
   const [drawing, setDrawing] = useState(false)
   const [target, setTarget] = useState<Element>()
   // A drawn area shown again: while its chip is hovered, or for a moment once it is clicked.
@@ -525,6 +529,8 @@ export default function App({ root }: { root: Element }) {
     id: string
     body: string
     images?: NewImage[]
+    /** The elements picked in the page for it. */
+    elements?: ReviewPickedElement[]
   }>()
   // The options ticked so far, under a question that takes several.
   const [picked, setPicked] = useState<{ id: string; labels: string[] }>()
@@ -640,6 +646,7 @@ export default function App({ root }: { root: Element }) {
 
   const close = () => {
     setOpen(false)
+    setAttachingTo(undefined)
     setLeaving(true)
   }
 
@@ -839,6 +846,45 @@ export default function App({ root }: { root: Element }) {
       : undefined
   const reply = replying && followUp?.id === replying.id ? followUp.body : ''
   const replyImages = (replying && followUp?.id === replying.id && followUp.images) || []
+  const replyElements =
+    (replying && followUp?.id === replying.id && followUp.elements) || []
+  const replyingId = replying?.id
+
+  // The picker goes with the reply it picks for: off while the reader is elsewhere.
+  const picksFor = open && attachingTo === replyingId ? replyingId : undefined
+
+  /** The element picked joins the reply's, once: the reader picks again for another. */
+  const attachElement = useCallback(
+    (element: Element) => {
+      setAttachingTo(undefined)
+      const { element: found } = anchorFromElement(root, element)
+      if (!replyingId || !found) return
+      const added = { ...found, route: window.location.pathname }
+      setFollowUp((current) => {
+        const own = current?.id === replyingId ? current : undefined
+        const elements = own?.elements ?? []
+        if (
+          elements.some(
+            (other) => other.selector === added.selector && other.route === added.route,
+          )
+        )
+          return current
+        if (elements.length >= MAX_PICKED) {
+          toast(`A message holds up to ${MAX_PICKED} elements.`, true)
+          return current
+        }
+        return {
+          ...own,
+          id: replyingId,
+          body: own?.body ?? '',
+          elements: [...elements, added],
+        }
+      })
+    },
+    [root, replyingId],
+  )
+
+  const cancelAttach = useCallback(() => setAttachingTo(undefined), [])
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
   const ticked = (comment: ReviewComment) =>
@@ -876,13 +922,16 @@ export default function App({ root }: { root: Element }) {
       const own = withText && followUp?.id === comment.id ? followUp : undefined
       const text = own?.body.trim() ?? ''
       const images = own?.images ?? []
+      const elements = own?.elements ?? []
       await updateComment(comment.id, {
         ...(choices.length ? { choices } : {}),
         ...(text ? { followUp: text } : {}),
         ...(images.length ? { images } : {}),
+        ...(elements.length ? { elements } : {}),
       })
       if (own) setFollowUp(undefined)
       setPicked(undefined)
+      setAttachingTo(undefined)
       toLatest()
     })
 
@@ -1195,6 +1244,16 @@ export default function App({ root }: { root: Element }) {
                   ))}
                 </div>
               ) : null}
+              {message.elements?.length ? (
+                <div className="cb-msg-elements" data-testid="cb-msg-elements">
+                  {message.elements.map((element, place) => (
+                    // oxlint-disable-next-line react/no-array-index-key -- the message's elements never move
+                    <Fragment key={place}>
+                      {elementChip({ ...PAGE_LEVEL, element }, element.route, comment.id)}
+                    </Fragment>
+                  ))}
+                </div>
+              ) : null}
               {message.body && (
                 <div className="cb-bubble cb-bubble--reader">{message.body}</div>
               )}
@@ -1410,6 +1469,14 @@ export default function App({ root }: { root: Element }) {
       {outlinedArea && !drawing && <AreaOutline root={root} area={outlinedArea} />}
       {picking && (
         <ElementPicker root={root} onPick={pickElement} onCancel={cancelPick} />
+      )}
+      {picksFor && (
+        <ElementPicker
+          root={root}
+          hint="Click an element to add it to your message. Escape cancels."
+          onPick={attachElement}
+          onCancel={cancelAttach}
+        />
       )}
       {selectionButton && (
         <Button
@@ -1639,6 +1706,30 @@ export default function App({ root }: { root: Element }) {
                   key={replying.id}
                   value={reply}
                   images={replyImages}
+                  elements={replyElements.map((element, place) => (
+                    // oxlint-disable-next-line react/no-array-index-key -- removing one moves the next up: its place is its name
+                    <div key={place} className="cb-area-draft">
+                      {elementChip({ ...PAGE_LEVEL, element }, element.route)}
+                      <IconButton
+                        icon="x"
+                        label={`Remove the element <${element.tag}>`}
+                        onClick={() => {
+                          setTarget(undefined)
+                          setFollowUp(
+                            (current) =>
+                              current && {
+                                ...current,
+                                elements: (current.elements ?? []).filter(
+                                  (_, other) => other !== place,
+                                ),
+                              },
+                          )
+                        }}
+                      />
+                    </div>
+                  ))}
+                  picking={!!picksFor}
+                  onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
                   placeholder={
                     offered
                       ? 'Or answer in your own words…'
@@ -1658,6 +1749,7 @@ export default function App({ root }: { root: Element }) {
                     setFollowUp((current) => {
                       const own = current?.id === replying.id ? current : undefined
                       return {
+                        ...own,
                         id: replying.id,
                         body: own?.body ?? '',
                         images: adding(own?.images, added),

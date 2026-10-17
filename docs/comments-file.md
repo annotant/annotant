@@ -98,6 +98,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
+| `elements` | PickedElement[], reader only, after the comment | The elements they picked in the page with it, up to 5: an element's `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
 
 ### An event
 
@@ -165,7 +166,7 @@ stateDiagram-v2
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
-| `asking`, `answered` or `resolved → open` | PATCH `followUp` and/or `choices` | reader | A `reader` message. |
+| `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` | reader | A `reader` message. |
 | `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | With `text`, the last `reader` message's new words, its `choices` dropped; empty, its images alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
@@ -177,7 +178,19 @@ change nothing. `ask.mjs` and `resolve.mjs` on a comment still `open` claim it
 first (`open → working`).
 
 The page marks a comment's anchor (an element's outline, a text's rainbow)
-until its thread is first resolved: a follow-up does not bring it back.
+until its thread is first resolved: a follow-up does not bring it back. The
+elements picked in a message are not marked: their chip in the thread outlines
+one while it is hovered, and scrolls to it and flashes it once clicked.
+
+### Elements picked in a message
+
+While replying, the reader may pick elements in the page (the composer's
+pointer button): they go with the message, up to 5, as `elements` (see
+[A message](#a-message)), alone or with words, images or choices; the server
+drops one with no `route`. The `FOLLOWUP` and `EDIT` lines for the hooks name
+them after the reply's `choices`: ` elements=["<button> Buy","<a> Help on
+/help"]`, the page added when it is not the comment's. The agent reads them
+whole in the thread `claim.mjs` prints.
 
 ### Models
 

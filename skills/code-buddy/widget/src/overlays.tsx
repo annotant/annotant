@@ -627,10 +627,12 @@ export const HOVER_DWELL_MS = 50
  */
 export function ElementPicker({
   root,
+  hint = 'Click an element to comment on it. Escape cancels.',
   onPick,
   onCancel,
 }: {
   root: Element
+  hint?: string
   onPick: (element: Element) => void
   onCancel: () => void
 }) {
@@ -702,7 +704,7 @@ export function ElementPicker({
   const rect = shown?.getBoundingClientRect()
   return (
     <>
-      <div className="cb-hint">Click an element to comment on it. Escape cancels.</div>
+      <div className="cb-hint">{hint}</div>
       {shown && rect && (
         <div
           className="cb-hover"

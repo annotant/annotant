@@ -17,6 +17,17 @@ export interface ReviewElement {
   html: string
 }
 
+/**
+ * An element the reader picked in the page with a message of the thread, on
+ * `route`, the page they were on, which may be another than the comment's.
+ */
+export interface ReviewPickedElement extends ReviewElement {
+  route: string
+}
+
+/** The most elements one message may hold, as lib/format.mjs caps them. */
+export const MAX_PICKED = 5
+
 /** An element an area covers or cuts through: enough to find it in the code. */
 export type ReviewNode = Omit<ReviewElement, 'html'>
 
@@ -119,6 +130,8 @@ export interface ReviewMessage {
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */
   images?: string[]
+  /** Reader only, after the comment: the elements they picked in the page with it. */
+  elements?: ReviewPickedElement[]
 }
 
 interface ReviewCancellation {
@@ -206,6 +219,8 @@ export interface ReviewCommentPatch {
    * `choices`, or alone; ignored with only `status` or `cancelled`.
    */
   images?: NewImage[]
+  /** The elements the reader picked in the page with their reply, as `images`. */
+  elements?: ReviewPickedElement[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
 }
