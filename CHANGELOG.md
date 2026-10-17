@@ -78,6 +78,11 @@ released to the `stable` branch.
 
 ### Added
 
+- **What the agent understood, first.** With `"understood": true` in
+  `.code-buddy.json` (off by default), a comment's agent says in one line what
+  it will change and where before it edits anything, and the widget shows it
+  above its steps as "Understood: …": edit the comment to correct a misread
+  one at once. (#128)
 - **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
   message box, of a new comment or a reply: it shows as a thumbnail, goes
   with the message and shows in its bubble; an image alone is a message too.
