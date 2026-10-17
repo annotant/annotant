@@ -213,6 +213,8 @@ code { font-family: var(--cb-mono); }
 .cb-msg--reader { align-items: flex-end; padding-left: 40px; }
 .cb-msg--claude { align-items: flex-start; }
 .cb-msg-elements { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: 100%; }
+/* Sized to its text: the chip's negative margins would cut it short. */
+.cb-msg-elements .cb-element { margin: 0; }
 .cb-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .cb-images a { display: block; }
 .cb-images img { display: block; max-width: 160px; max-height: 120px; border: 1px solid var(--cb-border); border-radius: 10px; object-fit: cover; }
