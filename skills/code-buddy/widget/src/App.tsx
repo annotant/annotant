@@ -996,6 +996,9 @@ export default function App({ root }: { root: Element }) {
 
   // The page view lists only this page's comments: leaving a draft or a thread
   // for an empty one showed a blank panel, so fall back to the open comments.
+  /** The open thread came from a card pressed with the keyboard. */
+  const [openedByKeys, setOpenedByKeys] = useState(false)
+
   const backToList = () => {
     setThreadId(undefined)
     setDraft(undefined)
@@ -1037,15 +1040,17 @@ export default function App({ root }: { root: Element }) {
   const elementChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
     if (!anchor.element) return null
     const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    const show = () => setTarget(onThisPage ? elementFromAnchor(root, anchor) : undefined)
     return (
-      <span
+      <button
+        type="button"
         className="cb-element"
         title={anchor.element.selector}
         data-testid="cb-element"
-        onMouseEnter={() =>
-          setTarget(onThisPage ? elementFromAnchor(root, anchor) : undefined)
-        }
+        onMouseEnter={show}
         onMouseLeave={() => setTarget(undefined)}
+        onFocus={show}
+        onBlur={() => setTarget(undefined)}
         onClick={(event) => {
           event.stopPropagation()
           if (onThisPage) return centerOn(anchor, id)
@@ -1055,22 +1060,26 @@ export default function App({ root }: { root: Element }) {
       >
         <code>&lt;{anchor.element.tag}&gt;</code>
         <span>{anchor.element.text || anchor.element.selector}</span>
-      </span>
+      </button>
     )
   }
 
-  /** Like `elementChip`: hovered, the area shows again on the page; clicked, the page scrolls to it. */
+  /** Like `elementChip`: hovered or focused, the area shows again on the page; clicked, the page scrolls to it. */
   const areaChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
     const { area } = anchor
     if (!area) return null
     const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    const show = () => setTargetArea(onThisPage ? area : undefined)
     return (
-      <span
+      <button
+        type="button"
         className="cb-element cb-area-chip"
         title={areaSummary(area)}
         data-testid="cb-area-chip"
-        onMouseEnter={() => setTargetArea(onThisPage ? area : undefined)}
+        onMouseEnter={show}
         onMouseLeave={() => setTargetArea(undefined)}
+        onFocus={show}
+        onBlur={() => setTargetArea(undefined)}
         onClick={(event) => {
           event.stopPropagation()
           if (onThisPage) return spotlightArea(area, id)
@@ -1083,7 +1092,7 @@ export default function App({ root }: { root: Element }) {
           {area.width} × {area.height}
         </code>
         <span>{areaContents(area)}</span>
-      </span>
+      </button>
     )
   }
 
@@ -1299,8 +1308,19 @@ export default function App({ root }: { root: Element }) {
         key={comment.id}
         data-testid="cb-summary"
         className={`cb-item cb-summary ${comment.state === 'resolved' ? 'cb-item--faded' : ''} ${comment.id === activeId ? 'cb-item--active' : ''}`}
-        onClick={() => (showPage ? setThreadId(comment.id) : jump(comment))}
+        onClick={(event) => {
+          // A click of no press, from Enter or Space: the card goes, the focus goes to the thread.
+          setOpenedByKeys(event.detail === 0)
+          if (showPage) setThreadId(comment.id)
+          else jump(comment)
+        }}
       >
+        {/* For the keyboard: behind the card, its click reaches the card's. */}
+        <button
+          type="button"
+          className="cb-summary-open"
+          aria-label={gist(comment.messages[0]) || 'Open the discussion'}
+        />
         <div className="cb-summary-head">
           <Chip tone={status}>{STATUS_CHIPS[status]}</Chip>
           {!href ? (
@@ -1453,6 +1473,7 @@ export default function App({ root }: { root: Element }) {
                 <IconButton
                   icon="arrow-left"
                   label="Back to the list"
+                  autoFocus={openedByKeys}
                   onClick={backToList}
                 />
               )}
