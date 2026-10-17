@@ -121,41 +121,20 @@ async function pickTitle() {
   return screen.findByRole('textbox')
 }
 
-test('the picked element stays outlined while the comment is written', async () => {
+test("a picked element's chip outlines it on the page, with its rounded corners", async () => {
   await pickTitle()
+  // In the message box, as an image: the page marks it only while its chip is hovered.
+  expect(screen.queryByTestId('cb-target')).toBeNull()
 
-  await screen.findByTestId('cb-target')
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-  await waitFor(() => expect(screen.queryByTestId('cb-target')).toBeNull())
-})
-
-test("the picked element's frames sit on it, with its rounded corners", async () => {
-  const box = await pickTitle()
-  // On the title's box, not around it.
+  fireEvent.mouseEnter(screen.getByTestId('cb-element'))
   const outline = await screen.findByTestId('cb-target')
   expect([outline.style.top, outline.style.width, outline.style.borderRadius]).toEqual([
     '100px',
     '200px',
     '12px',
   ])
-
-  fireEvent.change(box, { target: { value: 'Make the title bigger' } })
-  fireEvent.keyDown(box, { key: 'Enter' })
-
-  await waitFor(() => expect(marks()).toHaveLength(1))
-  const [mark] = marks()
-  expect(mark instanceof HTMLElement && mark.style.borderRadius).toBe('12px')
-})
-
-test('the picked element turns in progress once its comment is saved', async () => {
-  const box = await pickTitle()
-  await screen.findByTestId('cb-target')
-
-  fireEvent.change(box, { target: { value: 'Make the title bigger' } })
-  fireEvent.keyDown(box, { key: 'Enter' })
-
-  await waitFor(() => expect(marks()).toHaveLength(1))
-  expect(screen.queryByTestId('cb-target')).toBeNull()
+  fireEvent.mouseLeave(screen.getByTestId('cb-element'))
+  await waitFor(() => expect(screen.queryByTestId('cb-target')).toBeNull())
 })
 
 /**

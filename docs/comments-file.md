@@ -98,7 +98,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
-| `elements` | PickedElement[], reader only, after the comment | The elements they picked in the page with it, up to 5: an element's `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
+| `elements` | PickedElement[], reader only | The elements they picked in the page with it, up to 5: an element's `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
 
 ### An event
 
@@ -184,18 +184,22 @@ one while it is hovered, and scrolls to it and flashes it once clicked.
 
 ### Elements picked in a message
 
-While replying, the reader may pick elements in the page (the composer's
-pointer button): they go with the message, up to 5, as `elements` (see
+The reader may pick elements in the page for any message, the comment or a
+reply (the composer's pointer button; the widget's _Point at element_ starts
+a comment with one): they go with the message, up to 5, as `elements` (see
 [A message](#a-message)), alone or with words, images or choices; the server
-drops one with no `route`. The `FOLLOWUP` and `EDIT` lines for the hooks name
-them after the reply's `choices`: ` elements=["<button> Buy","<a> Help on
-/help"]`, the page added when it is not the comment's. The agent reads them
-whole in the thread `claim.mjs` prints.
+drops one with no `route`. The widget no longer writes `anchor.element`, which
+older comments keep. The `NEW` line for the hooks names them after the
+comment's `body`, the `FOLLOWUP` and `EDIT` lines after the reply's `choices`:
+` elements=["<button> Buy","<a> Help on /help"]`, the page added when it is
+not the comment's. The agent reads them whole in the thread `claim.mjs`
+prints.
 
 ### Models
 
 Before the plugin's hooks start a comment's agent, they read the comment (the reader's last message,
-the selected text or the element's tag and text, the route) and asks Claude
+the selected text, the element's tag and text and those of the elements picked
+with the message, the route) and asks Claude
 Code's small fast model for one label:
 
 | Label | For |

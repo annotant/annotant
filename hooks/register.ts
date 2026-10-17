@@ -285,9 +285,10 @@ function classifiedText(comment: CommentsFile['comments'][number]) {
     '',
     `Page: ${comment.route === '*' ? 'the whole app' : (comment.route ?? '')}`,
     ...(quote ? [`Selected text: "${short(quote, 300)}"`] : []),
-    ...(element?.tag
-      ? [`Element: <${element.tag}> ${short(element.text ?? '', 200)}`]
-      : []),
+    // The comment's element, then those picked in the page with the message.
+    ...[element, ...(said.elements ?? [])].flatMap((one) =>
+      one?.tag ? [`Element: <${one.tag}> ${short(one.text ?? '', 200)}`] : [],
+    ),
     `Comment: ${short(said.body.trim(), MAX_CLASSIFIED)}`,
   ].join('\n')
 }

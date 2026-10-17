@@ -89,8 +89,10 @@ export function fakeServer(comments: ReviewComment[], { reachable = true } = {})
       const body = typeof init.body === 'string' ? init.body : ''
       // The widget sends a new comment: the test reads it back as one.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      const { anchor, ...fields } = JSON.parse(body) as NewReviewComment
+      const { anchor, elements, ...fields } = JSON.parse(body) as NewReviewComment
       const created = comment({ id: `c${comments.length + 1}`, ...fields, ...anchor })
+      const [first] = created.messages
+      if (elements && first) created.messages[0] = { ...first, elements }
       comments.push(created)
       return Response.json(created)
     }

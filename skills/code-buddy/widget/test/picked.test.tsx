@@ -210,3 +210,80 @@ test('a stopped reply of elements alone goes again without words', async () => {
     expect(server.patches).toEqual([{ id: 'c1', patch: { text: '', cancelled: false } }]),
   )
 })
+
+/** What the widget POSTed last, as the server reads it. */
+function posted(server: ReturnType<typeof fakeServer>): unknown {
+  const call = server.fetch.mock.calls.findLast(([, init]) => init?.method === 'POST')
+  const body = call?.[1]?.body
+  return typeof body === 'string' ? JSON.parse(body) : undefined
+}
+
+test('pointing at an element starts a comment whose message box holds it', async () => {
+  const server = fakeServer([])
+  renderWidget()
+  const title = pointAtTitle()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
+  fireEvent.click(title, { clientX: 50, clientY: 20 })
+
+  // A comment about the page, as one started otherwise: the element is in the box.
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  expect(screen.getByTestId('cb-picked').textContent).toContain('Playground')
+  expect(screen.getByRole('checkbox')).toBeTruthy()
+  fireEvent.change(box, { target: { value: 'Bigger' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+
+  await waitFor(() =>
+    expect(posted(server)).toMatchObject({
+      anchor: { quote: '', section: '', occurrence: 0 },
+      body: 'Bigger',
+      elements: [TITLE],
+    }),
+  )
+  expect(posted(server)).not.toHaveProperty('anchor.element')
+  // Its first message shows the element, as a reply's would.
+  expect((await screen.findByTestId('cb-msg-elements')).textContent).toContain(
+    'Playground',
+  )
+})
+
+test('a new comment picks elements in the page from its message box, and may hold them alone', async () => {
+  const server = fakeServer([])
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await screen.findByRole('textbox', { name: 'What should change?' })
+  const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save' })
+  expect(save.disabled).toBe(true)
+
+  pickTitle(pointAtTitle(), 2)
+  expect(screen.getAllByRole('button', { name: /Remove the element/ })).toHaveLength(1)
+  expect(screen.getByTestId('code-buddy-panel')).toBeTruthy()
+
+  fireEvent.click(save)
+  await waitFor(() =>
+    expect(posted(server)).toMatchObject({ body: '', elements: [TITLE] }),
+  )
+})
+
+test('pointing at an element with a comment under way adds it to that comment', async () => {
+  const server = fakeServer([])
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  fireEvent.change(await screen.findByRole('textbox', { name: 'What should change?' }), {
+    target: { value: 'Same size' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  const title = pointAtTitle()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
+  fireEvent.click(title, { clientX: 50, clientY: 20 })
+
+  const box = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'What should change?',
+  })
+  expect(box.value).toBe('Same size')
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(posted(server)).toMatchObject({ body: 'Same size', elements: [TITLE] }),
+  )
+})

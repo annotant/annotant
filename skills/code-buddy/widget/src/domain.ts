@@ -130,7 +130,7 @@ export interface ReviewMessage {
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */
   images?: string[]
-  /** Reader only, after the comment: the elements they picked in the page with it. */
+  /** Reader only: the elements they picked in the page with it. */
   elements?: ReviewPickedElement[]
 }
 
@@ -202,6 +202,7 @@ export interface NewImage {
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {
   body: string
   images?: NewImage[]
+  elements?: ReviewPickedElement[]
 }
 
 /** What the reader asks of a comment; the server turns it into a move. */
@@ -289,13 +290,20 @@ export function latestAttached(comment: Pick<ReviewComment, 'messages'>): boolea
   return !!own?.images?.length || !!own?.elements?.length
 }
 
-/** What a message says, in one line: its words, or the images that are all it holds. */
+/** What a message says, in one line: its words, or the images or elements that are all it holds. */
 export function gist(
-  message: Pick<ReviewMessage, 'body' | 'images'> | undefined,
+  message: Pick<ReviewMessage, 'body' | 'images' | 'elements'> | undefined,
 ): string {
   if (!message) return ''
-  if (message.body || !message.images?.length) return message.body
-  return message.images.length === 1 ? 'An image' : `${message.images.length} images`
+  if (message.body) return message.body
+  const images = message.images?.length ?? 0
+  const elements = message.elements?.length ?? 0
+  const parts = [
+    images && (images === 1 ? 'an image' : `${images} images`),
+    elements && (elements === 1 ? 'an element' : `${elements} elements`),
+  ].filter(Boolean)
+  const said = parts.join(' and ')
+  return said.charAt(0).toUpperCase() + said.slice(1)
 }
 
 export function normaliseQuote(text: string): string {

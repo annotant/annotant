@@ -1053,6 +1053,36 @@ test('takes images with a reply only', async () => {
   assert.equal(existsSync(path.join(root, '.code-buddy', 'images', created.id)), false)
 })
 
+test('takes a comment of the elements the reader picked alone, and tells the hooks', async () => {
+  const title = { selector: 'h1', tag: 'h1', text: 'Cart', html: '<h1>Cart</h1>' }
+  // With no route, the element is dropped: the comment holds nothing.
+  const empty = await post(JSON.stringify({ route: '/cart', elements: [title] }))
+  assert.equal(empty.status, 400)
+  const printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/cart',
+        anchor: { quote: '' },
+        elements: [
+          { ...title, route: '/cart' },
+          { ...title, route: '/help' },
+        ],
+      }),
+    ),
+  )
+  assert.equal(created.messages[0].body, '')
+  assert.deepEqual(created.messages[0].elements, [
+    { ...title, route: '/cart' },
+    { ...title, route: '/help' },
+  ])
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(
+    event,
+    / page-level body="" elements=\["<h1> Cart","<h1> Cart on \/help"\]$/,
+  )
+})
+
 test('takes the elements the reader picked with a reply, and tells the hooks', async () => {
   const created = await json(
     await post(JSON.stringify({ route: '/cart', body: 'Bigger' })),

@@ -455,12 +455,12 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     },
 
     /**
-     * The reader's new comment: their words, and the images they attached,
-     * open the thread.
-     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[] }} input
+     * The reader's new comment: their words, the images they attached and
+     * the elements they picked in the page, open the thread.
+     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[], elements?: PickedElement[] }} input
      * @returns {Promise<CommentV2>}
      */
-    create({ route, url, anchor, body, images = [] }) {
+    create({ route, url, anchor, body, images = [], elements = [] }) {
       return exclusive(async () => {
         const comments = await readAll()
         const at = new Date().toISOString()
@@ -479,6 +479,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               author: 'reader',
               body,
               at,
+              ...(elements.length ? { elements } : {}),
             },
           ],
           events: [{ at, state: 'open', by: 'reader' }],

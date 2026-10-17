@@ -384,13 +384,34 @@ function Question({
 const adding = (images: NewImage[] = [], added: NewImage[]) =>
   [...images, ...added].slice(0, MAX_IMAGES)
 
-/** The images attached so far, but the one at `index`. */
-const removing = (images: NewImage[] = [], index: number) =>
-  images.filter((_, other) => other !== index)
+/** The images attached or the elements picked so far, but the one at `index`. */
+const removing = <T,>(list: T[] = [], index: number) =>
+  list.filter((_, other) => other !== index)
 
 /** What the reader wrote or attached in a draft: Escape or a click away would lose it. */
-const written = (draft: Pick<Draft, 'body' | 'images'>) =>
-  !!draft.body.trim() || !!draft.images?.length
+const written = (draft: Pick<Draft, 'body' | 'images' | 'elements'>) =>
+  !!draft.body.trim() || !!draft.images?.length || !!draft.elements?.length
+
+/**
+ * The elements picked for a message, with `added` once: picked again, it is
+ * there already; past the cap, the reader is told and it is left out.
+ */
+function joining(elements: ReviewPickedElement[] = [], added: ReviewPickedElement) {
+  if (
+    elements.some(
+      (other) => other.selector === added.selector && other.route === added.route,
+    )
+  )
+    return elements
+  if (elements.length >= MAX_PICKED) {
+    toast(`A message holds up to ${MAX_PICKED} elements.`, true)
+    return elements
+  }
+  return [...elements, added]
+}
+
+/** The message box being written in, when an element in the page is picked for a new comment. */
+const DRAFT = 'draft'
 
 /** Draft keys: each draft gets a message box of its own, its reads with it. */
 let drafts = 0
@@ -401,6 +422,8 @@ interface Draft extends ReviewAnchor {
   body: string
   /** The images pasted or dropped in the message box. */
   images?: NewImage[]
+  /** The elements picked in the page for it. */
+  elements?: ReviewPickedElement[]
   app?: boolean
   /** The page the draft was started on: the app may navigate before it is saved. */
   route: string
@@ -513,7 +536,7 @@ export default function App({ root }: { root: Element }) {
     left: number
   }>()
   const [picking, setPicking] = useState(false)
-  // The thread whose reply an element in the page is being picked for.
+  // The thread whose reply an element in the page is being picked for, or the draft's (`DRAFT`).
   const [attachingTo, setAttachingTo] = useState<string>()
   const [drawing, setDrawing] = useState(false)
   const [target, setTarget] = useState<Element>()
@@ -731,12 +754,18 @@ export default function App({ root }: { root: Element }) {
   }, [pendingCenter, root, route, spotlight, spotlightArea])
 
   const startDraft = useCallback(
-    (anchor: ReviewAnchor, body = '', images?: NewImage[]) => {
+    (
+      anchor: ReviewAnchor,
+      body = '',
+      images?: NewImage[],
+      elements?: ReviewPickedElement[],
+    ) => {
       setDraft({
         ...anchor,
         key: (drafts += 1),
         body,
         ...(images?.length ? { images } : {}),
+        ...(elements?.length ? { elements } : {}),
         route: window.location.pathname,
         // Never the hash, where a sign-in may leave its token.
         url: window.location.origin + window.location.pathname + window.location.search,
@@ -745,6 +774,7 @@ export default function App({ root }: { root: Element }) {
       setThreadId(undefined)
       setOpen(true)
       setPicking(false)
+      setAttachingTo(undefined)
       setDrawing(false)
       setSelectionButton(undefined)
       window.getSelection()?.removeAllRanges()
@@ -752,26 +782,46 @@ export default function App({ root }: { root: Element }) {
     [],
   )
 
+  // Drawn or pointed at from a page-level draft, or over another area, the area
+  // or the element joins what the reader had written and attached; a draft on a
+  // text starts over.
+  const kept = view === 'page' && draft && draftHere && !draft.quote ? draft : undefined
+  const keptBody = kept?.body ?? ''
+  const keptImages = kept?.images
+  const keptElements = kept?.elements
+  const drawArea = useCallback(
+    (rect: ReviewBox) =>
+      startDraft(anchorFromArea(root, rect), keptBody, keptImages, keptElements),
+    [root, startDraft, keptBody, keptImages, keptElements],
+  )
+
+  /** An element pointed at in the page, as a new comment's message holds it: on the page it is on. */
+  const pickedOf = useCallback(
+    (element: Element): ReviewPickedElement | undefined => {
+      const { element: found } = anchorFromElement(root, element)
+      return found && { ...found, route: window.location.pathname }
+    },
+    [root],
+  )
+
+  // Pointing at an element is a shortcut: a draft whose message box holds it.
   const pickElement = useCallback(
-    (element: Element) => startDraft(anchorFromElement(root, element)),
-    [root, startDraft],
+    (element: Element) => {
+      const added = pickedOf(element)
+      if (!kept) {
+        startDraft(PAGE_LEVEL, '', undefined, added && [added])
+        return
+      }
+      setDraft({ ...kept, ...(added ? { elements: joining(kept.elements, added) } : {}) })
+      setView('page')
+      setThreadId(undefined)
+      setOpen(true)
+      setPicking(false)
+    },
+    [pickedOf, kept, startDraft],
   )
 
   const cancelPick = useCallback(() => setPicking(false), [])
-
-  // Drawn from a page-level draft, or over another area, the area joins what the
-  // reader had written and attached; a draft on a text or an element starts over,
-  // as when picking.
-  const kept =
-    view === 'page' && draft && draftHere && !draft.quote && !draft.element
-      ? draft
-      : undefined
-  const keptBody = kept?.body ?? ''
-  const keptImages = kept?.images
-  const drawArea = useCallback(
-    (rect: ReviewBox) => startDraft(anchorFromArea(root, rect), keptBody, keptImages),
-    [root, startDraft, keptBody, keptImages],
-  )
 
   const cancelDraw = useCallback(() => setDrawing(false), [])
 
@@ -796,7 +846,16 @@ export default function App({ root }: { root: Element }) {
 
   const save = async () => {
     if (!draft || !written(draft)) return
-    const { key: _, app, body, images, route: startedOn, url, ...anchor } = draft
+    const {
+      key: _,
+      app,
+      body,
+      images,
+      elements,
+      route: startedOn,
+      url,
+      ...anchor
+    } = draft
     await run(async () => {
       const comment = await createComment({
         anchor,
@@ -804,6 +863,7 @@ export default function App({ root }: { root: Element }) {
         route: app ? APP_ROUTE : startedOn,
         url,
         ...(images?.length ? { images } : {}),
+        ...(elements?.length ? { elements } : {}),
       })
       setCreated(comment)
       setDraft(undefined)
@@ -849,40 +909,58 @@ export default function App({ root }: { root: Element }) {
   const replyElements =
     (replying && followUp?.id === replying.id && followUp.elements) || []
   const replyingId = replying?.id
+  // The message box an element is picked for: the draft's, or the reply's.
+  const writingIn = drafting ? DRAFT : replyingId
 
-  // The picker goes with the reply it picks for: off while the reader is elsewhere.
-  const picksFor = open && attachingTo === replyingId ? replyingId : undefined
+  // The picker goes with the message box it picks for: off while the reader is elsewhere.
+  const picksFor = open && attachingTo === writingIn ? writingIn : undefined
 
-  /** The element picked joins the reply's, once: the reader picks again for another. */
+  /** The element picked joins the message's, once: the reader picks again for another. */
   const attachElement = useCallback(
     (element: Element) => {
       setAttachingTo(undefined)
-      const { element: found } = anchorFromElement(root, element)
-      if (!replyingId || !found) return
-      const added = { ...found, route: window.location.pathname }
-      setFollowUp((current) => {
-        const own = current?.id === replyingId ? current : undefined
-        const elements = own?.elements ?? []
-        if (
-          elements.some(
-            (other) => other.selector === added.selector && other.route === added.route,
-          )
+      const added = pickedOf(element)
+      if (!added) return
+      if (writingIn === DRAFT) {
+        setDraft(
+          (current) =>
+            current && { ...current, elements: joining(current.elements, added) },
         )
-          return current
-        if (elements.length >= MAX_PICKED) {
-          toast(`A message holds up to ${MAX_PICKED} elements.`, true)
-          return current
-        }
+        return
+      }
+      if (!writingIn) return
+      setFollowUp((current) => {
+        const own = current?.id === writingIn ? current : undefined
         return {
           ...own,
-          id: replyingId,
+          id: writingIn,
           body: own?.body ?? '',
-          elements: [...elements, added],
+          elements: joining(own?.elements, added),
         }
       })
     },
-    [root, replyingId],
+    [pickedOf, writingIn],
   )
+
+  /** The chips of the elements picked for a message box, each with its button to remove it. */
+  const pickedChips = (
+    elements: ReviewPickedElement[],
+    remove: (place: number) => void,
+  ) =>
+    elements.map((element, place) => (
+      // oxlint-disable-next-line react/no-array-index-key -- removing one moves the next up: its place is its name
+      <div key={place} className="cb-area-draft">
+        {elementChip({ ...PAGE_LEVEL, element }, element.route)}
+        <IconButton
+          icon="x"
+          label={`Remove the element <${element.tag}>`}
+          onClick={() => {
+            setTarget(undefined)
+            remove(place)
+          }}
+        />
+      </div>
+    ))
 
   const cancelAttach = useCallback(() => setAttachingTo(undefined), [])
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
@@ -1065,12 +1143,9 @@ export default function App({ root }: { root: Element }) {
     </Button>
   )
 
-  // The element the comment being written is about stays outlined, as its text would.
-  const outlined =
-    target ??
-    flash ??
-    (drafting && draftHere ? elementFromAnchor(root, draft) : undefined)
-  // And so does the area it was drawn on.
+  // An element is outlined while its chip is hovered, or for a moment once clicked.
+  const outlined = target ?? flash
+  // The area the comment being written was drawn on stays outlined, as its text would.
   const outlinedArea =
     targetArea ?? flashArea ?? (drafting && draftHere ? draft.area : undefined)
 
@@ -1606,7 +1681,6 @@ export default function App({ root }: { root: Element }) {
                       {draft.quote && (
                         <blockquote className="cb-quote">{draft.quote}</blockquote>
                       )}
-                      {elementChip(draft)}
                       {draft.area && (
                         <div className="cb-area-draft">
                           {areaChip(draft)}
@@ -1621,7 +1695,7 @@ export default function App({ root }: { root: Element }) {
                           />
                         </div>
                       )}
-                      {!draft.quote && !draft.element && !draft.area && (
+                      {!draft.quote && !draft.area && (
                         <div className="cb-draft-scope">
                           <Checkbox
                             checked={!draft.app}
@@ -1676,6 +1750,17 @@ export default function App({ root }: { root: Element }) {
                   autoFocus
                   value={draft.body}
                   images={draft.images ?? []}
+                  elements={pickedChips(draft.elements ?? [], (place) =>
+                    setDraft(
+                      (current) =>
+                        current && {
+                          ...current,
+                          elements: removing(current.elements, place),
+                        },
+                    ),
+                  )}
+                  picking={!!picksFor}
+                  onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
                   placeholder="What should change?"
                   sendLabel="Save"
                   disabled={busy}
@@ -1706,28 +1791,15 @@ export default function App({ root }: { root: Element }) {
                   key={replying.id}
                   value={reply}
                   images={replyImages}
-                  elements={replyElements.map((element, place) => (
-                    // oxlint-disable-next-line react/no-array-index-key -- removing one moves the next up: its place is its name
-                    <div key={place} className="cb-area-draft">
-                      {elementChip({ ...PAGE_LEVEL, element }, element.route)}
-                      <IconButton
-                        icon="x"
-                        label={`Remove the element <${element.tag}>`}
-                        onClick={() => {
-                          setTarget(undefined)
-                          setFollowUp(
-                            (current) =>
-                              current && {
-                                ...current,
-                                elements: (current.elements ?? []).filter(
-                                  (_, other) => other !== place,
-                                ),
-                              },
-                          )
-                        }}
-                      />
-                    </div>
-                  ))}
+                  elements={pickedChips(replyElements, (place) =>
+                    setFollowUp(
+                      (current) =>
+                        current && {
+                          ...current,
+                          elements: removing(current.elements, place),
+                        },
+                    ),
+                  )}
                   picking={!!picksFor}
                   onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
                   placeholder={

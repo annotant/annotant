@@ -548,13 +548,18 @@ async function handle(req, res) {
     if (req.method === 'POST') {
       const input = await readJson(req)
       const body = typeof input.body === 'string' ? input.body.trim() : ''
-      // An image alone says enough, as in a prompt to Claude.
+      // An image or an element alone says enough, as in a prompt to Claude.
       const images = parseImages(input.images)
-      if (typeof input.route !== 'string' || !input.route || (!body && !images.length)) {
+      const elements = sanitisePicked(input.elements)
+      if (
+        typeof input.route !== 'string' ||
+        !input.route ||
+        (!body && !images.length && !elements.length)
+      ) {
         return send(
           res,
           400,
-          { error: 'route and a body or an image are required' },
+          { error: 'route and a body, an image or an element are required' },
           cors,
         )
       }
@@ -563,6 +568,7 @@ async function handle(req, res) {
         url: sanitiseUrl(input.url),
         body,
         images,
+        elements,
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),
@@ -676,7 +682,7 @@ const quoted = (text) => JSON.stringify(text)
 const nodeLabel = (node) => `<${node.tag}> ${node.text.slice(0, 40)}`.trim()
 
 /**
- * The elements the reader picked with their reply, on the hooks' line, each
+ * The elements the reader picked with a message, on the hooks' line, each
  * with its page when it is not the comment's; the agent reads them whole in
  * the thread claim.mjs prints.
  * @param {import('./lib/format.mjs').PickedElement[]} elements
@@ -720,14 +726,16 @@ function describe(comment) {
   const reply = latestReply(comment)
   // The options the reader chose, apart: a label may hold the ", " that joins them in the text.
   const choices = reply?.choices ? ` choices=${JSON.stringify(reply.choices)}` : ''
-  const picked = reply?.elements?.length
-    ? ` elements=${describePicked(reply.elements, comment.route)}`
+  // The message the line is about: the reader's reply, else their comment.
+  const message = reply ?? comment.messages[0]
+  const picked = message?.elements?.length
+    ? ` elements=${describePicked(message.elements, comment.route)}`
     : ''
   const text = reply
     ? `followup=${quoted(reply.body)}${choices}${picked} messages=${comment.messages.length}`
-    : `body=${quoted(comment.messages[0]?.body ?? '')}`
+    : `body=${quoted(message?.body ?? '')}${picked}`
   // The images of that message, as files the agent opens with Read.
-  const attached = (reply ?? comment.messages[0])?.images ?? []
+  const attached = message?.images ?? []
   const images = attached.length
     ? ` images=${JSON.stringify(attached.map((name) => path.join(imagesDir(project, comment.id), name)))}`
     : ''

@@ -121,7 +121,7 @@ export const MAX_PICKED = 5
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
  * @property {PickedElement[]} [elements] Reader only: the elements they picked
- *   in the page with it, after the comment.
+ *   in the page with it.
  */
 
 /**
