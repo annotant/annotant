@@ -172,6 +172,33 @@ test('only a claimed comment shows progress, a tool merged from start to end', a
   ])
 })
 
+test("an agent's Understood line stays served once later steps push it out of progress", async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, kind: 'message', label: 'Let me look at the card.' },
+    {
+      at: 2,
+      kind: 'message',
+      label: 'Understood: the title becomes "Plans", in Home.tsx',
+    },
+    ...Array.from({ length: 12 }, (_, i) => ({ at: 3 + i, kind: 'thinking', label: '' })),
+    { at: 20, kind: 'message', label: 'Understood: something else' },
+  )
+  const [listed] = await comments.list('/')
+  assert.equal(listed.progress?.length, 10)
+  assert.equal(listed.understood, 'the title becomes "Plans", in Home.tsx')
+})
+
+test('a run whose agent wrote no Understood line serves none', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, { at: 1, kind: 'message', label: 'Reading.' })
+  assert.equal((await comments.list('/'))[0].understood, undefined)
+})
+
 test('steps show in the order they happened, whichever process wrote one first', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)

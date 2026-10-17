@@ -35,6 +35,22 @@ test('a comment shows its new step as soon as the server says it changed', async
   )
 })
 
+test('what the agent understood shows above its current step', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      understood: 'the title becomes "Plans", in src/Home.tsx',
+      progress: [{ at: 1, kind: 'edit', label: 'src/Home.tsx', state: 'running' }],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+  expect((await screen.findByTestId('cb-understood')).textContent).toBe(
+    'Understood: the title becomes "Plans", in src/Home.tsx',
+  )
+  expect(screen.getByTestId('cb-progress').textContent).toContain('Editing src/Home.tsx')
+})
+
 test('the widget asks for nothing while nothing changes', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   onTestFinished(() => {

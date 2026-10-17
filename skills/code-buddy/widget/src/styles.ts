@@ -230,6 +230,9 @@ code { font-family: var(--cb-mono); }
 .cb-message-time { font-size: 11px; color: var(--cb-muted); font-variant-numeric: tabular-nums; }
 .cb-working { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cb-accent); }
 .cb-working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Above the steps, stays while they change: what the agent said it would do. */
+.cb-understood { margin-bottom: 6px; font-size: 13px; color: var(--cb-text); overflow-wrap: anywhere; }
+.cb-understood strong { color: var(--cb-accent-strong); }
 /* One line, the latest step: the previous one leaves right, the new one enters left. */
 .cb-current { position: relative; overflow: hidden; padding: 8px 10px; border-radius: var(--cb-radius); background: var(--cb-accent-weak); color: var(--cb-accent-strong); font-size: 13px; font-weight: 600; }
 .cb-current:has(.cb-current-line--failed) { background: var(--cb-red-bg); }

@@ -1197,6 +1197,11 @@ export default function App({ root }: { root: Element }) {
       {isActive(comment) &&
         (comment.state === 'working' ? (
           <div data-testid="cb-working">
+            {comment.understood && (
+              <div className="cb-understood" data-testid="cb-understood">
+                <strong>Understood:</strong> {comment.understood}
+              </div>
+            )}
             <CurrentStep step={comment.progress?.at(-1)} />
           </div>
         ) : watching ? (

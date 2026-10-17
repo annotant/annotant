@@ -242,7 +242,9 @@ lines to `<id>.history.jsonl` with a dev build of the widget, or drops them,
 and the hooks add the ending script's own step, done, to the history.
 
 The server never writes steps into `comments.json`. It serves them with the
-comments: `progress`, the last 10 steps of the run in progress, and with
+comments: `progress`, the last 10 steps of the run in progress, `understood`, the
+first `message` step of that run that begins with `Understood:`, without it
+(the line an agent writes with `"understood": true` in `.code-buddy.json`), and with
 `history=1` (the debug panel), `history`, every step of every run. With a dev
 widget, `GET /api/debug/steps/<id>` serves both files as they are on disk,
 history first, which the debug panel opens in a tab.

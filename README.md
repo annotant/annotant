@@ -144,6 +144,9 @@ directory, else from the repository root.
   **Cancel**. Claude Code often hides the thinking itself; its summary shows
   when available, for instance with `"showThinkingSummaries": true` in your
   Claude Code settings.
+  With `"understood": true` in `.code-buddy.json` (off by default), the agent
+  first says in one line what it will change and where, shown above its steps
+  as "Understood: …": edit the comment to correct it before it goes far.
   Cancelling stops the agent and lists the files it had already changed; edit
   the comment and send it again to hand it to a new agent.
 - Once answered: reply in the thread to follow up, reusing the same agent and
