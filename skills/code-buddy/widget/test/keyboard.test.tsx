@@ -26,6 +26,10 @@ test("a comment card in the page's list is a button that opens its thread", asyn
   press(await screen.findByRole('button', { name: 'Make the title bigger' }))
 
   expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
+  // The card is gone: the focus moves into the thread, not back to the page.
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Back to the list' }),
+  )
 })
 
 test('a comment card in All comments is a button that opens its thread', async () => {
@@ -36,6 +40,10 @@ test('a comment card in All comments is a button that opens its thread', async (
   press(await screen.findByRole('button', { name: 'Make the title bigger' }))
 
   expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
+  // The card is gone: the focus moves into the thread, not back to the page.
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'Back to the list' }),
+  )
 })
 
 test('the element chip is a button that centers the page on its element', async () => {

@@ -995,6 +995,9 @@ export default function App({ root }: { root: Element }) {
 
   // The page view lists only this page's comments: leaving a draft or a thread
   // for an empty one showed a blank panel, so fall back to the open comments.
+  /** The open thread came from a card pressed with the keyboard. */
+  const [openedByKeys, setOpenedByKeys] = useState(false)
+
   const backToList = () => {
     setThreadId(undefined)
     setDraft(undefined)
@@ -1304,7 +1307,12 @@ export default function App({ root }: { root: Element }) {
         key={comment.id}
         data-testid="cb-summary"
         className={`cb-item cb-summary ${comment.state === 'resolved' ? 'cb-item--faded' : ''} ${comment.id === activeId ? 'cb-item--active' : ''}`}
-        onClick={() => (showPage ? setThreadId(comment.id) : jump(comment))}
+        onClick={(event) => {
+          // A click of no press, from Enter or Space: the card goes, the focus goes to the thread.
+          setOpenedByKeys(event.detail === 0)
+          if (showPage) setThreadId(comment.id)
+          else jump(comment)
+        }}
       >
         {/* For the keyboard: behind the card, its click reaches the card's. */}
         <button
@@ -1464,6 +1472,7 @@ export default function App({ root }: { root: Element }) {
                 <IconButton
                   icon="arrow-left"
                   label="Back to the list"
+                  autoFocus={openedByKeys}
                   onClick={backToList}
                 />
               )}
