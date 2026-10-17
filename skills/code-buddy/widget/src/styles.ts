@@ -187,7 +187,10 @@ code { font-family: var(--cb-mono); }
 .cb-item:hover .cb-delete, .cb-item .cb-delete:focus-visible { opacity: 1; }
 .cb-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .cb-item-top > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.cb-summary { gap: 6px; transition: border-color .15s, background .15s; }
+.cb-summary { position: relative; isolation: isolate; gap: 6px; transition: border-color .15s, background .15s; }
+/* The card's open action for the keyboard, stretched behind its content: its ring is the card's. */
+.cb-summary-open { position: absolute; inset: 0; z-index: -1; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.cb-summary-open:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; }
 .cb-summary:hover { border-color: var(--cb-accent); background: var(--cb-surface-2); }
 .cb-summary p { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cb-summary-head { display: flex; align-items: center; gap: 8px; }
@@ -262,8 +265,8 @@ code { font-family: var(--cb-mono); }
 .cb-stopped { padding: 8px; border-radius: var(--cb-radius); background: var(--cb-red-bg); color: var(--cb-red); font-size: 13px; }
 .cb-stopped code { overflow-wrap: anywhere; }
 
-.cb-element { display: inline-flex; align-items: baseline; gap: 4px; max-width: 100%; margin: 0 -4px; padding: 0 4px; border-radius: 6px; font-size: 13px; color: var(--cb-muted); cursor: pointer; }
-.cb-element:hover { background: var(--cb-surface-2); }
+.cb-element { display: inline-flex; align-items: baseline; gap: 4px; max-width: 100%; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; font-size: 13px; line-height: inherit; text-align: left; color: var(--cb-muted); cursor: pointer; }
+.cb-element:hover, .cb-element:focus-visible { background: var(--cb-surface-2); }
 .cb-element code { color: var(--cb-accent); }
 .cb-element span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cb-area-chip svg { flex-shrink: 0; align-self: center; width: 14px; height: 14px; color: var(--cb-accent); }

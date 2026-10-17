@@ -515,3 +515,21 @@ test('an area opened from another page waits for its element to be laid out', as
   )
   expect(sessionStorage.getItem('code-buddy:center')).toBeNull()
 })
+
+test("the area's chip works from the keyboard: focused it shows the area, pressed it centres it", async () => {
+  openPanel('page', 'c1')
+  renderCards([comment({ area: DRAWN, state: 'resolved' })])
+
+  const chip = await screen.findByRole('button', { name: /500 × 60/ })
+  fireEvent.focus(chip)
+  await screen.findByTestId('cb-area-target')
+  fireEvent.blur(chip)
+  await waitFor(() => expect(screen.queryByTestId('cb-area-target')).toBeNull())
+
+  // Enter or Space on a focused button is its click.
+  fireEvent.click(chip)
+  expect(window.scrollBy).toHaveBeenCalledWith({
+    top: 300 + 30 - window.innerHeight / 2,
+    behavior: 'smooth',
+  })
+})
