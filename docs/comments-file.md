@@ -62,11 +62,11 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | --- | --- | --- |
 | `id` | string | A UUID. |
 | `route` | string | The page's path, or `*` for the whole app. |
-| `url` | string, optional | An `http` or `https` URL, up to 2000 characters, without credentials or hash; the server drops any other, and replaces the values of the query's secret-looking parameters (`token`, `code`, `session`…) with `redacted`. |
+| `url` | string, optional | An `http` or `https` URL, up to 2000 characters, without credentials or hash; the server drops any other, and replaces the values of its secret-looking parameters (`token`, `code`, `session`…), in the query or the path (`;jsessionid=…`), with `redacted`. |
 | `anchor.section` | string | Up to 300 characters. |
 | `anchor.quote` | string | Whitespace-collapsed, up to 2000 characters. |
 | `anchor.occurrence` | integer ≥ 0 | |
-| `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links. |
+| `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links (`href`, `src`, `srcset`, `data-*`…). |
 | `state` | State | See [States](#states-and-moves). |
 | `createdAt` | ISO date | Lists sort by it. |
 | `messages` | Message[] | The whole thread, the reader's comment first. |

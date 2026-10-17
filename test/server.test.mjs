@@ -214,6 +214,17 @@ test('keeps no secret of the page in its url', async () => {
     await stored('http://localhost:3000/?access%5Ftoken=abc;sig=def'),
     'http://localhost:3000/?access%5Ftoken=redacted;sig=redacted',
   )
+  assert.equal(
+    await stored(
+      'http://localhost:3000/a;jsessionid=abc/b?Authorization=Bearer%20x&sid=s',
+    ),
+    'http://localhost:3000/a;jsessionid=redacted/b?Authorization=redacted&sid=redacted',
+  )
+  // A name that does not decode is tested as written.
+  assert.equal(
+    await stored('http://localhost:3000/?%E0token=abc'),
+    'http://localhost:3000/?%E0token=redacted',
+  )
 })
 
 test('keeps no secret of the page in the html of an element', async () => {
@@ -231,10 +242,20 @@ test('keeps no secret of the page in the html of an element', async () => {
       '<a href="/reset?token=redacted&amp;tab=2#access_token=redacted" title="a > b">Your token</a>' +
       '<svg><use xlink:href="/icons.svg?Signature=redacted#x"></use></svg></form>',
   )
+  assert.equal(
+    await storedHtml(
+      '<img srcset="/a.png?token=abc 1x, /b.png?token=abc 2x" data-src="/b.jpg?X-Amz-Signature=def&amp;w=2" data-key="ghi" alt="">',
+    ),
+    '<img srcset="/a.png?token=redacted 1x, /b.png?token=redacted 2x" data-src="/b.jpg?X-Amz-Signature=redacted&amp;w=2" alt="">',
+  )
   // Cut in the middle of a value by the widget's 600 characters.
   assert.equal(
     await storedHtml('<input type="hidden" value="abc'),
     '<input type="hidden"',
+  )
+  assert.equal(
+    await storedHtml('<a href="/reset?tab=1&amp;token=abc'),
+    '<a href="/reset?tab=1&amp;token=redacted',
   )
 })
 

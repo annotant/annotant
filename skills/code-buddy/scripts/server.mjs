@@ -186,7 +186,7 @@ function sanitiseElement(element) {
 
 /** A name that may hold a secret: a token, a password, a signature, a nonce. */
 const SECRET =
-  /token|secret|passw|pwd|csrf|xsrf|nonce|api[-_]?key|session|signature|jwt|credential|^(?:auth|code|key|otp|sig)$/i
+  /token|secret|passw|pwd|csrf|xsrf|nonce|api[-_]?key|session|signature|jwt|credential|authori[sz]ation|bearer|^(?:auth|code|key|otp|sid|sig)$/i
 
 /** @param {string} name A parameter or an attribute, maybe percent-encoded. */
 function isSecret(name) {
@@ -198,20 +198,22 @@ function isSecret(name) {
 }
 
 /**
- * `link` with the values of its secret-looking parameters, in its query or
- * its hash, replaced by `redacted`.
+ * `link` with the values of its secret-looking parameters (after `?`, `&`,
+ * `#` or `;`) replaced by `redacted`.
  * @param {string} link
  */
 function redactParams(link) {
-  return link.replace(/([?&#;])([^=&#;]*)=[^&#;]*/g, (param, separator, name) =>
+  return link.replace(/([?&#;])([^=&#;\s]*)=[^&#;\s]*/g, (param, separator, name) =>
     isSecret(name) ? `${separator}${name}=redacted` : param,
   )
 }
 
-/** The attributes that hold a link. */
+/** The attributes that hold a link, besides `data-*` ones (`data-src`). */
 const LINKS = new Set([
   'href',
   'src',
+  'srcset',
+  'imagesrcset',
   'action',
   'formaction',
   'poster',
@@ -238,7 +240,7 @@ function redactHtml(html) {
           isSecret(name.replace(/^data-/, ''))
         )
           return ''
-        return LINKS.has(name) && value
+        return (LINKS.has(name) || name.startsWith('data-')) && value
           ? ` ${name}="${redactParams(value)}${close}`
           : attribute
       },
@@ -332,15 +334,16 @@ function sanitiseArea(area) {
 /**
  * The page of a new comment, when it is one: an http or https URL, as the
  * parser writes it, up to 2000 characters, without its credentials or hash
- * and with its secret-looking parameters redacted. Anything else is dropped,
- * and the comment keeps its route.
+ * and with its secret-looking parameters redacted, in its query or its path
+ * (`;jsessionid=…`). Anything else is dropped, and the comment keeps its route.
  * @param {unknown} url
  */
 function sanitiseUrl(url) {
   const parsed = typeof url === 'string' ? URL.parse(url.slice(0, 2000)) : null
-  return parsed && /^https?:$/.test(parsed.protocol)
-    ? `${parsed.origin}${parsed.pathname}${redactParams(parsed.search)}`.slice(0, 2000)
-    : undefined
+  if (!parsed || !/^https?:$/.test(parsed.protocol)) return undefined
+  // Segment by segment: a value in the path ends at its `/`.
+  const pathname = parsed.pathname.split('/').map(redactParams).join('/')
+  return `${parsed.origin}${pathname}${redactParams(parsed.search)}`.slice(0, 2000)
 }
 
 /** The anchor of a new comment: where on the page it is. */
