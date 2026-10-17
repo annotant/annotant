@@ -21,9 +21,19 @@ test("each comment's agent gets the instructions of the agent the plugin ships",
 test('the hooks pass the agent its paths, not its steps', () => {
   assert.match(
     hooks,
-    /`SKILL=\$\{skillDir\(\$\)\}`, `PROJECT=\$\{watched\.root\}`, line\]/,
+    /`SKILL=\$\{skillDir\(\$\)\}`, `PROJECT=\$\{watched\.root\}`, fenced\(line\)\]/,
   )
   assert.doesNotMatch(skill, /claim\.mjs/)
+})
+
+/** The fence's header a source writes. */
+const header = (/** @type {string} */ source) =>
+  source.match(/`(Each line below starting with \$\{marker\} [^`]+)`/)?.[1]
+
+test("the hooks and claim.mjs fence the reader's text behind the same header", async () => {
+  const claim = await readFile(path.join(SCRIPTS, 'claim.mjs'), 'utf8')
+  assert.ok(header(hooks))
+  assert.equal(header(claim), header(hooks))
 })
 
 test('the agent runs scripts the skill has', async () => {
