@@ -78,6 +78,12 @@ released to the `stable` branch.
 
 ### Added
 
+- **Elements picked in a reply.** The reply's message box has a button that
+  starts the element picker while the thread stays open: each element picked
+  shows as a chip above the text and goes with the message, alone or with
+  words, up to 5. Its bubble shows them; a chip outlines its element when
+  hovered, and scrolls to it and flashes it when clicked, on its own page.
+  The agent reads each one's selector, text, HTML and page. (#36)
 - **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
   message box, of a new comment or a reply: it shows as a thumbnail, goes
   with the message and shows in its bubble; an image alone is a message too.

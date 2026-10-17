@@ -137,6 +137,9 @@ directory, else from the repository root.
 - **Paste or drop an image** (a screenshot, a mockup) in the message box of a
   comment or a reply: it goes with the message, or alone, and Claude opens
   it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
+- **Pick an element in a reply**: the pointer button of a reply's message box
+  picks one in the page, with the thread still open ("this one too"). Up to 5
+  per message; their chips in the thread scroll to them.
 - **All comments** lists every discussion, newest first, filtered by status.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
