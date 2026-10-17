@@ -31,8 +31,9 @@ const PROGRESS_SHOWN = 10
 const WRITE_KINDS = new Set(['edit', 'write', 'multiedit'])
 // What the agent says and thinks accompanies its steps; it is not one.
 const NARRATION_KINDS = new Set(['thinking', 'message'])
-// The line an agent writes, with `understood` on, before it changes anything.
-const UNDERSTOOD = /^Understood:\s*/
+// The line an agent writes, with `understood` on, before it changes anything:
+// after a preamble or in bold too, since the hooks join a message's lines.
+const UNDERSTOOD = /(?:^|\s)[*_`]*Understood:[*_`]*\s*/
 
 /** Waiting for an agent, or worked on by one: what agents and the server act on. */
 export const isActive = (comment) =>
@@ -438,11 +439,17 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             if (c.state === 'working') {
               const steps = await readProgress(project, c.id)
               if (steps.length) listed.progress = steps.slice(-PROGRESS_SHOWN)
-              // Read from the whole run: later steps push it out of `progress`.
-              const understood = steps.find(
-                (s) => s.kind === 'message' && UNDERSTOOD.test(s.label),
-              )
-              if (understood) listed.understood = understood.label.replace(UNDERSTOOD, '')
+              // From the whole run, later steps pushing it out of `progress`; the
+              // latest, as the reader's edit has the agent say it again.
+              const understood = steps
+                .filter((s) => s.kind === 'message')
+                .map((s) => UNDERSTOOD.exec(s.label))
+                .findLast((match) => match)
+              if (understood) {
+                listed.understood = understood.input.slice(
+                  understood.index + understood[0].length,
+                )
+              }
             }
             if (history) {
               // The runs that ended, then the one in progress.

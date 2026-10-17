@@ -21,6 +21,7 @@ test('a comment shows its new step as soon as the server says it changed', async
   expect((await screen.findByTestId('cb-progress')).textContent).toContain(
     'Reading src/App.tsx',
   )
+  expect(screen.queryByTestId('cb-understood')).toBeNull()
   expect(events.streams[0]?.url).toMatch(/\/api\/events$/)
 
   comments[0] = {

@@ -178,25 +178,29 @@ test("an agent's Understood line stays served once later steps push it out of pr
   await appendProgress(
     project,
     comment.id,
-    { at: 1, kind: 'message', label: 'Let me look at the card.' },
+    { at: 1, kind: 'thinking', label: 'Understood: not said to the reader' },
     {
       at: 2,
       kind: 'message',
-      label: 'Understood: the title becomes "Plans", in Home.tsx',
+      label: 'I read the card. **Understood:** the title becomes "Plans", in Home.tsx',
     },
     ...Array.from({ length: 12 }, (_, i) => ({ at: 3 + i, kind: 'thinking', label: '' })),
-    { at: 20, kind: 'message', label: 'Understood: something else' },
   )
   const [listed] = await comments.list('/')
   assert.equal(listed.progress?.length, 10)
   assert.equal(listed.understood, 'the title becomes "Plans", in Home.tsx')
 })
 
-test('a run whose agent wrote no Understood line serves none', async (t) => {
+test('after an edit, the latest Understood line replaces the first', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)
-  await appendProgress(project, comment.id, { at: 1, kind: 'message', label: 'Reading.' })
-  assert.equal((await comments.list('/'))[0].understood, undefined)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, kind: 'message', label: 'Understood: the card title' },
+    { at: 2, kind: 'message', label: 'Understood: the page title, in index.html' },
+  )
+  assert.equal((await comments.list('/'))[0].understood, 'the page title, in index.html')
 })
 
 test('steps show in the order they happened, whichever process wrote one first', async (t) => {
