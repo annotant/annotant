@@ -528,8 +528,12 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         if (cancelled === false && comment.state === 'stopped') {
           move(comment, 'open', { by: 'reader' })
           const last = comment.messages.findLast((message) => message.author === 'reader')
-          if (text !== undefined && last && (text || last.images?.length)) {
-            // New words, or none on a message with images, which go alone; the
+          if (
+            text !== undefined &&
+            last &&
+            (text || last.images?.length || last.elements?.length)
+          ) {
+            // New words, or none on a message with images or elements, which go alone; the
             // options the reader had chosen go either way.
             const { choices: _, ...kept } = last
             comment.messages[comment.messages.indexOf(last)] = { ...kept, body: text }

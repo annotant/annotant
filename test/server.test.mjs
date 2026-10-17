@@ -1090,14 +1090,14 @@ test('takes the elements the reader picked with a reply, and tells the hooks', a
     }),
   )
   const { elements } = reopened.messages.at(-1)
-  // The first five, the one with no route dropped, the html redacted as a comment's.
-  assert.equal(elements.length, 4)
+  // The one with no route dropped, then the first five, the html redacted as a comment's.
+  assert.equal(elements.length, 5)
   assert.deepEqual(elements[0], { ...button, route: '/cart' })
   assert.equal(elements[1].html, '<a href="/help?token=redacted">Help</a>')
   const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
   assert.match(
     event,
-    / followup="This one too" elements=\["<button> Buy","<a> Help on \/help","<button> Buy","<button> Buy"\] messages=2$/,
+    / followup="This one too" elements=\["<button> Buy","<a> Help on \/help"(,"<button> Buy"){3}\] messages=2$/,
   )
 
   // An element alone is a reply; with only another move, it is ignored.

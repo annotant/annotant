@@ -1,7 +1,10 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openThread } from './server'
 import { renderWidget } from './widget'
+
+/** A PNG file's first bytes: the widget sends what it reads. */
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 const TITLE = {
   selector: 'h1',
@@ -118,7 +121,92 @@ test("the reader's message shows its elements: a click scrolls to one", async ()
   renderWidget()
 
   const shown = await screen.findByTestId('cb-msg-elements')
-  fireEvent.click(shown.querySelector('button') ?? shown)
+  fireEvent.click(within(shown).getByRole('button', { name: /<h1>\s*Playground/ }))
 
   expect(scroll.mock.contexts).toContain(document.querySelector('main h1'))
+})
+
+/** Picks the page's title for the reply `times` times. */
+function pickTitle(title: Element, times = 1) {
+  for (let left = times; left > 0; left -= 1) {
+    fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+    fireEvent.click(title, { clientX: 50, clientY: 20 })
+  }
+}
+
+test('an image attached after an element keeps the element', async () => {
+  const server = fakeServer([resolved()])
+  openThread('c1')
+  renderWidget()
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  pickTitle(pointAtTitle())
+
+  fireEvent.paste(box, {
+    clipboardData: {
+      files: [new File([PNG], 'shot.png', { type: 'image/png' })],
+      types: ['Files'],
+    },
+  })
+  await screen.findByTestId('cb-attachments')
+  expect(screen.getByTestId('cb-picked')).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(server.patches[0]?.patch.elements).toEqual([TITLE]))
+  expect(server.patches[0]?.patch.images).toHaveLength(1)
+})
+
+test('an element is recorded with the page it was picked on', async () => {
+  history.pushState(null, '', '/other')
+  onTestFinished(() => history.pushState(null, '', '/'))
+  const server = fakeServer([resolved()])
+  openThread('c1')
+  renderWidget()
+  await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  pickTitle(pointAtTitle())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() =>
+    expect(server.patches).toEqual([
+      { id: 'c1', patch: { elements: [{ ...TITLE, route: '/other' }] } },
+    ]),
+  )
+})
+
+test('a message holds up to 5 elements', async () => {
+  fakeServer([resolved()])
+  openThread('c1')
+  renderWidget()
+  await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  const page = document.querySelector('main')
+  if (!page) throw new Error('no page')
+  page.innerHTML = Array.from({ length: 6 }, (_, i) => `<p id="p${i}">P${i}</p>`).join('')
+  const pointed = vi.spyOn(document, 'elementFromPoint')
+  onTestFinished(() => pointed.mockRestore())
+  for (const paragraph of page.querySelectorAll('p')) {
+    pointed.mockReturnValue(paragraph)
+    fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+    fireEvent.click(paragraph, { clientX: 5, clientY: 5 })
+  }
+
+  expect(screen.getAllByRole('button', { name: /Remove the element/ })).toHaveLength(5)
+  expect(await screen.findByText('A message holds up to 5 elements.')).toBeTruthy()
+})
+
+test('a stopped reply of elements alone goes again without words', async () => {
+  const server = fakeServer([
+    comment({
+      state: 'stopped',
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' },
+        { author: 'reader', body: '', at: '2026-01-01T10:02:00.000Z', elements: [TITLE] },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Send again' }))
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { text: '', cancelled: false } }]),
+  )
 })

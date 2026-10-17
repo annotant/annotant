@@ -45,7 +45,7 @@ import {
   isActive,
   isAsking,
   isReply,
-  latestImages,
+  latestAttached,
   latestText,
   modelOf,
   paused,
@@ -1304,8 +1304,8 @@ export default function App({ root }: { root: Element }) {
             const body = (
               resend?.id === comment.id ? resend.body : latestText(comment)
             ).trim()
-            // With its images, the comment may go again with no words.
-            if (!body && !latestImages(comment).length) return
+            // With its images or elements, the comment may go again with no words.
+            if (!body && !latestAttached(comment)) return
             void run(async () => {
               await updateComment(comment.id, { text: body, cancelled: false })
               setResend(undefined)

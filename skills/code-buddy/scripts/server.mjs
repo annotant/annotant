@@ -196,12 +196,14 @@ const MAX_ROUTE = 500
  * @returns {import('./lib/format.mjs').PickedElement[]}
  */
 const sanitisePicked = (list) =>
-  (Array.isArray(list) ? list : []).slice(0, MAX_PICKED).flatMap((picked) => {
-    const element = sanitiseElement(picked)
-    const route =
-      typeof picked?.route === 'string' ? picked.route.slice(0, MAX_ROUTE) : ''
-    return element && route ? [{ ...element, route }] : []
-  })
+  (Array.isArray(list) ? list : [])
+    .flatMap((picked) => {
+      const element = sanitiseElement(picked)
+      const route =
+        typeof picked?.route === 'string' ? picked.route.slice(0, MAX_ROUTE) : ''
+      return element && route ? [{ ...element, route }] : []
+    })
+    .slice(0, MAX_PICKED)
 
 /** A name that may hold a secret: a token, a password, a signature, a nonce. */
 const SECRET =
@@ -405,7 +407,7 @@ function sanitisePatch(input) {
     if (elements.length) patch.elements = elements
   }
   // Passed even empty: the store then clears the words of a message that has
-  // images, which goes again with them alone.
+  // images or elements, which goes again with them alone.
   if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }

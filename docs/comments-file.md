@@ -167,7 +167,7 @@ stateDiagram-v2
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
 | `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` | reader | A `reader` message. |
-| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | With `text`, the last `reader` message's new words, its `choices` dropped; empty, its images alone when it has some. |
+| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | With `text`, the last `reader` message's new words, its `choices` dropped; empty, its images or elements alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
 The store refuses any other move, and writes nothing: the server answers 409

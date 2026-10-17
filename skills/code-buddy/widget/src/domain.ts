@@ -283,9 +283,10 @@ export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
   return latestOwn(comment)?.body ?? ''
 }
 
-/** The images of the reader's latest message. */
-export function latestImages(comment: Pick<ReviewComment, 'messages'>): string[] {
-  return latestOwn(comment)?.images ?? []
+/** Whether the reader's latest message holds images or elements: it may go without words. */
+export function latestAttached(comment: Pick<ReviewComment, 'messages'>): boolean {
+  const own = latestOwn(comment)
+  return !!own?.images?.length || !!own?.elements?.length
 }
 
 /** What a message says, in one line: its words, or the images that are all it holds. */

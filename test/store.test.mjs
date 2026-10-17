@@ -543,6 +543,23 @@ test('a stopped comment with an image goes again with its words removed', async 
   )
 })
 
+test('a stopped reply with picked elements goes again with its words removed', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await update(comments, comment.id, { status: 'resolved' })
+  const element = {
+    selector: 'h1',
+    tag: 'h1',
+    text: 'Title',
+    html: '<h1>Title</h1>',
+    route: '/',
+  }
+  await update(comments, comment.id, { followUp: 'This too', elements: [element] })
+  await update(comments, comment.id, { cancelled: true })
+  const resent = await update(comments, comment.id, { cancelled: false, text: '' })
+  const last = lastOf(resent.messages)
+  assert.deepEqual([last.body, last.elements], ['', [element]])
+})
+
 test('a stopped comment without an image keeps its words when sent again with none', async (t) => {
   const { comments, comment } = await setUp(t)
   await update(comments, comment.id, { cancelled: true })
