@@ -100,6 +100,13 @@ const post = (body, headers = {}) =>
 const stored = async (url) =>
   (await json(await post(JSON.stringify({ route: '/about', url, body: 'Odd url' })))).url
 
+/** @param {string} snapshot The element's html, as the widget sends it. */
+const storedHtml = async (snapshot) => {
+  const element = { selector: 'form', tag: 'form', text: '', html: snapshot }
+  const body = JSON.stringify({ route: '/reset', body: 'Secrets', anchor: { element } })
+  return (await json(await post(body))).anchor.element.html
+}
+
 /**
  * Listens to the server's events, as a widget does.
  * @param {Record<string, string>} [headers]
@@ -190,6 +197,66 @@ test('keeps only http and https urls, as the parser writes them', async () => {
   assert.equal(await stored('http://localhost:3000/a\nb'), 'http://localhost:3000/ab')
   const long = `http://localhost:3000/?q=${'a'.repeat(3000)}`
   assert.equal(await stored(long), long.slice(0, 2000))
+})
+
+test('keeps no secret of the page in its url', async () => {
+  assert.equal(
+    await stored('http://localhost:3000/callback#access_token=abc&token_type=bearer'),
+    'http://localhost:3000/callback',
+  )
+  assert.equal(
+    await stored(
+      'http://user:pass@localhost:3000/reset?token=abc&tab=2&API_KEY=k&code=c',
+    ),
+    'http://localhost:3000/reset?token=redacted&tab=2&API_KEY=redacted&code=redacted',
+  )
+  assert.equal(
+    await stored('http://localhost:3000/?access%5Ftoken=abc;sig=def'),
+    'http://localhost:3000/?access%5Ftoken=redacted;sig=redacted',
+  )
+  assert.equal(
+    await stored(
+      'http://localhost:3000/a;jsessionid=abc/b?Authorization=Bearer%20x&sid=s',
+    ),
+    'http://localhost:3000/a;jsessionid=redacted/b?Authorization=redacted&sid=redacted',
+  )
+  // A name that does not decode is tested as written.
+  assert.equal(
+    await stored('http://localhost:3000/?%E0token=abc'),
+    'http://localhost:3000/?%E0token=redacted',
+  )
+})
+
+test('keeps no secret of the page in the html of an element', async () => {
+  assert.equal(
+    await storedHtml(
+      '<form data-testid="reset" data-csrf-token="abc" nonce="def">' +
+        '<input type="hidden" name="csrf" value="ghi">' +
+        '<meta name="csrf-token" content="jkl">' +
+        '<a href="/reset?token=mno&amp;tab=2#access_token=pqr" title="a > b">Your token</a>' +
+        '<svg><use xlink:href="/icons.svg?Signature=stu#x"></use></svg></form>',
+    ),
+    '<form data-testid="reset">' +
+      '<input type="hidden" name="csrf">' +
+      '<meta name="csrf-token">' +
+      '<a href="/reset?token=redacted&amp;tab=2#access_token=redacted" title="a > b">Your token</a>' +
+      '<svg><use xlink:href="/icons.svg?Signature=redacted#x"></use></svg></form>',
+  )
+  assert.equal(
+    await storedHtml(
+      '<img srcset="/a.png?token=abc 1x, /b.png?token=abc 2x" data-src="/b.jpg?X-Amz-Signature=def&amp;w=2" data-key="ghi" alt="">',
+    ),
+    '<img srcset="/a.png?token=redacted 1x, /b.png?token=redacted 2x" data-src="/b.jpg?X-Amz-Signature=redacted&amp;w=2" alt="">',
+  )
+  // Cut in the middle of a value by the widget's 600 characters.
+  assert.equal(
+    await storedHtml('<input type="hidden" value="abc'),
+    '<input type="hidden"',
+  )
+  assert.equal(
+    await storedHtml('<a href="/reset?tab=1&amp;token=abc'),
+    '<a href="/reset?tab=1&amp;token=redacted',
+  )
 })
 
 test('keeps a drawn area, and tells the hooks what it holds', async () => {
