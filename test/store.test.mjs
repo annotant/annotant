@@ -389,6 +389,8 @@ test('each message that opens the comment is dated as sent, anew when sent again
   assert.equal(answered.messages[1].sentAt, undefined)
 
   assert.ok(await comments.notify(comment.id, `m3@${reply.sentAt}`))
+  // The comment is no longer the message it waits on.
+  assert.equal(await comments.notify(comment.id, `m1@${first.sentAt}`), false)
   await update(comments, comment.id, { cancelled: true })
   const resent = await update(comments, comment.id, { cancelled: false })
   const again = lastOf(resent.messages)
@@ -396,6 +398,16 @@ test('each message that opens the comment is dated as sent, anew when sent again
   assert.equal(again.sentAt, lastOf(resent.events).at)
   assert.notEqual(again.sentAt, reply.sentAt)
   assert.equal(again.notifiedAt, undefined)
+
+  // With new words, the same.
+  assert.ok(await comments.notify(comment.id, `m3@${again.sentAt}`))
+  await update(comments, comment.id, { cancelled: true })
+  const reworded = lastOf(
+    (await update(comments, comment.id, { cancelled: false, text: 'Teal' })).messages,
+  )
+  assert.equal(reworded.body, 'Teal')
+  assert.notEqual(reworded.sentAt, again.sentAt)
+  assert.equal(reworded.notifiedAt, undefined)
 })
 
 test('a hand-over is dated once, and only for the message the comment waits on', async (t) => {

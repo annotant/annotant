@@ -283,10 +283,12 @@ plugin's hooks (`OPEN`, `NEW` or `FOLLOWUP`), naming that message right after
 the comment's id: `NEW <id> sent=m1@2026-10-10T15:44:37.597Z route=/ …`,
 `<message id>@<sentAt>`. It then writes `notifiedAt` on the message, once: a
 restart prints the line again and leaves the date. The hooks start or message
-an agent once per comment and key, for the session: a line about a message
-already handed over starts nothing, whatever a restart or a reload did. A
-re-send dates the message anew, a key of its own; an agent that could not
-start lets the next line try again.
+an agent once per comment and key, for the session, once an agent took it
+(started on it, or was sent it): a line about a message already taken starts
+nothing, whatever a restart or a reload did. A re-send dates the message
+anew, a key of its own; a message still waiting (queued, or whose agent could
+not start) starts with the next line about it. A failed write of
+`notifiedAt` prints the line again at the next read, which dates it.
 
 The widget reads "Sent…" until the message's `notifiedAt`, "Claude
 has your comment, an agent is starting…" once it is, "Claude has your

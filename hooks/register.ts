@@ -474,24 +474,28 @@ const WORK: Record<string, Kind | undefined> = {
 const sentOf = (line: string) => /^\S+ \S+ sent=(\S+)/.exec(line)?.[1]
 
 /**
- * Whether the reader's message the line hands over is new to this session,
- * which takes it: a server restart prints the line again, and a reload
- * replays nothing, so a message starts or messages an agent once.
+ * Whether an agent already took the reader's message the line hands over, in
+ * this session: a server restart prints the line again, and a message starts
+ * or messages an agent once.
  */
-async function isNewHandOver($: $, id: string, line: string) {
+async function wasHandedOver($: $, id: string, line: string) {
   const key = sentOf(line)
-  if (!key) return true
-  let fresh = false
-  await update($, handed, (all) => {
-    fresh = all[id] !== key
-    return fresh ? { ...all, [id]: key } : all
-  })
-  if (!fresh)
-    await debug($, 'main', id, `ignored ${line.split(' ')[0]}: ${key} was handed over`)
-  return fresh
+  if (!key || (await read($, handed))[id] !== key) return false
+  await debug($, 'main', id, `ignored ${line.split(' ')[0]}: ${key} was handed over`)
+  return true
 }
 
-/** The comment's message may be handed over again: its agent never started, or it is gone. */
+/**
+ * An agent took the message the line hands over: started on it, or sent it.
+ * Only then, as a comment still waiting (queued, its start cut by a reload)
+ * must start when the line comes again.
+ */
+async function markHandedOver($: $, id: string, line: string) {
+  const key = sentOf(line)
+  if (key) await update($, handed, (all) => ({ ...all, [id]: key }))
+}
+
+/** The comment is gone: its messages with it. */
 const forgetHandOver = ($: $, id: string) =>
   update($, handed, (all) => {
     if (!(id in all)) return all
@@ -520,9 +524,10 @@ type Watch = {
 const watches = new Map<string, Watch>()
 /**
  * Comments whose agent is starting, and what came for them meanwhile: a stop,
- * or the reader's latest edit or follow-up, handed over once it started.
+ * the reader's latest edit or follow-up, handed over once it started, or,
+ * after a stop, the comment sent again, which a new agent takes.
  */
-const starting = new Map<string, { stop: boolean; message?: Queued }>()
+const starting = new Map<string, { stop: boolean; message?: Queued; again?: Queued }>()
 /**
  * How many sends are resuming each comment's agent type. Claude Code resumes
  * an agent whose turn ended the way the Agent tool does, through
@@ -652,7 +657,10 @@ async function send($: $, worker: Worker, { id, line, kind }: Queued) {
       ? `sent the ${kind === 'edit' ? 'edit' : 'follow-up'}`
       : `could not send: ${sent.reason}`,
   )
-  if (sent.isDelivered) await setWorker($, id, { ...worker, running: true })
+  if (sent.isDelivered) {
+    await markHandedOver($, id, line)
+    await setWorker($, id, { ...worker, running: true })
+  }
   return sent.isDelivered
 }
 
@@ -686,7 +694,6 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
   const meanwhile = starting.get(id)
   starting.delete(id)
   if (!agent) {
-    await forgetHandOver($, id)
     const why = started.deny ?? 'no agent started'
     $.ui.toast(`Code Buddy could not start an agent for comment ${tag(id)}: ${why}`)
     await debug($, 'main', id, `could not start an agent: ${short(why, 160)}`)
@@ -706,10 +713,16 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     ...(started.route && { model: started.route.model }),
     ...(started.route?.effort && { effort: started.route.effort }),
   }
+  await markHandedOver($, id, line)
   await setWorker($, id, worker)
   await debug($, agent, id, `started for ${line.split(' ')[0]}`)
-  if (meanwhile?.stop) await stopWorker($, watched, id)
-  else if (meanwhile?.message) await send($, worker, meanwhile.message)
+  if (meanwhile?.stop) {
+    await stopWorker($, watched, id)
+    if (meanwhile.again) {
+      watched.queue.push(meanwhile.again)
+      void pump($)
+    }
+  } else if (meanwhile?.message) await send($, worker, meanwhile.message)
 }
 
 /**
@@ -755,6 +768,8 @@ async function dispatch($: $, watched: Watch, next: Queued) {
   const pending = starting.get(next.id)
   if (pending) {
     if (next.kind !== 'new') pending.message = next
+    // Stopped, then sent again, while its agent starts: a new one takes it.
+    else if (pending.stop) pending.again = next
     return
   }
   const queued = watched.queue.find((one) => one.id === next.id)
@@ -813,7 +828,7 @@ async function onLine(
   watched.heard.set(id, heard)
   const work = WORK[kind]
   if (work) {
-    if (work !== 'edit' && !(await isNewHandOver($, id, line))) return
+    if (work !== 'edit' && (await wasHandedOver($, id, line))) return
     const next = { id, line, kind: work }
     watched.asked.set(id, next)
     return dispatch($, watched, next)

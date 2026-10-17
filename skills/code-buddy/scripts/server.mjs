@@ -812,7 +812,11 @@ async function refresh(first) {
   }
   // Dated in the file: its write brings the next read, which prints nothing new.
   for (const [id, key] of tick(comments, first)) {
-    await store.notify(id, key).catch(() => undefined)
+    await store.notify(id, key).catch((error) => {
+      console.error(`code-buddy server: could not date the hand-over of ${id}: ${error}`)
+      // Printed again at the next read, which dates it: the hooks take a message once.
+      seen.delete(id)
+    })
   }
   const ids = await changedIds(comments)
   if (first || !ids.length) return

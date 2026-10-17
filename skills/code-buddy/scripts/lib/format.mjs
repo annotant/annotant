@@ -111,8 +111,8 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
  * @property {string} [sentAt] Reader only, on a message that opened the
- *   comment (its first, a reply, a re-send): when the reader sent it, anew on
- *   each re-send. The hooks start or message an agent once per `id` and
+ *   comment (its first, an answer, a follow-up): when the reader sent it, anew
+ *   when they send it again after a stop. The hooks start or message an agent once per `id` and
  *   `sentAt`.
  * @property {string} [notifiedAt] With `sentAt`: when the server first printed
  *   its line for the hooks, which a restart keeps.

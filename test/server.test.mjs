@@ -389,6 +389,11 @@ test("takes the reader's choice among the options Claude asked with", async () =
   // One line for the hooks, the line breaks escaped, the choices apart.
   const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
   assert.match(event, / followup="List\\n\\nDenser" choices=\["List"\] messages=3$/)
+  // It hands the reply over, not the comment: the reply is dated.
+  const reply = answered.messages.at(-1)
+  assert.match(event, new RegExp(`^FOLLOWUP ${created.id} sent=m3@${reply.sentAt} `))
+  const filed = await storedMessages(created.id, (all) => all.at(-1).notifiedAt)
+  assert.ok(filed.at(-1).notifiedAt >= reply.sentAt)
   assert.deepEqual(answered.messages.at(-1), {
     id: 'm3',
     author: 'reader',

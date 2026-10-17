@@ -49,8 +49,9 @@ declare module 'claude-code' {
        */
       watching: Record<string, true>
       /**
-       * By comment id, the reader's message last handed to an agent,
-       * `<message id>@<sentAt>`: a line about it again starts nothing.
+       * By comment id, the reader's message an agent last took (started on
+       * it, or sent it), `<message id>@<sentAt>`: a line about it again starts
+       * nothing. Kept until the comment is deleted or the session ends.
        */
       handed: Record<string, string>
     }
