@@ -188,10 +188,11 @@ code { font-family: var(--cb-mono); }
 .cb-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .cb-item-top > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cb-summary { position: relative; isolation: isolate; gap: 6px; transition: border-color .15s, background .15s; }
-/* The card's open action for the keyboard, stretched behind its content: its ring is the card's. */
+/* The card's open action for the keyboard, stretched behind its content: its ring is the card's,
+   drawn inside it, where the scrolling list does not clip it. */
 .cb-summary-open { position: absolute; inset: 0; z-index: -1; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
-.cb-summary-open:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; }
-.cb-summary:hover { border-color: var(--cb-accent); background: var(--cb-surface-2); }
+.cb-summary-open:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: -2px; }
+.cb-summary:hover, .cb-summary:has(> .cb-summary-open:focus-visible) { border-color: var(--cb-accent); background: var(--cb-surface-2); }
 .cb-summary p { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .cb-summary-head { display: flex; align-items: center; gap: 8px; }
 .cb-summary-head > * { flex-shrink: 0; }
