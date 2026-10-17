@@ -159,6 +159,13 @@ released to the `stable` branch.
   mouse. Tab now stops on each of them, Enter or Space opens the thread or
   centres the page on the element, and a focused chip outlines it as a hovered
   one does. A thread opened from the keyboard takes the focus. (#66)
+- A comment kept the page's secrets: its url held the query and the hash,
+  where a sign-in leaves its token (`#access_token=…`, `?token=…`), and its
+  element's html a hidden field's value (a CSRF token). The url now has no
+  hash or credentials and its secret-looking parameters are redacted, in its
+  query or its path; the
+  html loses its `value`, `content` and secret-looking attributes, and its
+  links (`srcset` and `data-*` ones too) their secret-looking parameters. (#76)
 - An item of an open dropdown could not be picked: pressing "Point at
   element" reached the page, and a menu closing on a press outside it (Radix,
   MUI) closed first. Presses on the widget now stay in it, and its buttons
