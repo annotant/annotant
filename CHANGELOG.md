@@ -155,6 +155,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- Comment cards and the element and area chips could only be used with the
+  mouse. Tab now stops on each of them, Enter or Space opens the thread or
+  centres the page on the element, and a focused chip outlines it as a hovered
+  one does. (#66)
 - An item of an open dropdown could not be picked: pressing "Point at
   element" reached the page, and a menu closing on a press outside it (Radix,
   MUI) closed first. Presses on the widget now stay in it, and its buttons
