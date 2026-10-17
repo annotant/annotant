@@ -75,6 +75,12 @@ released to the `stable` branch.
 - The file locks live in the session, as the agents do: `lock.mjs` is gone.
   An agent waits up to 6 seconds for a file another comment's agent holds,
   then releases its locks and retries, as before.
+- **An agent starts once per message the reader sends.** The comments file
+  dates each message that opens a comment (`sentAt`) and its hand-over to
+  the hooks (`notifiedAt`), and the server's line names it: a server restart
+  or a reload no longer starts a second agent on the same message, and
+  "Sent…" no longer resets on a restart. A re-send is a message of its own.
+  (#127)
 
 ### Added
 
