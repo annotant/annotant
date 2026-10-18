@@ -173,6 +173,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- Options ticked under a multiple-choice question, but not sent, stayed
+  ticked once the thread left the question another way (resolved, stopped):
+  Claude's next question in the thread showed an option of the same label
+  ticked, and sent it. Each question now starts with none ticked. (#73)
 - Comment marks stayed where the text was before the docked panel squeezed
   the page, or before an image or a font moved it, until the next scroll or
   poll. They now follow their text whenever the layout changes. (#62)

@@ -555,8 +555,13 @@ export default function App({ root }: { root: Element }) {
     /** The elements picked in the page for it. */
     elements?: ReviewPickedElement[]
   }>()
-  // The options ticked so far, under a question that takes several.
-  const [picked, setPicked] = useState<{ id: string; labels: string[] }>()
+  // The options ticked so far, under the question (`question`, its message id)
+  // that takes several: another question of the thread starts with none.
+  const [picked, setPicked] = useState<{
+    id: string
+    question: string
+    labels: string[]
+  }>()
   const [created, setCreated] = useState<ReviewComment>()
   const [busy, setBusy] = useState(false)
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
@@ -985,15 +990,19 @@ export default function App({ root }: { root: Element }) {
   const cancelAttach = useCallback(() => setAttachingTo(undefined), [])
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
-  const ticked = (comment: ReviewComment) =>
-    picked?.id === comment.id ? picked.labels : []
+  const ticked = (comment: ReviewComment, question: ReviewMessage) =>
+    picked?.id === comment.id && picked.question === question.id ? picked.labels : []
 
   // From the state at the time of the click: two quick clicks both count.
-  const toggle = (comment: ReviewComment, label: string) =>
+  const toggle = (comment: ReviewComment, question: ReviewMessage, label: string) =>
     setPicked((current) => {
-      const labels = current?.id === comment.id ? current.labels : []
+      const labels =
+        current?.id === comment.id && current.question === question.id
+          ? current.labels
+          : []
       return {
         id: comment.id,
+        question: question.id,
         labels: labels.includes(label)
           ? labels.filter((other) => other !== label)
           : [...labels, label],
@@ -1315,9 +1324,9 @@ export default function App({ root }: { root: Element }) {
                   message={message}
                   live={index === messages.length - 1 && isAsking(comment)}
                   chosen={messages[index + 1]?.choices ?? []}
-                  picked={ticked(comment)}
+                  picked={ticked(comment, message)}
                   busy={busy}
-                  onToggle={(label) => toggle(comment, label)}
+                  onToggle={(label) => toggle(comment, message, label)}
                   onAnswer={(choices, withText) => sendReply(comment, choices, withText)}
                 />
               ) : (
@@ -1865,7 +1874,9 @@ export default function App({ root }: { root: Element }) {
                     )
                   }
                   // Options already ticked go with the text.
-                  onSubmit={() => sendReply(replying, offered ? ticked(replying) : [])}
+                  onSubmit={() =>
+                    sendReply(replying, asked && offered ? ticked(replying, asked) : [])
+                  }
                 />
               )}
               {composing && !overflowing && (
