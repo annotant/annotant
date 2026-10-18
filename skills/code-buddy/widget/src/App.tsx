@@ -519,8 +519,10 @@ export default function App({ root }: { root: Element }) {
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
   const [docked, setDocked] = useState(saved?.docked ?? false)
-  // Saved in another window, maybe wider than this one.
-  const [width, setWidth] = useState(() => clampWidth(saved?.width ?? PANEL_WIDTH))
+  // The width chosen, kept as is: the window, maybe narrower, only caps the one shown.
+  const [chosenWidth, setWidth] = useState(saved?.width ?? PANEL_WIDTH)
+  const [, setWindowWidth] = useState(window.innerWidth)
+  const width = clampWidth(chosenWidth)
   const [view, setView] = useState<View>(saved?.view ?? 'page')
   const [threadId, setThreadId] = useState(saved?.threadId)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
@@ -585,8 +587,15 @@ export default function App({ root }: { root: Element }) {
   const watching = page.reachable
 
   useEffect(() => {
-    writeSession(UI_KEY, { open, docked, width, view, threadId, statusFilter })
-  }, [open, docked, width, view, threadId, statusFilter])
+    writeSession(UI_KEY, {
+      open,
+      docked,
+      width: chosenWidth,
+      view,
+      threadId,
+      statusFilter,
+    })
+  }, [open, docked, chosenWidth, view, threadId, statusFilter])
 
   // The quote of the comment being written stays marked once the selection is gone,
   // on its own page only: the app may navigate before it is saved.
@@ -684,7 +693,7 @@ export default function App({ root }: { root: Element }) {
   }
 
   useEffect(() => {
-    const fit = () => setWidth(clampWidth)
+    const fit = () => setWindowWidth(window.innerWidth)
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [])

@@ -95,7 +95,7 @@ test('a width restored from a wider window fits this one', () => {
   )
 })
 
-test('the panel narrows with the window', () => {
+test('the panel narrows with the window, and widens back with it', () => {
   const wide = window.innerWidth
   onTestFinished(() => {
     window.innerWidth = wide
@@ -105,6 +105,10 @@ test('the panel narrows with the window', () => {
   window.innerWidth = 900
   fireEvent(window, new Event('resize'))
   expect(document.documentElement.style.paddingRight).toBe('720px')
+
+  window.innerWidth = wide
+  fireEvent(window, new Event('resize'))
+  expect(document.documentElement.style.paddingRight).toBe(`${Math.round(wide * 0.8)}px`)
 })
 
 /** Inline styles the host page set itself, taken off again after the test. */
