@@ -1,4 +1,4 @@
-import { boxOf } from './anchors'
+import { boxOf, shownText } from './anchors'
 import type { NewImage, ReviewBox, ReviewStroke } from './domain'
 
 /** The widest side of the picture, in pixels: a drawing over a whole page stays readable. */
@@ -15,7 +15,7 @@ const LABEL_LENGTH = 40
 
 /** An element in the picture: its tag, then the first words of its text. */
 function labelOf(element: Element): string {
-  const words = (element.textContent ?? '').split(/\s+/).filter(Boolean)
+  const words = shownText(element).split(' ').filter(Boolean)
   let text = words.slice(0, LABEL_WORDS).join(' ')
   if (text.length > LABEL_LENGTH) text = text.slice(0, LABEL_LENGTH - 1).trimEnd()
   const cut = text.length < words.join(' ').length ? '…' : ''

@@ -143,6 +143,19 @@ test('what a drawing records reaches past its lines, to what an arrow stops shor
   ).toEqual({ left: -112, top: 72, width: 1224, height: 256 })
 })
 
+test("a drawing records its elements' text as the page shows it, blocks apart", () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">
+    <article data-box="0,0,400,200"><span>Colombia</span><h3>Huila</h3></article>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  const area = anchorFromDrawing(root, [[{ x: 100, y: 100 }]])?.anchor.area
+
+  expect(area?.pointsAt?.text).toBe('Colombia Huila')
+})
+
 test('a drawing points at what is under the end of its longest line, drawn first or not', () => {
   layout()
   document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`

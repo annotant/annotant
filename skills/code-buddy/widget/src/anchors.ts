@@ -571,11 +571,17 @@ export function recordedBy(root: Element, rect: ReviewBox): Element[] {
   return [...covers, ...crosses]
 }
 
+/** An element's text as the page shows it: a card's label and title apart, not run together. */
+export const shownText = (element: Element): string =>
+  normaliseQuote(
+    element instanceof HTMLElement ? element.innerText : (element.textContent ?? ''),
+  )
+
 function nodeOf(root: Element, element: Element): ReviewNode {
   return {
     selector: selectorFor(root, element),
     tag: element.tagName.toLowerCase(),
-    text: normaliseQuote(element.textContent ?? '').slice(0, 80),
+    text: shownText(element).slice(0, 80),
   }
 }
 
