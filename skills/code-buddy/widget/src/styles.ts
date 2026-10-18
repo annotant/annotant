@@ -3,6 +3,17 @@ import figtreeItalic from './assets/fonts/figtree-latin-italic.woff2'
 
 /** Width of one rainbow behind a commented text, before its colours start over. */
 export const RAINBOW_PERIOD = 720
+/** The rainbow of a comment in progress, around it or on a drawing's lines, its first colour last again. */
+export const RAINBOW = [
+  '#ff5f9e',
+  '#ffb340',
+  '#ffe14d',
+  '#3ddc97',
+  '#3fa7ff',
+  '#a66bff',
+  '#ff5f9e',
+]
+export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 
 /** How long the panel takes to come in, or to widen and narrow. */
 export const PANEL_IN_MS = 200
@@ -285,12 +296,13 @@ code { font-family: var(--cb-mono); }
 .cb-draft-scope { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 
 /* In progress: the comment is open, until Claude resolves its thread. A rainbow
-   turns around it (--code-buddy-angle is registered in PAGE_CSS: a shadow root cannot). */
+   turns around it (--code-buddy-angle is registered in PAGE_CSS: a shadow root cannot),
+   or on a drawing's lines (.cb-mark--drawing). */
 .cb-clip { position: fixed; overflow: hidden; pointer-events: none; }
 .cb-mark { position: absolute; background: rgba(166, 107, 255, .06); }
 .cb-mark::before {
   content: ''; position: absolute; inset: 0; padding: 2px; border-radius: inherit;
-  background: conic-gradient(from var(--code-buddy-angle, 0deg), #ff5f9e, #ffb340, #ffe14d, #3ddc97, #3fa7ff, #a66bff, #ff5f9e);
+  background: conic-gradient(from var(--code-buddy-angle, 0deg), ${RAINBOW.join(', ')});
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   animation: cb-unicorn 3s linear infinite;
@@ -360,7 +372,7 @@ export const PAGE_CSS = `
 .code-buddy-layer[data-dark] .code-buddy-quote-mark { opacity: .3; }
 .code-buddy-quote-mark > div {
   position: absolute; width: calc(100vw + ${RAINBOW_PERIOD * 2}px); height: 100vh;
-  background: repeating-linear-gradient(90deg, #ff5f9e 0, #ffb340 ${RAINBOW_PERIOD / 6}px, #ffe14d ${RAINBOW_PERIOD / 3}px, #3ddc97 ${RAINBOW_PERIOD / 2}px, #3fa7ff ${(RAINBOW_PERIOD * 2) / 3}px, #a66bff ${(RAINBOW_PERIOD * 5) / 6}px, #ff5f9e ${RAINBOW_PERIOD}px);
+  background: repeating-linear-gradient(90deg, ${RAINBOW.map((color, at) => `${color} ${(RAINBOW_PERIOD * at) / (RAINBOW.length - 1)}px`).join(', ')});
   animation: code-buddy-flow 6s linear infinite;
 }
 @keyframes code-buddy-flow { to { transform: translateX(${RAINBOW_PERIOD}px); } }

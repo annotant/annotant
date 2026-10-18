@@ -29,7 +29,7 @@ import {
   wasResolved,
 } from './domain'
 import { setInlineStyle } from './inline'
-import { RAINBOW_PERIOD } from './styles'
+import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION } from './styles'
 import { Icon } from './ui'
 
 const WIDGET = '[data-code-buddy]'
@@ -308,17 +308,6 @@ export function ElementMarks({
   )
 }
 
-/** The rainbow of a comment in progress, styles.ts's .cb-mark::before. */
-const RAINBOW = [
-  '#ff5f9e',
-  '#ffb340',
-  '#ffe14d',
-  '#3ddc97',
-  '#3fa7ff',
-  '#a66bff',
-  '#ff5f9e',
-]
-
 /**
  * The lines drawn freehand in an area, over its whole box: they stretch with
  * it, as its width follows the element it lies in. With `rainbow`, the id of
@@ -329,7 +318,7 @@ function Strokes({ area, rainbow }: { area: ReviewArea; rainbow?: string }) {
   const { width, height } = area
   // Its ends a diagonal apart, the gradient covers the box as it turns.
   const half = Math.hypot(width, height) / 2
-  const turning = !matchMedia('(prefers-reduced-motion: reduce)').matches
+  const turning = !matchMedia(REDUCED_MOTION).matches
   return (
     <svg
       className="cb-strokes"
