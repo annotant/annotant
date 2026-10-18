@@ -141,13 +141,7 @@ test('an image attached after an element keeps the element', async () => {
   const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
   pickTitle(pointAtTitle())
 
-  fireEvent.paste(box, {
-    clipboardData: {
-      files: [new File([PNG], 'shot.png', { type: 'image/png' })],
-      types: ['Files'],
-    },
-  })
-  await screen.findByTestId('cb-attachments')
+  await pasteImage(box)
   expect(screen.getByTestId('cb-picked')).toBeTruthy()
 
   fireEvent.click(screen.getByRole('button', { name: 'Send' }))
@@ -291,5 +285,56 @@ test('pointing at an element with a comment under way adds it to that comment', 
   fireEvent.keyDown(box, { key: 'Enter' })
   await waitFor(() =>
     expect(posted(server)).toMatchObject({ body: 'Same size', elements: [TITLE] }),
+  )
+})
+
+/** Pastes a PNG in the message box `box`, as the reader would a screenshot. */
+async function pasteImage(box: HTMLElement) {
+  fireEvent.paste(box, {
+    clipboardData: {
+      files: [new File([PNG], 'shot.png', { type: 'image/png' })],
+      types: ['Files'],
+    },
+  })
+  await screen.findByTestId('cb-attachments')
+}
+
+test('an element picked after an image keeps the image', async () => {
+  const server = fakeServer([resolved()])
+  openThread('c1')
+  renderWidget()
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  await pasteImage(box)
+
+  pickTitle(pointAtTitle())
+  expect(screen.getByTestId('cb-attachments')).toBeTruthy()
+  expect(screen.getByTestId('cb-picked')).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(server.patches[0]?.patch.elements).toEqual([TITLE]))
+  expect(server.patches[0]?.patch.images).toHaveLength(1)
+})
+
+test.each([
+  ['an image, then an element', true],
+  ['an element, then an image', false],
+])('a new comment holds %s, and goes with both', async (_, imageFirst) => {
+  const server = fakeServer([])
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  if (imageFirst) await pasteImage(box)
+  pickTitle(pointAtTitle())
+  if (!imageFirst) await pasteImage(box)
+  expect(screen.getByTestId('cb-attachments')).toBeTruthy()
+  expect(screen.getByTestId('cb-picked')).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() =>
+    expect(posted(server)).toMatchObject({
+      body: '',
+      elements: [TITLE],
+      images: [{ type: 'image/png' }],
+    }),
   )
 })
