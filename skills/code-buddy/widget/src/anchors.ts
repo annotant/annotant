@@ -565,14 +565,8 @@ export function coveredBy(root: Element, rect: ReviewBox): Element[] {
   return elementsIn(holderFor(root, rect), rect).covers
 }
 
-/** The elements an area drawn over `rect` records: those it covers, then those it cuts through. */
-export function recordedBy(root: Element, rect: ReviewBox): Element[] {
-  const { covers, crosses } = elementsIn(holderFor(root, rect), rect)
-  return [...covers, ...crosses]
-}
-
 /** An element's text as the page shows it: a card's label and title apart, not run together. */
-export const shownText = (element: Element): string =>
+const shownText = (element: Element): string =>
   normaliseQuote(
     element instanceof HTMLElement ? element.innerText : (element.textContent ?? ''),
   )
@@ -678,19 +672,16 @@ function lengthOf(line: DrawnPoint[]): number {
   return length
 }
 
-/**
- * The element of the page under the end of a drawing, the last point of its
- * longest line, where an arrow's head usually is; none on the widget only.
- */
-function pointedAt(root: Element, lines: DrawnPoint[][]): Element | undefined {
-  const longest = lines.reduce<DrawnPoint[] | undefined>(
-    (best, line) => (!best || lengthOf(line) > lengthOf(best) ? line : best),
-    undefined,
-  )
-  const end = longest?.at(-1)
-  if (!end) return undefined
+/** How far past an arrow's tip, along its shaft, what it points at is looked for, and in which steps. */
+const POINTING_REACH = 160
+const POINTING_STEP = 8
+/** How far back from its tip an arrow's direction is taken: its head's last wiggle aside. */
+const SHAFT = 32
+
+/** The page's element at a point, the innermost; none on the widget only. */
+function hitAt(root: Element, { x, y }: DrawnPoint): Element | undefined {
   return document
-    .elementsFromPoint(end.x, end.y)
+    .elementsFromPoint(x, y)
     .find(
       (element) =>
         element !== root &&
@@ -698,6 +689,62 @@ function pointedAt(root: Element, lines: DrawnPoint[][]): Element | undefined {
         !element.closest(WIDGET) &&
         !element.matches(UNREAD),
     )
+}
+
+/**
+ * Whether a point on `element`, the innermost there, is in a gap between what
+ * it holds: a block with blocks or boxes in it and no text of its own.
+ */
+function isGap(element: Element): boolean {
+  if (!isBlock(element) || !laidOut(element).length) return false
+  return !Array.from(element.childNodes).some(
+    (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+  )
+}
+
+/** The direction of a line at its end, from a point `SHAFT` back along it; none for a dot. */
+function directionOf(line: DrawnPoint[]): DrawnPoint | undefined {
+  const end = line.at(-1)
+  if (!end) return undefined
+  for (const point of line.toReversed()) {
+    const length = Math.hypot(end.x - point.x, end.y - point.y)
+    if (length >= SHAFT || point === line[0])
+      return length
+        ? { x: (end.x - point.x) / length, y: (end.y - point.y) / length }
+        : undefined
+  }
+  return undefined
+}
+
+/**
+ * The element a drawing points at: under the end of its longest line, where an
+ * arrow's head usually is; when that end is in a gap of a container, or on the
+ * root only, the first element past it along the line's direction. Never a
+ * container that holds the whole drawing (`rect`).
+ */
+function pointedAt(
+  root: Element,
+  lines: DrawnPoint[][],
+  rect: ReviewBox,
+): Element | undefined {
+  const longest = lines.reduce<DrawnPoint[] | undefined>(
+    (best, line) => (!best || lengthOf(line) > lengthOf(best) ? line : best),
+    undefined,
+  )
+  const end = longest?.at(-1)
+  if (!longest || !end) return undefined
+  const hit = hitAt(root, end)
+  if (hit && !isGap(hit)) return hit
+  const direction = directionOf(longest)
+  if (direction)
+    for (let step = POINTING_STEP; step <= POINTING_REACH; step += POINTING_STEP) {
+      const ahead = hitAt(root, {
+        x: end.x + direction.x * step,
+        y: end.y + direction.y * step,
+      })
+      if (ahead && !isGap(ahead)) return ahead
+    }
+  return hit && !holds(boxOf(hit), rect) ? hit : undefined
 }
 
 /**
@@ -749,8 +796,8 @@ function keptLines(lines: DrawnPoint[][]): DrawnPoint[][] {
  * Describes lines drawn freehand over the page (in viewport pixels) as an
  * area, the box of the lines it keeps (`rect`, in viewport pixels), which
  * records what they lie in as a rectangle does, with the lines from its
- * corner. What they cover and cross is that of `reach`, a wider box, and the
- * element under their end (`target`) is what they point at.
+ * corner. What they cover and cross is that of `reach`, a wider box, and
+ * `pointsAt` is the element they point at.
  */
 export function anchorFromDrawing(
   root: Element,
@@ -761,7 +808,6 @@ export function anchorFromDrawing(
       rect: ReviewBox
       reach: ReviewBox
       strokes: ReviewStroke[]
-      target?: Element
     }
   | undefined {
   const kept = keptLines(lines)
@@ -769,7 +815,7 @@ export function anchorFromDrawing(
   if (!rect) return undefined
   const reach = reachOf(rect)
   const anchor = anchorFromArea(root, rect, reach)
-  const target = pointedAt(root, kept)
+  const target = pointedAt(root, kept, rect)
   const strokes = kept.map((line) =>
     line.map(({ x, y }): [number, number] => [
       Math.round(x - rect.left),
@@ -786,7 +832,6 @@ export function anchorFromDrawing(
     rect,
     reach,
     strokes,
-    ...(target ? { target } : {}),
   }
 }
 

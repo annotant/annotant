@@ -17,7 +17,6 @@ import {
   type DrawnPoint,
   elementFromAnchor,
   quoteFromSelection,
-  recordedBy,
   scrollToArea,
   startRect,
 } from './anchors'
@@ -894,8 +893,8 @@ export default function App({ root }: { root: Element }) {
     (lines: DrawnPoint[][]) => {
       const drawn = anchorFromDrawing(root, lines)
       if (!drawn) return
-      const { anchor, rect, reach, strokes, target: pointed } = drawn
-      const sketch = drawingImage(reach, rect, strokes, recordedBy(root, reach), pointed)
+      const { anchor, rect, reach, strokes } = drawn
+      const sketch = drawingImage(reach, rect, strokes, root)
       startDraft(
         { ...anchor, ...(sketch ? { sketch } : {}) },
         keptBody,
