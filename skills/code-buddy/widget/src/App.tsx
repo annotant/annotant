@@ -511,6 +511,13 @@ function keepPress(event: SyntheticEvent) {
   }
 }
 
+/** The element with the focus, within the shadow roots it is in. */
+function focusedElement() {
+  let focused = document.activeElement
+  while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement
+  return focused instanceof HTMLElement && focused !== document.body ? focused : undefined
+}
+
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
@@ -580,6 +587,17 @@ export default function App({ root }: { root: Element }) {
   // Puts back the page's own inline padding, while the docked panel squeezes it.
   const restorePadding = useRef<() => void>(undefined)
   const layout = useRef({ open, docked })
+  // Where the focus was when the panel opened: it goes back there once the panel closes.
+  const opener = useRef<HTMLElement>(undefined)
+  const refocus = useRef(false)
+  const dock = useRef<HTMLDivElement>(null)
+  const title = useRef<HTMLHeadingElement>(null)
+  const [toTitle, setToTitle] = useState(0)
+
+  const openPanel = useCallback(() => {
+    if (!layout.current.open) opener.current = focusedElement()
+    setOpen(true)
+  }, [])
 
   const page = useComments(route)
   const comments = page.comments
@@ -705,7 +723,23 @@ export default function App({ root }: { root: Element }) {
     setOpen(false)
     setAttachingTo(undefined)
     setLeaving(true)
+    refocus.current = true
   }
+
+  // Back to the button that opened the panel, or to the dock when it is gone with the panel.
+  useEffect(() => {
+    if (open || !refocus.current) return
+    refocus.current = false
+    const back = opener.current?.isConnected
+      ? opener.current
+      : dock.current?.querySelector('button')
+    opener.current = undefined
+    back?.focus()
+  }, [open])
+
+  useEffect(() => {
+    if (toTitle) title.current?.focus()
+  }, [toTitle])
 
   const toggleDocked = () => {
     setDocked(!docked)
@@ -812,14 +846,14 @@ export default function App({ root }: { root: Element }) {
       })
       setView('page')
       setThreadId(undefined)
-      setOpen(true)
+      openPanel()
       setPicking(false)
       setAttachingTo(undefined)
       setDrawing(false)
       setSelectionButton(undefined)
       window.getSelection()?.removeAllRanges()
     },
-    [],
+    [openPanel],
   )
 
   // Drawn or pointed at from a page-level draft, or over another area, the area
@@ -855,10 +889,10 @@ export default function App({ root }: { root: Element }) {
       setDraft({ ...kept, ...(added ? { elements: joining(kept.elements, added) } : {}) })
       setView('page')
       setThreadId(undefined)
-      setOpen(true)
+      openPanel()
       setPicking(false)
     },
-    [pickedOf, kept, startDraft],
+    [pickedOf, kept, startDraft, openPanel],
   )
 
   const cancelPick = useCallback(() => setPicking(false), [])
@@ -925,8 +959,10 @@ export default function App({ root }: { root: Element }) {
     if (draft && written(draft)) return
     setDraft(undefined)
     setView('page')
-    setOpen(true)
+    openPanel()
     jump(comment)
+    // The bubble stays on the page: the focus goes to the thread it opened.
+    setToTitle((times) => times + 1)
   }
 
   const thread = threadId
@@ -1621,7 +1657,7 @@ export default function App({ root }: { root: Element }) {
           which is inert while it draws. */}
       {drawing && <AreaDrawer root={root} onDraw={drawArea} onCancel={cancelDraw} />}
       {!open && (
-        <div className="cb-dock cb-live">
+        <div ref={dock} className="cb-dock cb-live">
           <Button variant="secondary" icon="chat" onClick={() => startDraft(PAGE_LEVEL)}>
             Comment
           </Button>
@@ -1652,7 +1688,15 @@ export default function App({ root }: { root: Element }) {
           data-drawing={drawing || undefined}
           // While the reader draws, the message box must not take Escape or Enter.
           inert={!open || drawing}
+          aria-label="Code Buddy"
           data-testid="code-buddy-panel"
+          onKeyDown={(event) => {
+            // After the message box's Escape, and the picker's: its own listener, on
+            // the document, hears it once this one has.
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+            if (event.defaultPrevented || picksFor) return
+            close()
+          }}
         >
           <div
             className="cb-resize"
@@ -1670,7 +1714,7 @@ export default function App({ root }: { root: Element }) {
                   onClick={backToList}
                 />
               )}
-              <h2>
+              <h2 ref={title} tabIndex={-1}>
                 {drafting
                   ? 'New comment'
                   : thread
