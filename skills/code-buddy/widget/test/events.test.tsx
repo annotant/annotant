@@ -137,6 +137,23 @@ test('a stream the browser gave up on is opened again', async () => {
   expect(events.streams[1]?.closed).toBe(false)
 })
 
+test('the dev widget reloads the page when the server says it was rebuilt', async () => {
+  const events = fakeEvents()
+  fakeServer([comment()])
+  const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => undefined)
+  onTestFinished(() => {
+    reload.mockRestore()
+  })
+  openPanel()
+  renderWidget()
+  await waitFor(() => expect(events.streams).toHaveLength(1))
+
+  events.send('changed')
+  expect(reload).not.toHaveBeenCalled()
+  events.send('widget')
+  expect(reload).toHaveBeenCalledOnce()
+})
+
 test('a change that leaves the page’s comments as they were does not read the page again', async () => {
   // happy-dom lays nothing out: the quote gets a box for its bubble to show.
   const measure = vi

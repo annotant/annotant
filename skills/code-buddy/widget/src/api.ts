@@ -61,6 +61,9 @@ function connect() {
   const source = new EventSource(EVENTS)
   source.addEventListener('changed', changed)
   source.addEventListener('open', changed)
+  // npm run watch rebuilt the dev widget: the page loads the new one. A
+  // released widget never listens.
+  if (CODE_BUDDY_DEBUG) source.addEventListener('widget', () => location.reload())
   source.addEventListener('error', () => {
     // Dropped: the lists say whether the server is still there. The browser
     // reconnects by itself, unless something else answered: then we do.

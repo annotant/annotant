@@ -7,6 +7,7 @@
     "typecheck": "tsc -p .",
     "build": "tsc -p . && node build.mjs",
     "build:dev": "tsc -p . && node build.mjs --dev",
+    "watch": "node build.mjs --dev --watch",
     "test": "vitest run"
   },
   "devDependencies": {

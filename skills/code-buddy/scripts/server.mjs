@@ -5,9 +5,11 @@
 // OPEN (backlog at start), NEW, FOLLOWUP, EDIT, ASKED, ANSWERED, RESOLVED, CANCELLED,
 // DELETED.
 // It watches the comments file's folder and the step files' folder, and pushes
-// `changed` to the widgets on /api/events: they reload only then.
+// `changed` to the widgets on /api/events: they reload only then. It watches
+// the widget's bundle too, and pushes `widget` when a dev build replaces it.
 // Only runs while a session watches (/code-buddy): no server, no widget.
-import { existsSync, statSync, watch } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, statSync, watch } from 'node:fs'
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
@@ -923,6 +925,46 @@ function changeSeen() {
 }
 
 /**
+ * The bundle's hash, or undefined while it is missing. Its content, not its
+ * size and time: a rebuild of the same size within the same second of a
+ * coarse clock would look unchanged.
+ */
+function widgetStamp() {
+  try {
+    return createHash('sha1').update(readFileSync(WIDGET)).digest('hex')
+  } catch {
+    return undefined
+  }
+}
+/**
+ * The bundle the pages last heard of: a write fires several watch events, and
+ * a write to another file of the folder some too.
+ */
+let widgetSeen = widgetStamp()
+/** @type {NodeJS.Timeout | undefined} */
+let widgetBatch
+
+/**
+ * Tells the pages a new dev widget is there, once its write is over: each
+ * event puts it off, so a page never loads half a bundle. `npm run watch`
+ * writes one on every change, even over a released one the server started on.
+ * @param {string} _event
+ * @param {string | Buffer | null} file
+ */
+function widgetChanged(_event, file) {
+  if (file !== null && String(file) !== path.basename(WIDGET)) return
+  clearTimeout(widgetBatch)
+  widgetBatch = setTimeout(() => {
+    const built = widgetStamp()
+    if (!built || built === widgetSeen) return
+    widgetSeen = built
+    // A released widget never listens, and never changes while served but by hand.
+    if (!isDevWidget(WIDGET)) return
+    for (const res of listeners) res.write('event: widget\ndata: {}\n\n')
+  }, BATCH_MS)
+}
+
+/**
  * By folder, its watch and the folder's inode. The folders, not the files:
  * the store writes a temp file and renames it over the comments file, which a
  * watch on the file loses.
@@ -944,7 +986,13 @@ const inodeOf = (/** @type {string} */ dir) => {
  * again, is watched anew: a watch on the old one hears nothing more.
  */
 function watchFolders() {
-  for (const dir of [path.dirname(project.commentsFile), project.progressDir]) {
+  /** @type {[string, (event: string, file: string | Buffer | null) => void][]} */
+  const folders = [
+    [path.dirname(project.commentsFile), changeSeen],
+    [project.progressDir, changeSeen],
+    [path.dirname(WIDGET), widgetChanged],
+  ]
+  for (const [dir, onChange] of folders) {
     const ino = inodeOf(dir)
     const known = watchers.get(dir)
     if (known && known.ino === ino) continue
@@ -952,7 +1000,7 @@ function watchFolders() {
     watchers.delete(dir)
     if (ino === undefined) continue
     try {
-      const watcher = watch(dir, changeSeen)
+      const watcher = watch(dir, onChange)
       watcher.on('error', () => {
         watcher.close()
         if (watchers.get(dir)?.watcher === watcher) watchers.delete(dir)
