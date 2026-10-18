@@ -550,9 +550,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           const at = move(comment, 'stopped', { by: 'reader', run })
           comment.cancellation = await cancellationOf(id, at, run)
         }
-        let sentAgain = false
         if (cancelled === false && comment.state === 'stopped') {
-          sentAgain = true
           const sentAt = move(comment, 'open', { by: 'reader' })
           const last = openingOf(comment)
           if (last) {
@@ -571,6 +569,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             }
             comment.messages[comment.messages.indexOf(last)] = resent
           }
+          if (capability) comment.capability = capability
         }
         const reply = readerReply(
           comment,
@@ -599,9 +598,8 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               if (message) message.sentAt = sentAt
               if (message) names = await saveImages(project, id, message.id, images)
               if (message && names.length) message.images = names
+              if (capability) comment.capability = capability
             }
-            // Only with a move that opens it again: the agent it goes to reads it.
-            if (capability && (reply || sentAgain)) comment.capability = capability
             if (status === 'resolved' && comment.state !== 'resolved') {
               move(comment, 'resolved', { by: 'reader', run })
               // Resolved by the reader: no answer to file the steps under.

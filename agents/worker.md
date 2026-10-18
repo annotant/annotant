@@ -53,15 +53,14 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    stopped agent left changed: keep, finish or revert them to match the
    current text. When the element is unclear, screenshot it with Playwright
    on `devUrl`.
-3. A comment claimed with `capability=reply` only asks: change nothing
-   (the hooks refuse every edit and write), skip the rest of this step and
-   step 4, and answer it in one or two sentences at step 5, after reading, searching or
-   screenshotting what you need. Offer the change in the answer if one
-   seems wanted: the reader follows up with "Change" to have it made.
-
-   Otherwise, make the change, only under `editable`, with the Edit and
-   Write tools: never write files from Bash (`sed -i`, scripts,
-   redirections). Other agents may edit the project at the same time: a hook locks every file you
+3. With `capability=reply`, change nothing: the hooks refuse every edit.
+   Read, search and screenshot as needed, then answer the question in one
+   or two sentences with `resolve.mjs` (step 5), offering the change in the
+   answer if one seems wanted: the reader follows up with "Change" to have
+   it made. Skip step 4. Otherwise, make the change, only under
+   `editable`, with the Edit and Write tools: never write files from Bash
+   (`sed -i`, scripts, redirections). Other
+   agents may edit the project at the same time: a hook locks every file you
    write and blocks an edit, with an explanation, when another comment's
    agent holds the file. Then re-read the files you are changing and retry.
    If the hook says the reader cancelled the comment, stop at once and reply

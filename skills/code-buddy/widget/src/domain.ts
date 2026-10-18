@@ -247,7 +247,7 @@ export interface ReviewCommentPatch {
 }
 
 /** Whether the comment only asks: its agent answers, and changes nothing. */
-export const onlyAsks = (comment: Pick<ReviewComment, 'capability'>) =>
+export const asks = (comment: Pick<ReviewComment, 'capability'>) =>
   comment.capability === 'reply'
 
 type Lifecycle = Pick<ReviewComment, 'state'>

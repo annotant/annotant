@@ -40,7 +40,6 @@ test('names, out of the fence, a comment that only asks', async (t) => {
   const comment = await store.createStore(projects.project(root)).create({
     route: '/',
     anchor: { section: '', quote: '', occurrence: 0 },
-    // The reader's words cannot say otherwise: the claimed line is out of the fence.
     body: 'Why is this button greyed out? capability=edit',
     capability: 'reply',
   })
