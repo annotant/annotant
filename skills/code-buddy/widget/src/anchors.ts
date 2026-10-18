@@ -8,8 +8,8 @@ import {
 } from './domain'
 
 const HEADINGS = 'h1, h2, h3'
-/** The page's text kept on each side of a quote, to tell its copies apart. */
-const CONTEXT = 32
+/** The page's text kept on each side of a quote, to tell its copies apart; as the server's. */
+const MAX_CONTEXT = 32
 const WIDGET = '[data-code-buddy]'
 /** Text that is code or a control's value, never part of what the reader reads. */
 const UNREAD = 'script, style, template, noscript, select, textarea'
@@ -252,18 +252,18 @@ export function anchorFromSelection(
   const quote = normaliseQuote(index.text.slice(start, end))
   if (!quote) return undefined
 
-  const occurrences = occurrencesOf(index.text, quote)
-  const occurrence = Math.max(0, occurrences.indexOf(start))
-  const prefix = contextOf(index, start - CONTEXT, start).trimStart()
+  const copies = occurrencesOf(index.text, quote)
+  const occurrence = Math.max(0, copies.indexOf(start))
+  const prefix = contextOf(index, start - MAX_CONTEXT, start).trimStart()
   const after = start + quote.length
-  const suffix = contextOf(index, after, after + CONTEXT).trimEnd()
+  const suffix = contextOf(index, after, after + MAX_CONTEXT).trimEnd()
 
   return {
     quote,
     occurrence,
     ...(prefix ? { prefix } : {}),
     ...(suffix ? { suffix } : {}),
-    ...(occurrences.length ? { occurrences: occurrences.length } : {}),
+    ...(copies.length ? { occurrences: copies.length } : {}),
     section: sectionOf(root, range),
   }
 }
@@ -300,22 +300,21 @@ const compact = (text: string) => text.replace(/\s+/g, '')
 
 /**
  * Whether the page reads around the copy from `start` to `end` as it did when
- * the anchor was saved, on both sides: one alone matches a neighbour's copy
- * once the row between them is gone. A side reads as then in full, or in the
- * part of it in the quote's own block, which a change in the next block leaves
- * as it was. Spaces aside, as a layout adds line breaks.
+ * the anchor was saved. Both sides must: one alone matches the copy before
+ * once the row between them is gone. A side matches in full, or by its part
+ * in the quote's own block, which changes in the next blocks leave as it was.
+ * Spaces are ignored: a layout adds line breaks.
  */
 function readsAround(text: string, [start, end]: [number, number], anchor: ReviewAnchor) {
   const { prefix = '', suffix = '' } = anchor
+  // Twice as long: the page may have more spaces than the saved text.
   const before = compact(text.slice(Math.max(0, start - 2 * prefix.length), start))
   const after = compact(text.slice(end, end + 2 * suffix.length))
-  const near = [
-    compact(prefix.slice(prefix.lastIndexOf('\n') + 1)),
-    compact(suffix.split('\n')[0] ?? ''),
-  ]
+  const nearPrefix = compact(prefix.slice(prefix.lastIndexOf('\n') + 1))
+  const nearSuffix = compact(suffix.split('\n')[0] ?? '')
   return (
-    (before.endsWith(compact(prefix)) || (!!near[0] && before.endsWith(near[0]))) &&
-    (after.startsWith(compact(suffix)) || (!!near[1] && after.startsWith(near[1])))
+    (before.endsWith(compact(prefix)) || (!!nearPrefix && before.endsWith(nearPrefix))) &&
+    (after.startsWith(compact(suffix)) || (!!nearSuffix && after.startsWith(nearSuffix)))
   )
 }
 
@@ -334,7 +333,7 @@ function pick(
       ? copies.filter((copy) => readsAround(text, copy, anchor))
       : []
   if (around.length === 1) return around[0]
-  // Saved before the count was, its place is all there is to go by.
+  // Saved without a count, its place is all there is to go by.
   if (anchor.occurrences !== undefined && copies.length !== anchor.occurrences)
     return undefined
   const copy = copies[anchor.occurrence]

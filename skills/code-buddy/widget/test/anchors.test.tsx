@@ -361,3 +361,14 @@ test('a quote saved without its surroundings is not found on another copy', () =
     rangeFromAnchor(root, { section: '', quote: 'Add to cart', occurrence: 3 }),
   ).toBeUndefined()
 })
+
+test('a quote matched without spaces is not found on another copy once its own is gone', () => {
+  // Saved before blocks were separated: "Part 1part 2" matches only without spaces.
+  const root = page(
+    '<div>Part 1</div><div>part 2</div><p>gap</p><div>Part 1</div><div>part 2</div>',
+  )
+  const anchor = { section: '', quote: 'Part 1part 2', occurrence: 1, occurrences: 2 }
+  root.querySelectorAll('div')[3]?.remove()
+
+  expect(rangeFromAnchor(root, anchor)).toBeUndefined()
+})

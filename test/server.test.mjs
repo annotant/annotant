@@ -442,7 +442,7 @@ test('keeps the text around a quote, cut to 32 characters on each side', async (
           occurrence: 2,
           prefix: `${'x'.repeat(40)} Sidamo  \n  Huila `,
           suffix: ` \n Kenya\tAdd to cart ${'y'.repeat(40)}`,
-          occurrences: 4.2,
+          occurrences: 4,
         },
       }),
     ),
@@ -451,10 +451,30 @@ test('keeps the text around a quote, cut to 32 characters on each side', async (
     section: '',
     quote: 'Add to cart',
     occurrence: 2,
-    prefix: 'xxxxxxxxxxxxxxxxxxx Sidamo\nHuila',
-    suffix: 'Kenya Add to cart yyyyyyyyyyyyyy',
+    prefix: 'xxxxxxxxxxxxxxxxxx Sidamo\nHuila ',
+    suffix: '\nKenya Add to cart yyyyyyyyyyyyy',
     occurrences: 4,
   })
+})
+
+test('drops a count or a context it cannot use', async () => {
+  for (const [anchor, kept] of [
+    [{ occurrences: 0, prefix: '   ', suffix: 7 }, {}],
+    [{ occurrences: -2 }, {}],
+    [{ occurrences: 'Infinity' }, {}],
+    [{ occurrences: 1.5 }, {}],
+    // A quote cut to 2000 characters is followed by other text than its suffix.
+    [
+      { quote: 'a'.repeat(2001), prefix: 'Before', suffix: 'After' },
+      { prefix: 'Before' },
+    ],
+  ]) {
+    const created = await json(
+      await post(JSON.stringify({ route: '/shop', body: 'Bigger', anchor })),
+    )
+    const { section: _, quote: __, occurrence: ___, ...rest } = created.anchor
+    assert.deepEqual(rest, kept)
+  }
 })
 
 test('prints one line per event, whatever line breaks the reader sent', async () => {

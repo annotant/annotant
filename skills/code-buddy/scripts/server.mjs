@@ -347,7 +347,8 @@ function sanitiseUrl(url) {
   return `${parsed.origin}${pathname}${redactParams(parsed.search)}`.slice(0, 2000)
 }
 
-/** The most characters of the page's text kept on each side of a quote. */
+const MAX_QUOTE = 2000
+/** The most characters of the page's text kept on each side of a quote; as the widget's. */
 const MAX_CONTEXT = 32
 
 /**
@@ -359,24 +360,28 @@ const sanitiseContext = (text) =>
   (typeof text === 'string' ? text : '')
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ ?\n\s*/g, '\n')
-    .trim()
 
 /** The anchor of a new comment: where on the page it is. */
 function sanitiseAnchor(anchor = {}) {
   const element = sanitiseElement(anchor.element)
   const area = sanitiseArea(anchor.area)
-  const prefix = sanitiseContext(anchor.prefix).slice(-MAX_CONTEXT).trimStart()
-  const suffix = sanitiseContext(anchor.suffix).slice(0, MAX_CONTEXT).trimEnd()
-  const occurrences = Math.floor(Number(anchor.occurrences) || 0)
+  const quote = normaliseQuote(String(anchor.quote ?? ''))
+  const prefix = sanitiseContext(anchor.prefix).slice(-MAX_CONTEXT).replace(/^ +/, '')
+  // Read after the whole quote: a cut one is followed by other text.
+  const suffix =
+    quote.length > MAX_QUOTE
+      ? ''
+      : sanitiseContext(anchor.suffix).slice(0, MAX_CONTEXT).replace(/ +$/, '')
+  const occurrences = Number(anchor.occurrences)
   return {
     section: String(anchor.section ?? '')
       .trim()
       .slice(0, 300),
-    quote: normaliseQuote(String(anchor.quote ?? '')).slice(0, 2000),
+    quote: quote.slice(0, MAX_QUOTE),
     occurrence: Math.max(0, Math.floor(Number(anchor.occurrence) || 0)),
     ...(prefix ? { prefix } : {}),
     ...(suffix ? { suffix } : {}),
-    ...(occurrences > 0 ? { occurrences } : {}),
+    ...(Number.isSafeInteger(occurrences) && occurrences > 0 ? { occurrences } : {}),
     ...(element ? { element } : {}),
     ...(area ? { area } : {}),
   }
