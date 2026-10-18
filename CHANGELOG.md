@@ -173,6 +173,9 @@ released to the `stable` branch.
 
 ### Fixed
 
+- Screen readers never announced the widget's toasts ("Request failed",
+  "Comment saved"). They now appear in live regions that are always present:
+  information is polite, and errors interrupt as alerts. (#67)
 - The panel's muted text (labels, times, quotes), its red notices and the
   composer's placeholder fell below the 4.5:1 contrast WCAG AA asks of text.
   Its muted and red colors are darker, and the placeholders use the muted

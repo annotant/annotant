@@ -317,7 +317,9 @@ code { font-family: var(--cb-mono); }
 .cb-panel[data-drawing] { opacity: .35; pointer-events: none; }
 .cb-hint { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; pointer-events: none; }
 
-.cb-toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; }
+.cb-toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); }
+.cb-toasts > div { display: flex; flex-direction: column; gap: 8px; }
+.cb-toasts > :not(:empty) ~ :not(:empty) { margin-top: 8px; }
 .cb-toast { padding: 10px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; box-shadow: var(--cb-shadow); }
 .cb-toast--error { background: var(--cb-red); }
 `

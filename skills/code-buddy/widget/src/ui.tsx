@@ -433,17 +433,24 @@ export function Toasts() {
     },
     () => toasts,
   )
-  if (!current.length) return null
-  return (
-    <div className="cb-toasts cb-live">
-      {current.map((entry) => (
+  const list = (error: boolean) =>
+    current
+      .filter((entry) => Boolean(entry.error) === error)
+      .map((entry) => (
         <div
           key={entry.id}
           className={`cb-toast ${entry.error ? 'cb-toast--error' : ''}`}
         >
           {entry.text}
         </div>
-      ))}
+      ))
+  // Both always there, even empty: a screen reader only announces what
+  // changes in a live region it already knew. Side by side, not nested, so
+  // an error is announced once, and interrupts.
+  return (
+    <div className="cb-toasts cb-live">
+      <div role="status">{list(false)}</div>
+      <div role="alert">{list(true)}</div>
     </div>
   )
 }
