@@ -161,6 +161,12 @@ released to the `stable` branch.
 
 ### Fixed
 
+- A comment on a text the page shows several times (the third "Add to cart")
+  moved to its first copy once its own was rewritten or removed. A quote now
+  keeps the text around it and how many copies the page had: it is found on
+  the copy that text still surrounds, or at its place while the page has as
+  many copies, and is otherwise shown as detached, never on another copy.
+  (#61)
 - Comment cards and the element and area chips could only be used with the
   mouse. Tab now stops on each of them, Enter or Space opens the thread or
   centres the page on the element, and a focused chip outlines it as a hovered
