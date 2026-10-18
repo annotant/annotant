@@ -131,7 +131,8 @@ test('what a drawing records reaches past its lines, to what an arrow stops shor
     'section > div:nth-of-type(1) > p',
     'section > div:nth-of-type(2) > p',
   ])
-  expect(drawn?.anchor.area?.pointsAt?.selector).toBe('section')
+  // Its tip is on the section only: it points at what is next along it, card B's text.
+  expect(drawn?.anchor.area?.pointsAt?.selector).toBe('section > div:nth-of-type(2) > p')
   // A wide drawing gets a quarter of its width on each side.
   expect(
     anchorFromDrawing(root, [
@@ -175,6 +176,50 @@ test('a drawing points at what is under the end of its longest line, drawn first
   ])?.anchor.area
 
   expect(area?.pointsAt?.text).toBe('Card B')
+})
+
+test('an arrow ending in a gap points at the element it heads for, never at what holds it', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+  const pointed = (...points: [number, number][]) =>
+    anchorFromDrawing(root, [points.map(([x, y]) => ({ x, y }))])?.anchor.area?.pointsAt
+      ?.text
+
+  // From the heading down into the gap above the section: its first card's text.
+  expect(pointed([100, 30], [100, 80], [100, 95])).toBe('Card A')
+  // Its head drawn in the same line, a hook back at the end: the shaft's direction still.
+  expect(pointed([100, 250], [100, 330], [96, 326])).toBe('Card B')
+  // From card A right into the empty section: nothing ahead, and the section holds it all.
+  expect(pointed([300, 150], [700, 150])).toBeUndefined()
+  // From the heading into the section, away from the cards: the section, which does not hold it.
+  expect(pointed([600, 30], [600, 80], [600, 200])).toBe('Card A Card B')
+  // A dot in a gap has no direction: nothing past it, and the section holds it.
+  expect(pointed([100, 330])).toBeUndefined()
+  // Down card A under its text: card B's is 170px past the tip, too far to be what it points at.
+  expect(pointed([100, 150], [100, 180])).toBeUndefined()
+  expect(pointed([100, 150], [100, 200])).toBe('Card B')
+})
+
+test('an arrow ending on a block with text of its own, or on a control, points at it', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">
+    <div data-box="0,0,1000,200">Notes<p data-box="0,100,400,40">Body</p></div>
+    <p data-box="0,240,400,40">Above</p>
+    <button data-box="0,300,400,100" style="display: flex">
+      <span data-box="20,320,100,20">Save</span>
+    </button>
+    <p data-box="0,500,400,40">Below</p>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+  const pointed = (...points: [number, number][]) =>
+    anchorFromDrawing(root, [points.map(([x, y]) => ({ x, y }))])?.anchor.area?.pointsAt
+      ?.tag
+
+  expect(pointed([600, 300], [600, 250], [600, 180])).toBe('div')
+  expect(pointed([300, 600], [300, 450], [300, 380])).toBe('button')
 })
 
 test('a long line keeps at most 400 points, its ends among them', () => {
@@ -255,22 +300,28 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
 })
 
 test("the drawing's picture goes with the comment, for Claude", async () => {
-  const labels: string[] = []
-  const context = new Proxy(
-    {},
-    {
-      get: (_, name) =>
-        name === 'canvas'
-          ? undefined
+  // What the canvas paints: each fill's colour, each word at its place.
+  const painted: string[] = []
+  const state = { fillStyle: '' }
+  const context = new Proxy(state, {
+    get: (target, name) =>
+      name === 'fillStyle'
+        ? target.fillStyle
+        : name === 'fillRect'
+          ? () => painted.push(`ground ${target.fillStyle}`)
           : name === 'fillText'
-            ? (text: string) => labels.push(text)
+            ? (text: string, x: number, y: number) =>
+                painted.push(`${text} at ${x},${y} in ${target.fillStyle}`)
             : () => undefined,
+    set: (target, name, value) => {
+      if (name === 'fillStyle') target.fillStyle = String(value)
+      return true
     },
-  )
+  })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-    // A canvas that draws nothing: what counts here is the picture it gives.
+    // A canvas that draws nothing: what counts here is what it is told to paint.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    context as CanvasRenderingContext2D,
+    context as unknown as CanvasRenderingContext2D,
   )
   const sizes: [number, number][] = []
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function (
@@ -279,10 +330,27 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
     sizes.push([this.width, this.height])
     return 'data:image/png;base64,iVBORw0KGgo='
   })
+  // A word is where its element's text starts, 20px wide each.
+  vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Range,
+  ) {
+    const { left = 0, top = 0 } =
+      this.startContainer.parentElement?.getBoundingClientRect() ?? {}
+    return DOMRect.fromRect({
+      x: left + this.startOffset * 4,
+      y: top,
+      width: 20,
+      height: 20,
+    })
+  })
   onTestFinished(() => {
     vi.restoreAllMocks()
+    document.body.style.removeProperty('background-color')
   })
   const server = renderCards()
+  document.body.style.backgroundColor = 'rgb(16, 24, 40)'
+  for (const card of document.querySelectorAll('p'))
+    card.style.color = 'rgb(240, 200, 120)'
 
   fireEvent.click(await screen.findByRole('button', { name: 'Draw' }))
   arrow()
@@ -306,8 +374,15 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
   expect(sent.anchor.area?.pictured).toBe(true)
   // The picture is wider than the lines' box, 36 × 126: 120px more on each side.
   expect(sizes).toEqual([[276, 366]])
-  // The elements around the arrow, with their text: card A, which it leaves, is in.
-  expect(labels).toEqual(['<section> Card A Card B', '<p> Card A', '<p> Card B'])
+  // The page under it, its ground and its text where it is, in its colour:
+  // card A, which the arrow leaves, is in, the heading above is not.
+  expect(painted).toEqual([
+    'ground rgb(16, 24, 40)',
+    'Card at 68,18 in rgb(240, 200, 120)',
+    'A at 88,18 in rgb(240, 200, 120)',
+    'Card at 68,238 in rgb(240, 200, 120)',
+    'B at 88,238 in rgb(240, 200, 120)',
+  ])
 })
 
 test('Enter on a focused tool is its own, and an undo while drawing takes that line back', async () => {

@@ -86,7 +86,7 @@ export interface ReviewArea extends ReviewBox {
   truncated?: true
   /** Set when the reader drew freehand: the lines, the area being their box. */
   strokes?: ReviewStroke[]
-  /** With `strokes`: the element under the end of the longest line, where an arrow points. */
+  /** With `strokes`: the element the longest line points at, under its end or next along it. */
   pointsAt?: ReviewNode
   /** With `strokes`: the last image of the comment's first message is their picture. */
   pictured?: true

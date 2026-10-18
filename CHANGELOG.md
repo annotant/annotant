@@ -97,10 +97,11 @@ released to the `stable` branch.
   (`2 lines · points at <h3> Pricing`) shows it again or scrolls to it.
   Claude gets the area's fields, the elements around the lines and not only
   in their box, so what an arrow points at past its tip is in; the lines
-  (`anchor.area.strokes`, `strokes=2` on the hooks' line); the element under
-  the end of the longest (`anchor.area.pointsAt`, `points-at=`); and a
-  picture of them over the outlines of those elements, each with the first
-  words of its text, attached to the reader's comment. (#38, #158)
+  (`anchor.area.strokes`, `strokes=2` on the hooks' line); the element the
+  longest points at (`anchor.area.pointsAt`, `points-at=`), under its end or,
+  when it ends in a gap, the next one along it, never a container the whole
+  drawing is in; and a picture of them over the page, its colours and text
+  where they are, attached to the reader's comment. (#38, #158, #160)
 
 - **An element picked in a message.** Every message box, a new comment's or a
   reply's, has a button that starts the element picker while the panel stays

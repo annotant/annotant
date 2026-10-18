@@ -41,10 +41,11 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    `truncated`: find these in the code). An area with `strokes` is a drawing,
    their box: lines the reader drew freehand (an arrow from a block to where
    it goes, a circle, a sketch), as points from its corner; its `covers` and
-   `crosses` reach past the box, and `pointsAt` is the element under the end
-   of the longest line, where an arrow points; with `pictured`, their
-   comment's last image is its picture, the lines over those elements'
-   outlines and the first words of their text, `pointsAt` solid.
+   `crosses` reach past the box, and `pointsAt` is the element the longest
+   line points at, under its end or, past a gap, next along it; with
+   `pictured`, their comment's last image is its picture, the lines over
+   the page close to how the reader saw it (its colours, text and same-origin
+   images; no SVG, video or stacking order).
    `route` `*` means the whole app.
    `messages` holds the thread, the reader's comment first (`elided` says how
    many older ones are left out): your earlier answers (`claude`) were
