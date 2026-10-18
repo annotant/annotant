@@ -163,8 +163,15 @@ function useCommentList(url: string | undefined, { merge = true } = {}) {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const updated = event.detail as ReviewComment
       merges.current++
+      // Not in the list, or as it was: the list keeps its reference.
       setComments((current) =>
-        current.map((comment) => (comment.id === updated.id ? updated : comment)),
+        current.some(
+          (comment) =>
+            comment.id === updated.id &&
+            JSON.stringify(comment) !== JSON.stringify(updated),
+        )
+          ? current.map((comment) => (comment.id === updated.id ? updated : comment))
+          : current,
       )
     }
     window.addEventListener(UPDATED, update)
