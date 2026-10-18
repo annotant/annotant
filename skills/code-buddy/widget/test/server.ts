@@ -16,7 +16,17 @@ type Fields = Partial<Omit<ReviewComment, 'anchor' | 'messages'>> &
     body?: string
     /** The thread after the reader's comment: numbered from m2. */
     messages?: Omit<ReviewMessage, 'id'>[]
+    /** When the server handed over the reader's latest message. */
+    notifiedAt?: string
   }
+
+/** The thread, its reader's latest message handed over at `at`. */
+function notified(messages: ReviewMessage[], at: string | undefined) {
+  const last = messages.findLastIndex((message) => message.author === 'reader')
+  return messages.map((message, index) =>
+    at && index === last ? { ...message, notifiedAt: at } : message,
+  )
+}
 
 /**
  * A comment on the page, open and not yet claimed: override what the test
@@ -30,6 +40,7 @@ export function comment({
   occurrence = 0,
   element,
   area,
+  notifiedAt,
   ...fields
 }: Fields = {}): ReviewComment {
   const createdAt = fields.createdAt ?? '2026-01-01T10:00:00.000Z'
@@ -47,10 +58,13 @@ export function comment({
     },
     state: 'open',
     createdAt,
-    messages: [
-      { id: 'm1', author: 'reader', body, at: createdAt },
-      ...messages.map((message, index) => ({ id: `m${index + 2}`, ...message })),
-    ],
+    messages: notified(
+      [
+        { id: 'm1', author: 'reader', body, at: createdAt },
+        ...messages.map((message, index) => ({ id: `m${index + 2}`, ...message })),
+      ],
+      notifiedAt,
+    ),
     // The state is always the last event's.
     events: [
       { at: createdAt, state: 'open', by: 'reader' },

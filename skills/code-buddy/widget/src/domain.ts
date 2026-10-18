@@ -132,6 +132,10 @@ export interface ReviewMessage {
   images?: string[]
   /** Reader only: the elements they picked in the page with it. */
   elements?: ReviewPickedElement[]
+  /** Reader only, on a message that opened the comment: when they sent it, anew on a re-send. */
+  sentAt?: string
+  /** With `sentAt`: when the server handed it over to the hooks. */
+  notifiedAt?: string
 }
 
 interface ReviewCancellation {
@@ -176,8 +180,6 @@ export interface ReviewComment {
   progress?: ReviewProgress[]
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
-  /** Open only: when the server sent it to the hooks; never stored in the file. */
-  notifiedAt?: string
   /**
    * With `history=1` only: the lines the server printed about it for the
    * hooks since it started, oldest first; never stored in the file.
@@ -277,6 +279,13 @@ export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
  */
 export const isReply = (comment: Pick<ReviewComment, 'messages'>) =>
   comment.messages.length > 1 && comment.messages.at(-1)?.author === 'reader'
+
+/**
+ * The reader's message an open comment waits on: their latest, whose
+ * `notifiedAt` says when the server handed it over.
+ */
+export const openingOf = (comment: Pick<ReviewComment, 'messages'>) =>
+  comment.messages.findLast((message) => message.author === 'reader')
 
 /** Waiting for an agent, or worked on by one. */
 export function isActive(comment: Lifecycle) {

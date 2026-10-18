@@ -54,6 +54,10 @@ async function update(comments, id, patch) {
 /** @template T @param {T[]} list @returns {T} */
 const lastOf = (list) => list[list.length - 1]
 
+/** The thread, the times its messages were sent left out. */
+const unsent = (comment) =>
+  comment.messages.map((message) => ({ ...message, sentAt: undefined }))
+
 /** The states the comment went through, oldest first. */
 const statesOf = (comment) => comment.events.map((event) => event.state)
 
@@ -367,8 +371,63 @@ test('a follow-up reopens a resolved comment; a re-send keeps the thread', async
   )
   await update(comments, comment.id, { cancelled: true })
   const resent = await update(comments, comment.id, { cancelled: false })
-  assert.deepEqual(resent.messages, reopened.messages)
+  assert.deepEqual(unsent(resent), unsent(reopened))
   assert.deepEqual(statesOf(resent).slice(-3), ['open', 'stopped', 'open'])
+})
+
+test('each message that opens the comment is dated as sent, anew when sent again', async (t) => {
+  const { comments, comment } = await setUp(t)
+  const [first] = comment.messages
+  assert.equal(first.sentAt, comment.createdAt)
+
+  await claim(comments, comment.id)
+  await comments.answer(comment.id, 'Which blue?', { question: true })
+  const answered = await update(comments, comment.id, { followUp: 'Navy' })
+  const reply = lastOf(answered.messages)
+  assert.equal(reply.sentAt, reply.at)
+  // Claude's messages open nothing.
+  assert.equal(answered.messages[1].sentAt, undefined)
+
+  assert.ok(await comments.notify(comment.id, `m3@${reply.sentAt}`))
+  // The comment is no longer the message it waits on.
+  assert.equal(await comments.notify(comment.id, `m1@${first.sentAt}`), false)
+  await update(comments, comment.id, { cancelled: true })
+  const resent = await update(comments, comment.id, { cancelled: false })
+  const again = lastOf(resent.messages)
+  // Sent again: a hand-over of its own, the next line dates it.
+  assert.equal(again.sentAt, lastOf(resent.events).at)
+  assert.notEqual(again.sentAt, reply.sentAt)
+  assert.equal(again.notifiedAt, undefined)
+
+  // With new words, the same.
+  assert.ok(await comments.notify(comment.id, `m3@${again.sentAt}`))
+  await update(comments, comment.id, { cancelled: true })
+  const reworded = lastOf(
+    (await update(comments, comment.id, { cancelled: false, text: 'Teal' })).messages,
+  )
+  assert.equal(reworded.body, 'Teal')
+  assert.notEqual(reworded.sentAt, again.sentAt)
+  assert.equal(reworded.notifiedAt, undefined)
+})
+
+test('a hand-over is dated once, and only for the message the comment waits on', async (t) => {
+  const { comments, comment } = await setUp(t)
+  const key = `m1@${comment.messages[0].sentAt}`
+  assert.equal(await comments.notify(comment.id, 'm1@2020-01-01T00:00:00.000Z'), false)
+  assert.equal(await comments.notify(comment.id, key), true)
+  const [dated] = await comments.list('/')
+  const notifiedAt = dated.messages[0].notifiedAt ?? ''
+  assert.ok(notifiedAt >= comment.createdAt, notifiedAt)
+
+  // A server restart prints the line again: the first date stays.
+  assert.equal(await comments.notify(comment.id, key), false)
+  const [listed] = await comments.list('/')
+  assert.equal(listed.messages[0].notifiedAt, notifiedAt)
+
+  // Past waiting, or gone: nothing to date.
+  await update(comments, comment.id, { status: 'resolved' })
+  assert.equal(await comments.notify(comment.id, key), false)
+  assert.equal(await comments.notify('nope', key), false)
 })
 
 test("once resolved, Claude's answers wait on the reader, who resolves", async (t) => {

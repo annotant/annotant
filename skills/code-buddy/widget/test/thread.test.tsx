@@ -111,6 +111,31 @@ test("the reader's reply says an agent is picking it up, at each step", async ()
   )
 })
 
+test("a reply the server has not handed over yet is sent, whatever the comment's was", async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const replied = comment({
+    messages: [
+      { author: 'claude', body: 'Which title?', at, run: 'r1', question: true },
+      { author: 'reader', body: 'Fresh coffee', at },
+    ],
+    events: [
+      { at, state: 'open', by: 'reader' },
+      { at, state: 'working', by: 'agent', run: 'r1' },
+      { at, state: 'asking', by: 'agent', run: 'r1' },
+      { at, state: 'open', by: 'reader' },
+    ],
+  })
+  // The comment itself was handed over long ago; the reply not yet.
+  const [first, ...rest] = replied.messages
+  fakeServer([
+    { ...replied, messages: [{ ...first!, sentAt: at, notifiedAt: at }, ...rest] },
+  ])
+  openThread('c1')
+  renderWidget()
+
+  expect((await screen.findByTestId('cb-working')).textContent).toBe('Sent…')
+})
+
 test('a comment re-sent after a stop, with no reply, waits for a new agent', async () => {
   const at = '2026-01-01T10:00:00.000Z'
   fakeServer([
