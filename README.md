@@ -32,8 +32,7 @@ You comment directly on your dev app in the browser: select text, point at an
 element, draw an area, or write about the page or the whole app. For each
 comment, Claude starts a background agent that makes the change, shows you its
 progress live under your comment, and answers in the same thread. Reply to
-follow up; cancel to stop it. Switch a comment from "Change" to "Ask" to get
-an answer only: its agent may read the code but never edit it.
+follow up; cancel to stop it.
 
 ## How it works
 
@@ -202,7 +201,6 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 | `refused <file>: still held by comment <id>`                | The wait ran out: the agent releases its locks, re-reads and retries.                                                                          |
 | `no lock for <file>: outside <repository>`                  | Files outside the git repository take no lock.                                                                                                 |
 | `refused a Bash write: <command>`                           | The agent tried to write files from Bash, where they cannot be locked; it is told to use Edit or Write.                                        |
-| `refused <tool>: the comment asks a question`               | The comment is set to "Ask": the agent is told to answer in the thread instead.                                                                |
 | `recorded <step>`                                           | A step shown under the comment, once the agent claimed it, until the reader stops it.                                                          |
 | `run ended …`, `agent stopped …`                            | The agent answered, asked, or stopped: its locks are released.                                                                                 |
 | `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |

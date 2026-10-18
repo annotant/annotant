@@ -30,7 +30,7 @@ import {
   imagesDir,
   parseImages,
 } from './lib/images.mjs'
-import { CAPABILITIES, MAX_PICKED, mayEdit, openingOf, sentKey } from './lib/format.mjs'
+import { MAX_PICKED, openingOf, sentKey } from './lib/format.mjs'
 import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
@@ -409,9 +409,6 @@ function sanitiseAnchor(anchor = {}) {
   }
 }
 
-/** @returns {import('./lib/format.mjs').Capability | undefined} */
-const capabilityOf = (value) => CAPABILITIES.find((known) => known === value)
-
 /** @returns {Parameters<typeof store.update>[1]} */
 function sanitisePatch(input) {
   /** @type {Parameters<typeof store.update>[1]} */
@@ -439,8 +436,6 @@ function sanitisePatch(input) {
   // Passed even empty: the store then clears the words of a message that has
   // images or elements, which goes again with them alone.
   if (typeof input.text === 'string') patch.text = input.text.trim()
-  const capability = capabilityOf(input.capability)
-  if (capability) patch.capability = capability
   return patch
 }
 
@@ -603,7 +598,6 @@ async function handle(req, res) {
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),
-        capability: capabilityOf(input.capability),
       })
       return send(res, 201, comment, cors)
     }
@@ -754,9 +748,7 @@ function describe(comment) {
   const images = attached.length
     ? ` images=${JSON.stringify(attached.map((name) => path.join(imagesDir(project, comment.id), name)))}`
     : ''
-  // An Ask: the agent answers, and the hooks refuse its edits.
-  const ask = mayEdit(comment) ? '' : ' capability=reply'
-  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}${images}${ask}`
+  return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}${images}`
 }
 
 /**

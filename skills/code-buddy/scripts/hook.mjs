@@ -5,8 +5,7 @@
 // for an agent a plugin starts, so the plugin's hooks module registers each
 // comment's agent with these, the comment and the project written in.
 //
-// pre: refuses AskUserQuestion, Bash commands that write files, and every
-//      edit on a comment that only asks (`capability` `reply`); locks the
+// pre: refuses AskUserQuestion and Bash commands that write files, locks the
 //      file an edit writes (another comment's agent may hold it), and records
 //      the step for the widget.
 // post: records the step done or failed; after resolve.mjs or ask.mjs, ends
@@ -22,7 +21,7 @@ import { createHash } from 'node:crypto'
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from './lib/filelock.mjs'
-import { currentRun, mayEdit, parseFile } from './lib/format.mjs'
+import { currentRun, parseFile } from './lib/format.mjs'
 import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
 import { isActive, progressPath } from './lib/store.mjs'
 
@@ -93,9 +92,6 @@ function textOf(input, key) {
   const value = input[key]
   return typeof value === 'string' ? value : undefined
 }
-
-/** The tools that change files, refused on a comment that only asks. */
-const EDITS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 
 /**
  * The file a tool writes, `@build` for a build, or undefined.
@@ -371,13 +367,6 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     '"<question>" --option "<label>: <description>" --option "…" (2 to 6 options; ' +
     'add --multiple to let the reader pick several), then reply "QUESTION: <your question>".'
 
-  /** A comment set to Ask gets an answer in its thread, never a change. */
-  const answerOnly = () =>
-    'This comment asks a question: answer it in the thread with ' +
-    `node ${JSON.stringify(path.join(scripts, 'resolve.mjs'))} ${comment} ` +
-    `--project ${JSON.stringify(root)} "<answer>", and offer the change there if one ` +
-    'seems wanted. Make no edit: the reader follows up with "Change" to have it made.'
-
   return {
     /**
      * @param {HookInput} event
@@ -390,14 +379,6 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       }
       /** @type {Step} */
       const step = { at: Date.now(), ...(id && { id }), ...describe(tool, input) }
-      if (EDITS.has(tool)) {
-        const found = await readComment()
-        if (found && !mayEdit(found)) {
-          await log(`refused ${tool}: the comment asks a question`)
-          await record([{ ...step, state: 'failed', error: 'this comment only asks' }])
-          return answerOnly()
-        }
-      }
       const command = (tool === 'Bash' && textOf(input, 'command')) || ''
       if (command && writesFromBash(command)) {
         await log(`refused a Bash write: ${short(command, 120)}`)

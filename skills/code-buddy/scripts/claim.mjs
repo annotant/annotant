@@ -9,7 +9,6 @@
 // this claim, and each of its lines starts with it.
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
-import { mayEdit } from './lib/format.mjs'
 import { imagesDir } from './lib/images.mjs'
 import { findProject, positional } from './lib/project.mjs'
 import { StoreRefusal, createStore, readRoute } from './lib/store.mjs'
@@ -74,12 +73,8 @@ try {
     model: process.env.CODE_BUDDY_MODEL || route.model || undefined,
     complexity: process.env.CODE_BUDDY_COMPLEXITY || route.complexity || undefined,
   })
-  // The project found, the run started and, out of the fence, what the reader
-  // lets the agent do: for the agent and the logs.
-  const capability = mayEdit(comment) ? 'edit' : 'reply'
-  console.log(
-    `claimed ${id} (${comment.route}) project=${project.root} run=${run} capability=${capability}`,
-  )
+  // The project found and the run started, for the agent and the logs.
+  console.log(`claimed ${id} (${comment.route}) project=${project.root} run=${run}`)
   console.log(fence(JSON.stringify(thread(project, comment), null, 2)))
 } catch (error) {
   if (!(error instanceof StoreRefusal)) throw error

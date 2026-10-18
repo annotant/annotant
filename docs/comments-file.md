@@ -52,7 +52,6 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
   },
   "state": "resolved",                       // always the last event's
   "createdAt": "2026-10-10T15:44:37.597Z",   // equals messages[0].at
-  "capability": "edit",                      // "reply": an Ask, answered only
   "messages": [ /* Message */ ],
   "events": [ /* Event */ ],
   "cancellation": { /* the last stopped run, when there is one */ }
@@ -72,7 +71,6 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links (`href`, `src`, `srcset`, `data-*`…). |
 | `state` | State | See [States](#states-and-moves). |
 | `createdAt` | ISO date | Lists sort by it. |
-| `capability` | `edit` or `reply`, optional | What the reader lets the agent do, as they last sent it: `edit` ("Change", the default and the value when absent) may change the code; `reply` ("Ask") only answers in the thread, and `hook.mjs pre` refuses its `Edit`, `Write`, `MultiEdit` and `NotebookEdit`. Set with the comment, and changed by a PATCH `capability` that reopens it (a re-send, an answer, a follow-up). The server's lines end with `capability=reply` for an Ask, and `claim.mjs`'s `claimed` line names it. |
 | `messages` | Message[] | The whole thread, the reader's comment first. |
 | `events` | Event[] | Every move, oldest first, never overwritten. |
 | `cancellation` | Cancellation, optional | Kept after a re-send, so the next agent sees it. |
@@ -174,7 +172,7 @@ stateDiagram-v2
 
 | Move | Trigger | `by` | Also writes |
 | --- | --- | --- | --- |
-| `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, `capability=edit` or `reply` at its end, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out, their `images` as absolute paths) and `cancellation`; `url`, `elided` and `cancellation` only when set. |
+| `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out, their `images` as absolute paths) and `cancellation`; `url`, `elided` and `cancellation` only when set. |
 | `working → asking` | `ask.mjs` | agent | A `claude` message with `question` and `run`. |
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |

@@ -167,12 +167,6 @@ interface ReviewEvent {
   complexity?: ReviewComplexity
 }
 
-/**
- * What the reader lets the agent do: `edit` ("Change") may change the code,
- * `reply` ("Ask") only answers in the thread. Absent: `edit`.
- */
-export type ReviewCapability = 'edit' | 'reply'
-
 export interface ReviewComment {
   id: string
   route: string
@@ -187,8 +181,6 @@ export interface ReviewComment {
   events: ReviewEvent[]
   /** Last cancelled run; kept after a re-send so the next agent sees it. */
   cancellation?: ReviewCancellation
-  /** As the reader last sent it. */
-  capability?: ReviewCapability
   /** Latest tool calls of the agent working on it; never stored in the file. */
   progress?: ReviewProgress[]
   /** Every step of every run, with `history=1` only: the debug panel's. */
@@ -214,10 +206,7 @@ export interface NewImage {
   data: string
 }
 
-export type NewReviewComment = Pick<
-  ReviewComment,
-  'route' | 'url' | 'anchor' | 'capability'
-> & {
+export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {
   body: string
   images?: NewImage[]
   elements?: ReviewPickedElement[]
@@ -242,13 +231,7 @@ export interface ReviewCommentPatch {
   elements?: ReviewPickedElement[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
-  /** With a move that opens it again: what its agent may then do. */
-  capability?: ReviewCapability
 }
-
-/** Whether the comment only asks: its agent answers, and changes nothing. */
-export const asks = (comment: Pick<ReviewComment, 'capability'>) =>
-  comment.capability === 'reply'
 
 type Lifecycle = Pick<ReviewComment, 'state'>
 

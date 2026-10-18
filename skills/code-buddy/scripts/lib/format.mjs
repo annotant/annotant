@@ -47,19 +47,6 @@ export const TRANSITIONS = {
 export const COMPLEXITIES = ['trivial', 'standard', 'hard']
 
 /**
- * What the reader lets the comment's agent do: `edit` (Change), make the
- * change; `reply` (Ask), only answer in the thread: the hooks refuse its
- * edits. A comment without one is `edit`.
- * @typedef {'edit' | 'reply'} Capability
- */
-
-/** @type {readonly Capability[]} */
-export const CAPABILITIES = ['edit', 'reply']
-
-/** Whether the comment's agent may change the code. @param {Pick<CommentV2, 'capability'>} comment */
-export const mayEdit = (comment) => comment.capability !== 'reply'
-
-/**
  * @typedef {AreaNode & { html: string }} Element `selector` is from `body`,
  * unique when it was recorded; `text` and `html` (the outer HTML) are
  * whitespace-collapsed and truncated.
@@ -181,8 +168,6 @@ export const MAX_PICKED = 1
  * @property {MessageV2[]} messages The whole thread, the reader's comment first.
  * @property {EventV2[]} events
  * @property {Cancellation} [cancellation] The last stopped run.
- * @property {Capability} [capability] As the reader last sent it: with their
- *   comment, a follow-up, an answer or a re-send.
  */
 
 /**

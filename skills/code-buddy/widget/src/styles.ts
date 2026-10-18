@@ -88,7 +88,6 @@ code { font-family: var(--cb-mono); }
 .cb-chip--asking, .cb-chip--answered { background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
 .cb-chip--resolved { background: var(--cb-green-bg); color: var(--cb-green); }
 .cb-chip--stopped { background: var(--cb-red-bg); color: var(--cb-red); }
-.cb-chip--ask { background: var(--cb-surface-2); color: var(--cb-text); box-shadow: inset 0 0 0 1px var(--cb-border); }
 .cb-chip--small { height: 18px; padding: 0 7px; border-radius: 9px; font-size: 11px; vertical-align: 1px; }
 
 .cb-textarea {
@@ -162,8 +161,6 @@ code { font-family: var(--cb-mono); }
 .cb-send svg { width: 18px; height: 18px; }
 .cb-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--cb-muted); }
 .cb-composer-cancel { margin-left: -10px; }
-.cb-composer-foot-start { display: inline-flex; align-items: center; gap: 8px; }
-.cb-capability button { font-size: 12px; }
 /* The hint row, moved into the foot while the content overflows. */
 .cb-panel-foot-hint { display: inline-flex; align-items: center; gap: 12px; }
 .cb-panel-foot-hint .cb-composer-cancel { margin-left: 0; }

@@ -25,12 +25,12 @@ let ids = 0
 
 /**
  * A project with comments, each one open; `lockRoot`: the repository it is in,
- * `folder` the project's folder there, `capability` the comments'.
+ * `folder` the project's folder there.
  * @param {import('node:test').TestContext} t
  * @param {number} [count]
- * @param {{ lockRoot?: string, folder?: string, capability?: 'edit' | 'reply' }} [options]
+ * @param {{ lockRoot?: string, folder?: string }} [options]
  */
-async function world(t, count = 1, { lockRoot, folder = 'web', capability } = {}) {
+async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
   const root = lockRoot ? path.join(lockRoot, folder) : await tempProject(t)
   if (lockRoot) {
     await mkdir(root, { recursive: true })
@@ -48,7 +48,6 @@ async function world(t, count = 1, { lockRoot, folder = 'web', capability } = {}
         route: '/',
         anchor: { section: '', quote: '', occurrence: 0 },
         body: `Comment ${i + 1}`,
-        ...(capability && { capability }),
       }),
     )
   }
@@ -237,36 +236,6 @@ test('refuses a Bash command that writes files, which no lock covers', async (t)
     await w.hook(0, 'pre', { tool_name: 'Bash', tool_input: { command: answer } }),
     undefined,
   )
-})
-
-test('refuses every edit on a comment that only asks, and lets it read and answer', async (t) => {
-  const w = await world(t, 1, { capability: 'reply' })
-  await w.claim(0)
-  const file = path.join(w.root, 'src/App.tsx')
-  /** @type {[string, Record<string, unknown>][]} */
-  const edits = [
-    ['Edit', edit(file)],
-    ['Write', { file_path: file, content: 'x' }],
-    ['MultiEdit', { file_path: file, edits: [] }],
-    ['NotebookEdit', { notebook_path: path.join(w.root, 'a.ipynb'), new_source: '' }],
-  ]
-  for (const [name, input] of edits) {
-    const deny = await w.tool(0, name, input)
-    assert.match(
-      deny ?? '',
-      /This comment asks a question: answer it in the thread/,
-      name,
-    )
-    assert.ok(deny?.includes(path.join(SCRIPTS, 'resolve.mjs')), deny)
-  }
-  assert.equal((await w.progress(0)).at(-1).state, 'failed')
-  assert.equal(await w.tool(0, 'Read', { file_path: file }), undefined)
-  assert.equal(await w.tool(0, 'Grep', { pattern: 'x' }), undefined)
-  // Switched to Change with a follow-up, the same agent may edit.
-  await w.comments.answer(w.id(0), 'It is greyed out while the form is invalid.')
-  await w.comments.update(w.id(0), { followUp: 'Show why, then.', capability: 'edit' })
-  await w.claim(0)
-  assert.equal(await w.tool(0, 'Edit', edit(file)), undefined)
 })
 
 test("sends AskUserQuestion to the comment's thread", async (t) => {
