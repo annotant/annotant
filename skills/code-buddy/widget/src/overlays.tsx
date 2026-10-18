@@ -156,22 +156,32 @@ const sameBox = (a?: Box, b?: Box) =>
 /**
  * `measure(find(root, comments))`, kept in step with the page: `find` runs
  * again when the page changes (nodes, text, attributes such as the padding a
- * docked panel adds), `measure` alone on scroll and resize, once per frame.
+ * docked panel adds), `measure` alone on scroll, on resize and when `root` or
+ * an element `anchors` gives changes size (a docked panel squeezing the page,
+ * an image or a font loading), once per frame.
  */
 function useTracked<Found, Measured>(
   root: Element,
   comments: ReviewComment[],
   find: (root: Element, comments: ReviewComment[]) => Found,
   measure: (found: Found) => Measured[],
+  anchors: (found: Found) => (Element | null | undefined)[],
 ): Measured[] {
   const [measured, setMeasured] = useState<Measured[]>([])
   useEffect(() => {
     let found: { value: Found } | undefined
     let frame = 0
+    // Layout moves what no mutation tells: an animation, an image, a font.
+    const resized = new ResizeObserver(() => update())
     const update = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        if (!found) found = { value: find(root, comments) }
+        if (!found) {
+          found = { value: find(root, comments) }
+          resized.disconnect()
+          resized.observe(root)
+          for (const anchor of anchors(found.value)) if (anchor) resized.observe(anchor)
+        }
         setMeasured(measure(found.value))
       })
     }
@@ -194,10 +204,11 @@ function useTracked<Found, Measured>(
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
+      resized.disconnect()
       window.removeEventListener('resize', update)
       document.removeEventListener('scroll', update, true)
     }
-  }, [root, comments, find, measure])
+  }, [root, comments, find, measure, anchors])
   return measured
 }
 
@@ -226,6 +237,9 @@ function findElements(root: Element, comments: ReviewComment[]) {
   })
 }
 
+const elementsOf = (found: ReturnType<typeof findElements>) =>
+  found.map(({ element }) => element)
+
 function measureElements(found: ReturnType<typeof findElements>): Mark[] {
   return found.flatMap(({ comment, tag, element, corners, clippers }) => {
     const frame = boxOf(element)
@@ -249,7 +263,7 @@ export function ElementMarks({
   comments: ReviewComment[]
   onOpen: (comment: ReviewComment) => void
 }) {
-  const marks = useTracked(root, comments, findElements, measureElements)
+  const marks = useTracked(root, comments, findElements, measureElements, elementsOf)
 
   return (
     <>
@@ -303,6 +317,9 @@ function findAreas(root: Element, comments: ReviewComment[]) {
   })
 }
 
+const holdersOf = (found: ReturnType<typeof findAreas>) =>
+  found.map(({ holder }) => holder)
+
 function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
   return found.flatMap(({ comment, area, holder, clippers }) => {
     const frame = framedArea(area, holder)
@@ -324,7 +341,7 @@ export function AreaMarks({
   comments: ReviewComment[]
   onOpen: (comment: ReviewComment) => void
 }) {
-  const marks = useTracked(root, comments, findAreas, measureAreas)
+  const marks = useTracked(root, comments, findAreas, measureAreas, holdersOf)
 
   return (
     <>
@@ -422,6 +439,12 @@ function findQuotes(root: Element, comments: ReviewComment[]) {
     return [{ comment, range, parts: textParts(range, clippers), startClippers }]
   })
 }
+
+/** The elements that hold each quote's text. */
+const quotedOf = (found: ReturnType<typeof findQuotes>) =>
+  found.flatMap(({ parts }) =>
+    parts.map(({ range }) => range.startContainer.parentElement),
+  )
 
 /** Under this luminance, the page is dark: a rainbow lightens it rather than tints it. */
 const DARK = 0.4
@@ -521,7 +544,7 @@ export function QuoteBubbles({
   comments: ReviewComment[]
   onOpen: (comment: ReviewComment) => void
 }) {
-  const pins = useTracked(root, comments, findQuotes, measureQuotes)
+  const pins = useTracked(root, comments, findQuotes, measureQuotes, quotedOf)
   const layer = usePageLayer()
 
   return (
