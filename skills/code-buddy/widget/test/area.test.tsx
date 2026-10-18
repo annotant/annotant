@@ -386,7 +386,7 @@ test('an area drawn from a page comment keeps what the reader wrote and attached
   ).toBe('Too much space')
 })
 
-test('an area drawn after a comment on an element starts a new comment', async () => {
+test('an area drawn after pointing at an element keeps the element and the words', async () => {
   renderCards()
   const title = document.querySelector('h1')
   if (!title) throw new Error('no title')
@@ -402,13 +402,13 @@ test('an area drawn after a comment on an element starts a new comment', async (
   fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
   drag([10, 300], [510, 360])
 
-  // The text was about the title: it does not follow the reader to the area.
+  // The element is in the message, as an image would be: it stays with the words.
   await screen.findByTestId('cb-area-chip')
-  expect(screen.queryByTestId('cb-element')).toBeNull()
+  expect(screen.getByTestId('cb-picked').textContent).toContain('<h1>')
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'What should change?' })
       .value,
-  ).toBe('')
+  ).toBe('Bigger title')
 })
 
 const DRAWN: ReviewArea = {

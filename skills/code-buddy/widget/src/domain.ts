@@ -17,6 +17,17 @@ export interface ReviewElement {
   html: string
 }
 
+/**
+ * An element the reader picked in the page with a message of the thread, on
+ * `route`, the page they were on, which may be another than the comment's.
+ */
+export interface ReviewPickedElement extends ReviewElement {
+  route: string
+}
+
+/** The most elements one message may hold, as lib/format.mjs caps them. */
+export const MAX_PICKED = 1
+
 /** An element an area covers or cuts through: enough to find it in the code. */
 export type ReviewNode = Omit<ReviewElement, 'html'>
 
@@ -119,6 +130,8 @@ export interface ReviewMessage {
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */
   images?: string[]
+  /** Reader only: the elements they picked in the page with it. */
+  elements?: ReviewPickedElement[]
   /** Reader only, on a message that opened the comment: when they sent it, anew on a re-send. */
   sentAt?: string
   /** With `sentAt`: when the server handed it over to the hooks. */
@@ -191,6 +204,7 @@ export interface NewImage {
 export type NewReviewComment = Pick<ReviewComment, 'route' | 'url' | 'anchor'> & {
   body: string
   images?: NewImage[]
+  elements?: ReviewPickedElement[]
 }
 
 /** What the reader asks of a comment; the server turns it into a move. */
@@ -208,11 +222,47 @@ export interface ReviewCommentPatch {
    * `choices`, or alone; ignored with only `status` or `cancelled`.
    */
   images?: NewImage[]
+  /** The elements the reader picked in the page with their reply, as `images`. */
+  elements?: ReviewPickedElement[]
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
 }
 
 type Lifecycle = Pick<ReviewComment, 'state'>
+
+/**
+ * The element the reader picked last, in their latest message that holds
+ * one, when it is still to mark: picked since the thread was last
+ * resolved, on a thread not resolved now. It takes the place of the comment's
+ * anchor on the page.
+ */
+export function pickedMark(
+  // Without its thread when the server sent it broken: the page's marks are
+  // drawn out of the panel's guard, and the others' must still show.
+  comment: Pick<ReviewComment, 'state' | 'events'> & { messages?: ReviewMessage[] },
+): ReviewPickedElement | undefined {
+  if (comment.state === 'resolved') return undefined
+  const resolved = comment.events.findLast((event) => event.state === 'resolved')
+  const picked = comment.messages?.findLast(
+    (message) => message.author === 'reader' && message.elements?.length,
+  )
+  if (!picked || (resolved && picked.at <= resolved.at)) return undefined
+  return picked.elements?.[0]
+}
+
+/**
+ * The element page `route` marks for a comment: the one picked last, when it
+ * was picked there, else the element it is anchored to, until its thread is
+ * first resolved.
+ */
+export function markedElement(
+  comment: Parameters<typeof pickedMark>[0] & Pick<ReviewComment, 'anchor'>,
+  route: string,
+): ReviewElement | undefined {
+  const picked = pickedMark(comment)
+  if (picked) return picked.route === route ? picked : undefined
+  return wasResolved(comment) ? undefined : comment.anchor.element
+}
 
 /**
  * Resolved once already: Claude's later answers wait on the reader, and the
@@ -277,18 +327,26 @@ export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
   return latestOwn(comment)?.body ?? ''
 }
 
-/** The images of the reader's latest message. */
-export function latestImages(comment: Pick<ReviewComment, 'messages'>): string[] {
-  return latestOwn(comment)?.images ?? []
+/** Whether the reader's latest message holds images or elements: it may go without words. */
+export function latestAttached(comment: Pick<ReviewComment, 'messages'>): boolean {
+  const own = latestOwn(comment)
+  return !!own?.images?.length || !!own?.elements?.length
 }
 
-/** What a message says, in one line: its words, or the images that are all it holds. */
+/** What a message says, in one line: its words, or the images or elements that are all it holds. */
 export function gist(
-  message: Pick<ReviewMessage, 'body' | 'images'> | undefined,
+  message: Pick<ReviewMessage, 'body' | 'images' | 'elements'> | undefined,
 ): string {
   if (!message) return ''
-  if (message.body || !message.images?.length) return message.body
-  return message.images.length === 1 ? 'An image' : `${message.images.length} images`
+  if (message.body) return message.body
+  const images = message.images?.length ?? 0
+  const elements = message.elements?.length ?? 0
+  const parts = [
+    images && (images === 1 ? 'an image' : `${images} images`),
+    elements && (elements === 1 ? 'an element' : `${elements} elements`),
+  ].filter(Boolean)
+  const said = parts.join(' and ')
+  return said.charAt(0).toUpperCase() + said.slice(1)
 }
 
 export function normaliseQuote(text: string): string {

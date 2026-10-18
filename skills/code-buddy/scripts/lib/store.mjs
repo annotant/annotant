@@ -24,6 +24,7 @@ import { isDevWidget } from './project.mjs'
 /** @typedef {import('./format.mjs').Complexity} Complexity */
 /** @typedef {import('./images.mjs').Image} Image */
 /** @typedef {import('./format.mjs').MessageV2} MessageV2 */
+/** @typedef {import('./format.mjs').PickedElement} PickedElement */
 /** @typedef {import('./format.mjs').State} State */
 
 export const APP_ROUTE = '*'
@@ -176,21 +177,22 @@ const historyPath = (project, id) => path.join(project.progressDir, `${id}.histo
 /**
  * The reader's answer to Claude's question: the options they chose, from the
  * ones it offered, then their own words. Undefined when it holds neither,
- * unless images go with it (`imaged`): an image alone is a reply.
+ * unless images or elements go with it (`attached`): an image or an element
+ * picked in the page alone is a reply.
  * @param {any} comment
  * @param {string | undefined} text
  * @param {string[] | undefined} choices
- * @param {boolean} imaged
+ * @param {boolean} attached
  * @returns {{ body: string, choices?: string[] } | undefined}
  */
-function readerReply(comment, text, choices, imaged) {
+function readerReply(comment, text, choices, attached) {
   const asked = isAsking(comment) ? comment.messages?.at(-1) : undefined
   /** @type {string[]} */
   const offered = asked?.options?.map((option) => option.label) ?? []
   const valid = offered.filter((label) => choices?.includes(label))
   const chosen = asked?.multiple ? valid : valid.slice(0, 1)
   const body = [chosen.join(', '), text ?? ''].filter(Boolean).join('\n\n')
-  if (!body && !imaged) return undefined
+  if (!body && !attached) return undefined
   return chosen.length ? { body, choices: chosen } : { body }
 }
 
@@ -455,12 +457,12 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     },
 
     /**
-     * The reader's new comment: their words, and the images they attached,
-     * open the thread.
-     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[] }} input
+     * The reader's new comment: their words, the images they attached and
+     * the elements they picked in the page, open the thread.
+     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[], elements?: PickedElement[] }} input
      * @returns {Promise<CommentV2>}
      */
-    create({ route, url, anchor, body, images = [] }) {
+    create({ route, url, anchor, body, images = [], elements = [] }) {
       return exclusive(async () => {
         const comments = await readAll()
         const at = new Date().toISOString()
@@ -479,6 +481,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               author: 'reader',
               body,
               at,
+              ...(elements.length ? { elements } : {}),
               sentAt: at,
             },
           ],
@@ -502,15 +505,19 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * The reader's move, as the widget sends it: stop the run (`cancelled:
      * true`), send it again (`cancelled: false`, with new words in `text`),
      * answer or follow up (`followUp`, `choices`, with the `images` the
-     * reader attached), or resolve it (`status`).
+     * reader attached and the `elements` they picked in the page), or
+     * resolve it (`status`).
      * A stop or a re-send the comment is past changes nothing: a double
      * click, or a click on a button a poll late, is not an error. Undefined
      * when there is no such comment.
      * @param {string} id
-     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], text?: string, status?: 'resolved' }} patch
+     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], elements?: PickedElement[], text?: string, status?: 'resolved' }} patch
      * @returns {Promise<CommentV2 | undefined>}
      */
-    update(id, { cancelled, followUp, choices, images = [], text, status }) {
+    update(
+      id,
+      { cancelled, followUp, choices, images = [], elements = [], text, status },
+    ) {
       return exclusive(async () => {
         const comments = await readAll()
         const comment = comments.find((entry) => entry.id === id)
@@ -530,8 +537,11 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             const { notifiedAt: _, ...unsent } = last
             /** @type {MessageV2} */
             let resent = { ...unsent, sentAt }
-            if (text !== undefined && (text || last.images?.length)) {
-              // New words, or none on a message with images, which go alone; the
+            if (
+              text !== undefined &&
+              (text || last.images?.length || last.elements?.length)
+            ) {
+              // New words, or none on a message with images or elements, which go alone; the
               // options the reader had chosen go either way.
               const { choices: __, ...kept } = resent
               resent = { ...kept, body: text }
@@ -539,7 +549,12 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             comment.messages[comment.messages.indexOf(last)] = resent
           }
         }
-        const reply = readerReply(comment, followUp, choices, images.length > 0)
+        const reply = readerReply(
+          comment,
+          followUp,
+          choices,
+          images.length > 0 || elements.length > 0,
+        )
         /** @type {string[]} */
         let names = []
         // Unsaved, the reply leaves no image behind.
@@ -550,7 +565,11 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             if (reply) {
               const sentAt = move(comment, 'open', {
                 by: 'reader',
-                message: { author: 'reader', ...reply },
+                message: {
+                  author: 'reader',
+                  ...reply,
+                  ...(elements.length ? { elements } : {}),
+                },
               })
               // Written once the move is taken: a refused one leaves no file behind.
               const message = comment.messages.at(-1)

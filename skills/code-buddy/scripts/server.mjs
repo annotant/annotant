@@ -28,7 +28,7 @@ import {
   imagesDir,
   parseImages,
 } from './lib/images.mjs'
-import { openingOf, sentKey } from './lib/format.mjs'
+import { MAX_PICKED, openingOf, sentKey } from './lib/format.mjs'
 import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
@@ -184,6 +184,26 @@ function sanitiseElement(element) {
     }
   )
 }
+
+/** The most a route may hold, as a new comment's. */
+const MAX_ROUTE = 500
+
+/**
+ * The elements the reader picked in the page with a message, each with the
+ * page it was on; one with no route is dropped, as the page it was on is
+ * unknown.
+ * @param {unknown} list
+ * @returns {import('./lib/format.mjs').PickedElement[]}
+ */
+const sanitisePicked = (list) =>
+  (Array.isArray(list) ? list : [])
+    .flatMap((picked) => {
+      const element = sanitiseElement(picked)
+      const route =
+        typeof picked?.route === 'string' ? picked.route.slice(0, MAX_ROUTE) : ''
+      return element && route ? [{ ...element, route }] : []
+    })
+    .slice(0, MAX_PICKED)
 
 /** A name that may hold a secret: a token, a password, a signature, a nonce. */
 const SECRET =
@@ -383,9 +403,11 @@ function sanitisePatch(input) {
   if (patch.followUp || patch.choices || !anotherMove) {
     const images = parseImages(input.images)
     if (images.length) patch.images = images
+    const elements = sanitisePicked(input.elements)
+    if (elements.length) patch.elements = elements
   }
   // Passed even empty: the store then clears the words of a message that has
-  // images, which goes again with them alone.
+  // images or elements, which goes again with them alone.
   if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }
@@ -525,21 +547,27 @@ async function handle(req, res) {
     if (req.method === 'POST') {
       const input = await readJson(req)
       const body = typeof input.body === 'string' ? input.body.trim() : ''
-      // An image alone says enough, as in a prompt to Claude.
+      // An image or an element alone says enough, as in a prompt to Claude.
       const images = parseImages(input.images)
-      if (typeof input.route !== 'string' || !input.route || (!body && !images.length)) {
+      const elements = sanitisePicked(input.elements)
+      if (
+        typeof input.route !== 'string' ||
+        !input.route ||
+        (!body && !images.length && !elements.length)
+      ) {
         return send(
           res,
           400,
-          { error: 'route and a body or an image are required' },
+          { error: 'route and a body, an image or an element are required' },
           cors,
         )
       }
       const comment = await store.create({
-        route: input.route.slice(0, 500),
+        route: input.route.slice(0, MAX_ROUTE),
         url: sanitiseUrl(input.url),
         body,
         images,
+        elements,
         anchor: sanitiseAnchor(
           typeof input.anchor === 'object' && input.anchor ? input.anchor : {},
         ),
@@ -636,6 +664,21 @@ const quoted = (text) => JSON.stringify(text)
 const nodeLabel = (node) => `<${node.tag}> ${node.text.slice(0, 40)}`.trim()
 
 /**
+ * The elements the reader picked with a message, on the hooks' line, each
+ * with its page when it is not the comment's; the agent reads them whole in
+ * the thread claim.mjs prints.
+ * @param {import('./lib/format.mjs').PickedElement[]} elements
+ * @param {string} route The comment's.
+ */
+const describePicked = (elements, route) =>
+  JSON.stringify(
+    elements.map(
+      (element) =>
+        `${nodeLabel(element)}${element.route === route ? '' : ` on ${element.route}`}`,
+    ),
+  )
+
+/**
  * Where the area is and what it holds, on the hooks' line: its size and corner
  * on the page, the element it lies in, those it covers or crosses, and
  * `truncated` when it held more than these lists keep.
@@ -665,11 +708,16 @@ function describe(comment) {
   const reply = latestReply(comment)
   // The options the reader chose, apart: a label may hold the ", " that joins them in the text.
   const choices = reply?.choices ? ` choices=${JSON.stringify(reply.choices)}` : ''
+  // The message the line is about: the reader's reply, else their comment.
+  const message = reply ?? comment.messages[0]
+  const picked = message?.elements?.length
+    ? ` elements=${describePicked(message.elements, comment.route)}`
+    : ''
   const text = reply
-    ? `followup=${quoted(reply.body)}${choices} messages=${comment.messages.length}`
-    : `body=${quoted(comment.messages[0]?.body ?? '')}`
+    ? `followup=${quoted(reply.body)}${choices}${picked} messages=${comment.messages.length}`
+    : `body=${quoted(message?.body ?? '')}${picked}`
   // The images of that message, as files the agent opens with Read.
-  const attached = (reply ?? comment.messages[0])?.images ?? []
+  const attached = message?.images ?? []
   const images = attached.length
     ? ` images=${JSON.stringify(attached.map((name) => path.join(imagesDir(project, comment.id), name)))}`
     : ''

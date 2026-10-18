@@ -519,6 +519,28 @@ test('a hard comment goes to opus, a standard one keeps the parent model', async
   await w.exit(0)
 })
 
+test('the classifier reads the element picked in the page with the message', async ($, on) => {
+  const picked: Comment = {
+    ...titleComment,
+    anchor: { quote: '' },
+    messages: [
+      {
+        author: 'reader',
+        body: 'same size as this',
+        elements: [{ tag: 'h2', text: 'Pro' }],
+      },
+    ],
+  }
+  const w = world(on, [picked])
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.classified[0]).toMatch(
+    /Page: \/pricing\nElement: <h2> Pro\nComment: same size as this$/,
+  )
+  await w.exit(0)
+})
+
 const imageOnly: Comment = {
   ...titleComment,
   messages: [{ author: 'reader', body: '', images: ['m1-1.png'] }],

@@ -150,6 +150,9 @@ code { font-family: var(--cb-mono); }
 .cb-attachment-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 999px; background: var(--cb-text); color: #fff; }
 .cb-attachment-remove:hover { background: var(--cb-red); }
 .cb-attachment-remove svg { width: 12px; height: 12px; }
+.cb-picked { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-top: 4px; min-width: 0; }
+.cb-pick { flex-shrink: 0; width: 36px; height: 36px; }
+.cb-pick[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent); }
 .cb-composer-box textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; padding: 7px 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; font-size: 15px; line-height: 1.45; }
 .cb-composer-box textarea::placeholder { color: var(--cb-muted); }
 .cb-send { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: var(--cb-accent); color: #fff; cursor: pointer; transition: background .15s; }
@@ -210,6 +213,9 @@ code { font-family: var(--cb-mono); }
 .cb-msg { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cb-msg--reader { align-items: flex-end; padding-left: 40px; }
 .cb-msg--claude { align-items: flex-start; }
+.cb-msg-elements { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: 100%; }
+/* Sized to its text: the chip's negative margins would cut it short. */
+.cb-msg-elements .cb-element { margin: 0; }
 .cb-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .cb-images a { display: block; }
 .cb-images img { display: block; max-width: 160px; max-height: 120px; border: 1px solid var(--cb-border); border-radius: 10px; object-fit: cover; }

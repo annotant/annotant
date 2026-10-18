@@ -121,9 +121,13 @@ directory, else from the repository root.
 - **Comment** opens a new comment for the page, or the whole app.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.
-- **Point at element** to anchor it to an element. A bubble then marks the
-  element too; hovering the element chip later outlines it on the page,
-  clicking it scrolls to it (navigating first if it lives on another page).
+- **Point at element** starts a comment with that element in its message
+  box, as an image would be: the comment is about the page, and the element
+  goes with its message. It stays outlined while you write, then a bubble
+  marks it until the thread is first resolved. A reply that picks an element
+  afterwards moves the mark to it. Hovering an element chip outlines it on the
+  page, clicking it scrolls to it (navigating first if it lives on another
+  page).
 - **Draw area** to frame a part of the page no single element holds: the gap
   between two blocks, a misaligned group, empty space. Drag a rectangle
   (scroll the page while dragging to stretch it past the window); the elements
@@ -137,6 +141,10 @@ directory, else from the repository root.
 - **Paste or drop an image** (a screenshot, a mockup) in the message box of a
   comment or a reply: it goes with the message, or alone, and Claude opens
   it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
+- **Pick an element in the page** from any message box, a new comment's or a
+  reply's: its pointer button picks one with the panel still open ("this one
+  too"). One per message: picking another replaces it. Its chip in the thread
+  scrolls to it.
 - **All comments** lists every discussion, newest first, filtered by status.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,

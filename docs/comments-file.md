@@ -99,6 +99,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
+| `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
 | `sentAt` | ISO date, reader only | On a message that opened the comment (its first, an answer, a follow-up): when the reader sent it, written again on a re-send. Absent from messages written before it existed, which key on `at`. |
 | `notifiedAt` | ISO date, with `sentAt` | When the server first printed the line handing it over (see [Hand-overs](#hand-overs)); a re-send drops it. |
 
@@ -168,8 +169,8 @@ stateDiagram-v2
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
-| `asking`, `answered` or `resolved → open` | PATCH `followUp` and/or `choices` | reader | A `reader` message, with `sentAt`. |
-| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images alone when it has some. |
+| `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` | reader | A `reader` message, with `sentAt`. |
+| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images or elements alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
 The store refuses any other move, and writes nothing: the server answers 409
@@ -180,12 +181,33 @@ change nothing. `ask.mjs` and `resolve.mjs` on a comment still `open` claim it
 first (`open → working`).
 
 The page marks a comment's anchor (an element's outline, a text's rainbow)
-until its thread is first resolved: a follow-up does not bring it back.
+until its thread is first resolved: a follow-up does not bring it back, unless
+it picks an element. The element of the reader's latest message holding one
+takes the anchor's place, while the thread is not resolved and when it
+was picked since the thread was last resolved (the comment itself, before any
+resolution). The page marks it only when it is on that page. A picked
+element's chip in the thread also outlines it while hovered, and scrolls to it
+and flashes it once clicked.
+
+### Elements picked in a message
+
+The reader may pick an element in the page for any message, the comment or a
+reply (the composer's pointer button; the widget's _Point at element_ starts
+a comment with one): it goes with the message as `elements` (see
+[A message](#a-message)), alone or with words, images or choices. One per
+message: another picked takes its place in the message box, and the server
+keeps the first it can, dropping one with no `route`. The widget no longer writes `anchor.element`, which
+older comments keep. The `NEW` line for the hooks names them after the
+comment's `body`, the `FOLLOWUP` and `EDIT` lines after the reply's `choices`:
+` elements=["<a> Help on /help"]`, the page added when it is
+not the comment's. The agent reads them whole in the thread `claim.mjs`
+prints.
 
 ### Models
 
 Before the plugin's hooks start a comment's agent, they read the comment (the reader's last message,
-the selected text or the element's tag and text, the route) and asks Claude
+the selected text, the element's tag and text and those of the elements picked
+with the message, the route) and asks Claude
 Code's small fast model for one label:
 
 | Label | For |

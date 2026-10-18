@@ -9,6 +9,11 @@ released to the `stable` branch.
 
 ### Changed
 
+- **Point at element starts a comment about the page, the element in its
+  message box.** The element is no longer the comment's anchor: it goes with
+  the message, as an image does. The page still marks it until the thread is first resolved; a reply that picks an
+  element afterwards moves the mark to it, in place of the comment's text,
+  area or element. (#36)
 - **Breaking: comments no longer wait on a managing session.** `/code-buddy`
   is now a command of the plugin's hooks: it starts the server for the
   session's life, and every comment starts its agent at once, in the
@@ -84,6 +89,13 @@ released to the `stable` branch.
 
 ### Added
 
+- **An element picked in a message.** Every message box, a new comment's or a
+  reply's, has a button that starts the element picker while the panel stays
+  open: the element picked shows as a chip above the text and goes with the
+  message, alone or with words; one per message, another picked takes its
+  place. Its bubble shows it; the chip outlines the element when hovered, and
+  scrolls to it and flashes it when clicked, on its own page. The agent reads
+  its selector, text, HTML and page. (#36)
 - **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
   message box, of a new comment or a reply: it shows as a thumbnail, goes
   with the message and shows in its bubble; an image alone is a message too.

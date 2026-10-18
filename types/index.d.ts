@@ -12,7 +12,12 @@ export type CommentsFile = {
     state: string
     route?: string
     anchor?: { quote?: string; element?: { tag?: string; text?: string } }
-    messages?: { author: string; body: string; images?: string[] }[]
+    messages?: {
+      author: string
+      body: string
+      images?: string[]
+      elements?: { tag?: string; text?: string }[]
+    }[]
     events?: { by: string }[]
   }[]
 }

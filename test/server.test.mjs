@@ -1141,3 +1141,83 @@ test('takes images with a reply only', async () => {
   assert.equal(resolved.state, 'resolved')
   assert.equal(existsSync(path.join(root, '.code-buddy', 'images', created.id)), false)
 })
+
+test('takes a comment of the elements the reader picked alone, and tells the hooks', async () => {
+  const title = { selector: 'h1', tag: 'h1', text: 'Cart', html: '<h1>Cart</h1>' }
+  // With no route, the element is dropped: the comment holds nothing.
+  const empty = await post(JSON.stringify({ route: '/cart', elements: [title] }))
+  assert.equal(empty.status, 400)
+  const printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/cart',
+        anchor: { quote: '' },
+        // One per message: the first the server can keep.
+        elements: [title, { ...title, route: '/help' }, { ...title, route: '/cart' }],
+      }),
+    ),
+  )
+  assert.equal(created.messages[0].body, '')
+  assert.deepEqual(created.messages[0].elements, [{ ...title, route: '/help' }])
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(event, / page-level body="" elements=\["<h1> Cart on \/help"\]$/)
+})
+
+test('takes the elements the reader picked with a reply, and tells the hooks', async () => {
+  const created = await json(
+    await post(JSON.stringify({ route: '/cart', body: 'Bigger' })),
+  )
+  const patch = (body) =>
+    fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  await patch({ status: 'resolved' })
+  const button = {
+    selector: '#buy',
+    tag: 'button',
+    text: 'Buy',
+    html: '<button>Buy</button>',
+  }
+  const printed = output.length
+  const reopened = await json(
+    await patch({
+      followUp: 'This one too',
+      elements: [
+        // The page it was on is unknown: dropped.
+        { ...button },
+        {
+          selector: 'footer > a',
+          tag: 'a',
+          text: 'Help',
+          html: '<a href="/help?token=abc" data-token="x">Help</a>',
+          route: '/help',
+        },
+        { ...button, route: '/cart' },
+      ],
+    }),
+  )
+  const { elements } = reopened.messages.at(-1)
+  // The one with no route dropped, then the first left: one per message, the
+  // html redacted as a comment's.
+  assert.equal(elements.length, 1)
+  assert.equal(elements[0].html, '<a href="/help?token=redacted">Help</a>')
+  const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
+  assert.match(
+    event,
+    / followup="This one too" elements=\["<a> Help on \/help"\] messages=2$/,
+  )
+
+  // An element alone is a reply; with only another move, it is ignored.
+  await patch({ status: 'resolved' })
+  const alone = await json(await patch({ elements: [{ ...button, route: '/cart' }] }))
+  assert.equal(alone.state, 'open')
+  assert.equal(alone.messages.at(-1).body, '')
+  assert.equal(alone.messages.at(-1).elements.length, 1)
+  const resolved = await json(
+    await patch({ status: 'resolved', elements: [{ ...button, route: '/cart' }] }),
+  )
+  assert.equal(resolved.messages.length, alone.messages.length)
+})

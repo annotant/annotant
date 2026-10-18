@@ -179,11 +179,14 @@ export function Composer({
   autoFocus,
   sendLabel = 'Send',
   images,
+  elements,
+  picking = false,
   onChange,
   onSubmit,
   onEscape,
   onAttach,
   onDetach,
+  onPick,
 }: {
   value: string
   placeholder: string
@@ -191,6 +194,13 @@ export function Composer({
   autoFocus?: boolean
   sendLabel?: string
   images: NewImage[]
+  /**
+   * The chips of the elements picked in the page for this message, above the
+   * text: the message may hold them alone.
+   */
+  elements?: ReactNode[]
+  /** The page's elements are being picked for it. */
+  picking?: boolean
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
@@ -198,6 +208,8 @@ export function Composer({
   onAttach?: (images: NewImage[]) => void
   /** Removes the attached image at `index`. */
   onDetach?: (index: number) => void
+  /** Without it, the box has no button to pick an element in the page. */
+  onPick?: () => void
 }) {
   const box = useRef<HTMLTextAreaElement>(null)
   // Grows with its text up to the CSS max-height, then scrolls.
@@ -212,7 +224,8 @@ export function Composer({
   // the message waits for them.
   const reading = useRef(0)
   const [pending, setPending] = useState(0)
-  const blocked = disabled || pending > 0 || (!value.trim() && !images.length)
+  const blocked =
+    disabled || pending > 0 || (!value.trim() && !images.length && !elements?.length)
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!blocked) onSubmit()
@@ -284,6 +297,11 @@ export function Composer({
           ))}
         </div>
       )}
+      {!!elements?.length && (
+        <div className="cb-picked" data-testid="cb-picked">
+          {elements}
+        </div>
+      )}
       <textarea
         ref={box}
         rows={1}
@@ -307,6 +325,16 @@ export function Composer({
           event.currentTarget.form?.requestSubmit()
         }}
       />
+      {onPick && (
+        <IconButton
+          icon="cursor"
+          label={picking ? 'Stop picking' : 'Pick an element in the page'}
+          className="cb-pick"
+          aria-pressed={picking}
+          disabled={disabled}
+          onClick={onPick}
+        />
+      )}
       <button
         type="submit"
         className="cb-send"

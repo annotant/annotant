@@ -53,6 +53,16 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  */
 
 /**
+ * An element the reader picked in the page while writing a message of the
+ * thread: found in the code as the comment's own element is, on `route`, the
+ * page they were on, which may be another than the comment's.
+ * @typedef {Element & { route: string }} PickedElement
+ */
+
+/** The most elements one message may hold: the one the page marks. */
+export const MAX_PICKED = 1
+
+/**
  * Where on the page a comment is.
  * @typedef {object} Anchor
  * @property {string} section The heading the quote sits under.
@@ -110,6 +120,8 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
+ * @property {PickedElement[]} [elements] Reader only: the elements they picked
+ *   in the page with it.
  * @property {string} [sentAt] Reader only, on a message that opened the
  *   comment (its first, an answer, a follow-up): when the reader sent it, anew
  *   when they send it again after a stop. The hooks start or message an agent once per `id` and
