@@ -3,7 +3,8 @@
 // Serves the widget and its API to the project's dev app, and prints one line
 // per comment needing attention (the plugin's hooks read them and dispatch):
 // OPEN (backlog at start), NEW, FOLLOWUP, EDIT, ASKED, ANSWERED, RESOLVED, CANCELLED,
-// DELETED.
+// DELETED. A reader's answer to an agent's AskUserQuestion goes to the agent's
+// hook waiting on it instead (hook.mjs), with no FOLLOWUP.
 // It watches the comments file's folder and the step files' folder, and pushes
 // `changed` to the widgets on /api/events: they reload only then. It watches
 // the widget's bundle too, and pushes `widget` when a dev build replaces it.
@@ -40,6 +41,7 @@ import {
   isActive,
   normaliseQuote,
   progressPath,
+  readRoute,
   stepFiles,
 } from './lib/store.mjs'
 
@@ -105,6 +107,7 @@ function send(res, status, body, headers = {}) {
 const CLIENT_ERRORS = /** @type {const} */ ({
   400: 'invalid JSON',
   403: 'origin not allowed',
+  409: 'already waiting',
   413: 'body too large',
 })
 
@@ -603,6 +606,16 @@ async function handle(req, res) {
     }
   }
 
+  // A comment's agent's hook, waiting on the reader's answer to its question:
+  // never a page's, which sends an Origin.
+  const awaited = /^\/api\/comments\/([\w-]+)\/answer$/.exec(url.pathname)?.[1]
+  if (req.method === 'POST' && awaited) {
+    if (origin) throw new ClientError(403)
+    const input = await readJson(req)
+    const wait = Math.min(Math.max(Number(input.wait) || 0, 0), MAX_ANSWER_WAIT_MS)
+    return send(res, 200, await answerOf(awaited, wait, input.final === true, res), cors)
+  }
+
   const match = url.pathname.match(/^\/api\/comments\/([\w-]+)$/)
   if (match) {
     if (req.method === 'PATCH') {
@@ -767,17 +780,167 @@ function openingLine(kind, comment) {
 
 /** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
 
+/** The longest a hook's request waits on the reader's answer: it asks again. */
+const MAX_ANSWER_WAIT_MS = 25_000
+/** A hook's request that ended still counts this long: it asks again at once. */
+const AWAIT_GRACE_MS = 5_000
+/** An answer taken for a hook that does not ask for it within this goes to the hooks module. */
+const COLLECT_MS = 10_000
+
+/**
+ * The agents' hooks waiting on the reader's answer to a question, by comment:
+ * their requests open, and until when one that ended still counts.
+ * @type {Map<string, { waiters: Set<(answer: object) => void>, until: number }>}
+ */
+const awaiting = new Map()
+
+/**
+ * By comment, the answer taken for a hook between two of its requests, and the
+ * timer that hands it to the hooks module instead when no request comes.
+ * @type {Map<string, { answer: object, timer: NodeJS.Timeout }>}
+ */
+const taken = new Map()
+
+/** The comments whose answer is being handed to a hook (handOff). */
+const handing = new Set()
+
+/** The answer taken for comment `id`'s hook, once: undefined when none. @param {string} id */
+function collect(id) {
+  const ready = taken.get(id)
+  if (!ready) return undefined
+  clearTimeout(ready.timer)
+  taken.delete(id)
+  return ready.answer
+}
+
+/** Whether a hook waits on the answer to comment `id`'s question. @param {string} id */
+function isAwaited(id) {
+  const entry = awaiting.get(id)
+  if (entry && !entry.waiters.size && entry.until <= Date.now()) awaiting.delete(id)
+  return !!entry && (entry.waiters.size > 0 || entry.until > Date.now())
+}
+
+/**
+ * What a hook waiting on comment `id`'s answer reads: `working`, with the run
+ * and the reader's reply, once it is taken for the agent; `asking` while the
+ * reader has not answered after `wait`; else where the comment went.
+ * @param {string} id
+ * @param {number} wait
+ * @param {boolean} final The hook's last request: it stops waiting after it.
+ * @param {http.ServerResponse} res
+ * @returns {Promise<object>}
+ */
+async function answerOf(id, wait, final, res) {
+  const ready = collect(id)
+  if (ready) return ready
+  const comment = (await store.readAll()).find((entry) => entry.id === id)
+  // Taken while the file was read: the answer is the hook's.
+  const late = collect(id)
+  if (late) return late
+  // Being handed off, the comment already open again: the hook waits for it.
+  if (!handing.has(id)) {
+    if (!comment) return { state: 'deleted' }
+    if (comment.state !== 'asking' || !wait) return { state: comment.state }
+  }
+  const entry = awaiting.get(id) ?? { waiters: new Set(), until: 0 }
+  // One hook waits on a question: another request would take its answer.
+  if (entry.waiters.size) throw new ClientError(409)
+  awaiting.set(id, entry)
+  return new Promise((resolve) => {
+    /**
+     * @param {object} answer
+     * @param {boolean} [gone] The hook went away.
+     */
+    const done = (answer, gone = false) => {
+      clearTimeout(timer)
+      entry.waiters.delete(done)
+      entry.until = final || gone ? 0 : Date.now() + AWAIT_GRACE_MS
+      resolve(answer)
+    }
+    const timer = setTimeout(() => done({ state: 'asking' }), wait)
+    entry.waiters.add(done)
+    // A hook that went away (its agent stopped) takes no answer.
+    res.on('close', () => {
+      if (entry.waiters.has(done)) done({ state: 'asking' }, true)
+    })
+  })
+}
+
+/**
+ * The reader answered a question a hook waits on: the comment is claimed for
+ * its agent, which goes on in a new run, and the hook reads the reply. The
+ * line the hooks module would have read is printed if no hook takes it, or
+ * the claim fails.
+ * @param {{ id: string, line: string, reply: Comments[number]['messages'][number] }} answered
+ * @returns {Promise<boolean>} Whether the answer went to a hook, or waits for one.
+ */
+async function handOff(answered) {
+  try {
+    return await handOffNow(answered)
+  } catch (error) {
+    console.error(
+      `code-buddy server: could not hand the answer of ${answered.id} over: ${String(error)}`,
+    )
+    print(answered.id, answered.line)
+    return false
+  } finally {
+    handing.delete(answered.id)
+  }
+}
+
+/** @param {Parameters<typeof handOff>[0]} answered */
+async function handOffNow({ id, line, reply }) {
+  const route = await readRoute(project, id)
+  let claimed
+  try {
+    claimed = await store.claim(id, {
+      agent: route.agent,
+      model: route.model,
+      complexity: route.complexity,
+    })
+  } catch (error) {
+    if (!(error instanceof StoreRefusal)) throw error
+    // Gone meanwhile (stopped, deleted): the next read says where.
+    return false
+  }
+  const dir = imagesDir(project, id)
+  const answer = {
+    state: 'working',
+    run: claimed.run,
+    reply: {
+      body: reply.body,
+      ...(reply.choices && { choices: reply.choices }),
+      ...(reply.images && { images: reply.images.map((name) => path.join(dir, name)) }),
+      ...(reply.elements && { elements: reply.elements }),
+    },
+  }
+  const [waiter] = awaiting.get(id)?.waiters ?? []
+  if (waiter) {
+    waiter(answer)
+    return true
+  }
+  const timer = setTimeout(() => {
+    taken.delete(id)
+    print(id, line)
+  }, COLLECT_MS)
+  taken.set(id, { answer, timer })
+  return true
+}
+
 /**
  * Prints the lines for the hooks about what changed in `comments` since the
  * last read.
  * @param {Comments} comments
  * @param {boolean} first
- * @returns {[string, string][]} The comments handed over, by id, with the key
- *   of the message: the store dates the hand-over.
+ * @returns {{ handed: [string, string][], answered: Parameters<typeof handOff>[0][] }}
+ *   `handed`: the comments handed over, by id, with the key of the message:
+ *   the store dates the hand-over. `answered`: the replies a hook waits on.
  */
 function tick(comments, first) {
   /** @type {[string, string][]} */
   const handed = []
+  /** @type {Parameters<typeof handOff>[0][]} */
+  const answered = []
   const current = new Set()
   for (const comment of comments) {
     if (!isActive(comment)) continue
@@ -792,9 +955,13 @@ function tick(comments, first) {
       print(comment.id, goneLine(comment.id, comment.events[opened - 1]?.state))
     }
     if (previous === undefined || previous.opened !== opened) {
-      const kind = latestReply(comment) ? 'FOLLOWUP' : first ? 'OPEN' : 'NEW'
+      const reply = latestReply(comment)
+      const kind = reply ? 'FOLLOWUP' : first ? 'OPEN' : 'NEW'
       const { key, line } = openingLine(kind, comment)
-      print(comment.id, line)
+      if (reply && isAwaited(comment.id)) {
+        answered.push({ id: comment.id, line, reply })
+        handing.add(comment.id)
+      } else print(comment.id, line)
       if (key) handed.push([comment.id, key])
     } else if (previous.text !== text) {
       print(comment.id, `EDIT ${describe(comment)}`)
@@ -810,7 +977,7 @@ function tick(comments, first) {
   // A deleted comment's lines go with it, even one deleted while inactive.
   const ids = new Set(comments.map((comment) => comment.id))
   for (const id of printed.keys()) if (!ids.has(id)) printed.delete(id)
-  return handed
+  return { handed, answered }
 }
 
 /**
@@ -885,13 +1052,24 @@ async function refresh(first) {
   } catch {
     return
   }
+  const { handed, answered } = tick(comments, first)
   // Dated in the file: its write brings the next read, which prints nothing new.
-  for (const [id, key] of tick(comments, first)) {
+  for (const [id, key] of handed) {
     await store.notify(id, key).catch((error) => {
       console.error(`code-buddy server: could not date the hand-over of ${id}: ${error}`)
       // Printed again at the next read, which dates it: the hooks take a message once.
       seen.delete(id)
     })
+  }
+  const handedOff = new Set()
+  for (const one of answered) if (await handOff(one)) handedOff.add(one.id)
+  // A question no longer waiting on the reader (stopped, resolved, deleted):
+  // the hooks waiting on it hear where it went.
+  for (const [id, entry] of awaiting) {
+    const state = comments.find((comment) => comment.id === id)?.state ?? 'deleted'
+    if (handedOff.has(id) || state === 'asking') continue
+    // Each waiter leaves the set as it is called.
+    for (const waiter of entry.waiters) waiter({ state })
   }
   const ids = await changedIds(comments)
   if (first || !ids.length) return

@@ -1,10 +1,8 @@
 // What resolve.mjs and ask.mjs share: Claude files a message under a comment.
 import { parseArgs } from 'node:util'
 import { findProject, positional } from './project.mjs'
+import { optionsOf, optionsProblem } from './question.mjs'
 import { MAX_OPTIONS, StoreRefusal, createStore } from './store.mjs'
-
-const MAX_LABEL = 80
-const MAX_DESCRIPTION = 300
 
 async function readStdin() {
   let text = ''
@@ -34,27 +32,16 @@ function questionArgs() {
     return { problem: error instanceof Error ? error.message : String(error) }
   }
   const { values, positionals } = parsed
-  const options = (values.option ?? []).map((option) => {
-    const split = option.indexOf(': ')
-    const label = (split === -1 ? option : option.slice(0, split)).trim()
-    const description = split === -1 ? '' : option.slice(split + 2).trim()
-    return description
-      ? {
-          label: label.slice(0, MAX_LABEL),
-          description: description.slice(0, MAX_DESCRIPTION),
-        }
-      : { label: label.slice(0, MAX_LABEL) }
-  })
-  const labels = new Set(options.map((option) => option.label))
-  if (values.multiple && !options.length) {
-    return { problem: '--multiple needs options' }
-  }
-  if (options.length === 1 || options.length > MAX_OPTIONS) {
-    return { problem: `a question offers 2 to ${MAX_OPTIONS} options` }
-  }
-  if (labels.size !== options.length || labels.has('')) {
-    return { problem: 'each option needs its own label' }
-  }
+  const options = optionsOf(
+    (values.option ?? []).map((option) => {
+      const split = option.indexOf(': ')
+      return split === -1
+        ? { label: option }
+        : { label: option.slice(0, split), description: option.slice(split + 2) }
+    }),
+  )
+  const problem = optionsProblem(options, values.multiple ?? false)
+  if (problem) return { problem }
   return {
     project: values.project,
     args: positionals,

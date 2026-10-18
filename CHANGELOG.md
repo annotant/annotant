@@ -9,6 +9,14 @@ released to the `stable` branch.
 
 ### Changed
 
+- **A comment's agent asks the reader with AskUserQuestion, and goes on.**
+  Its hook puts the question in the comment's thread, as `ask.mjs` does,
+  options as buttons, and waits on the reader's answer through the server,
+  which claims the comment for the agent once they answer: the agent reads
+  the answer as the dialog's and goes on in the same turn, instead of being
+  refused the tool and ending its turn on `ask.mjs`. Past 10 minutes, or with
+  no server, the question stays in the thread and the answer comes back as a
+  follow-up, as before. (#105)
 - **Point at element starts a comment about the page, the element in its
   message box.** The element is no longer the comment's anchor: it goes with
   the message, as an image does. The page still marks it until the thread is first resolved; a reply that picks an

@@ -438,9 +438,9 @@ const hookCommand = (mode: string, id: string, lockRoot = ROOT) =>
     ),
   )
 
-/** Edit and Bash, which hook.mjs may refuse, but not the read-only tools. */
+/** Edit and Bash, which hook.mjs may refuse, but not the read-only tools, nor AskUserQuestion, which waits. */
 const PRE_TOOLS = expect.stringMatching(
-  /^(?!.*\b(?:Read|Grep|Glob)\b)(?=.*\bEdit\b)(?=.*\bBash\b)[\w|.*]+$/,
+  /^(?!.*\b(?:Read|Grep|Glob|AskUserQuestion)\b)(?=.*\bEdit\b)(?=.*\bBash\b)[\w|.*]+$/,
 )
 
 test("starts a comment's agent with hooks of its own, on the model its label maps to", async ($, on) => {
@@ -461,6 +461,11 @@ test("starts a comment's agent with hooks of its own, on the model its label map
       {
         matcher: PRE_TOOLS,
         hooks: [{ type: 'command', command: hookCommand('pre', 'c1') }],
+      },
+      // Asked in the thread, it waits on the reader: longer than a hook's default.
+      {
+        matcher: 'AskUserQuestion',
+        hooks: [{ type: 'command', command: hookCommand('pre', 'c1'), timeout: 660 }],
       },
     ],
     PostToolUse: [
@@ -496,6 +501,16 @@ test("locks a comment's files across the git repository the project is in", asyn
         {
           matcher: PRE_TOOLS,
           hooks: [{ type: 'command', command: hookCommand('pre', 'c1', '/repo') }],
+        },
+        {
+          matcher: 'AskUserQuestion',
+          hooks: [
+            {
+              type: 'command',
+              command: hookCommand('pre', 'c1', '/repo'),
+              timeout: 660,
+            },
+          ],
         },
       ],
     }),

@@ -155,7 +155,7 @@ stateDiagram-v2
     direction LR
     [*] --> open: the reader comments
     open --> working: claim.mjs (new run)
-    working --> asking: ask.mjs
+    working --> asking: AskUserQuestion, ask.mjs
     working --> resolved: resolve.mjs, first time
     working --> answered: resolve.mjs, once resolved before
     working --> stopped: the reader stops
@@ -173,7 +173,7 @@ stateDiagram-v2
 | Move | Trigger | `by` | Also writes |
 | --- | --- | --- | --- |
 | `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out, their `images` as absolute paths) and `cancellation`; `url`, `elided` and `cancellation` only when set. |
-| `working → asking` | `ask.mjs` | agent | A `claude` message with `question` and `run`. |
+| `working → asking` | The agent's AskUserQuestion (`hook.mjs`), or `ask.mjs` | agent | A `claude` message with `question` and `run`. |
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
@@ -187,6 +187,14 @@ exceptions, as a click a poll late or twice is no error: a stop on a comment
 no longer `open` or `working`, and a re-send of one no longer `stopped`,
 change nothing. `ask.mjs` and `resolve.mjs` on a comment still `open` claim it
 first (`open → working`).
+
+An agent's AskUserQuestion waits on the reader's answer in its hook, through
+`POST /api/comments/<id>/answer` (`{ "wait": <ms>, "final": <bool> }`, a
+request with no `Origin`): when the reader answers, the server claims the
+comment for that agent (`asking → open → working`, a new run) and hands the
+reply to the hook instead of printing `FOLLOWUP`, and the agent goes on. A
+hook that stops waiting (10 minutes) leaves the question in the thread: the
+answer then comes as a `FOLLOWUP`, as after `ask.mjs`.
 
 The page marks a comment's anchor (an element's outline, a text's rainbow)
 until its thread is first resolved: a follow-up does not bring it back, unless
@@ -270,7 +278,7 @@ one line each.
 | `model`, `complexity` | `start` only, optional | As on the `working` event: the widget reads "Started on haiku". |
 
 `<id>.jsonl` exists only while a run is in progress. When the run ends
-(`ask.mjs`, `resolve.mjs`, a stop, the reader resolving), the store moves its
+(a question, `resolve.mjs`, a stop, the reader resolving), the store moves its
 lines to `<id>.history.jsonl` with a dev build of the widget, or drops them,
 and the hooks add the ending script's own step, done, to the history.
 

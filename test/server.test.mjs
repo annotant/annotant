@@ -345,9 +345,12 @@ test('ignores an area with no surface, and a holder it cannot place it in', asyn
 })
 
 test("takes the reader's choice among the options Claude asked with", async () => {
+  const posting = output.length
   const created = await json(
     await post(JSON.stringify({ route: '/cards', body: 'Rework the cards' })),
   )
+  // Seen open first: a comment the server first reads asking is no news to the hooks.
+  await nextLine(`NEW ${created.id} `, posting)
   const asking = output.length
   const asked = await run(process.execPath, [
     path.join(SCRIPTS, 'ask.mjs'),
