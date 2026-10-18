@@ -5,9 +5,10 @@
 // for an agent a plugin starts, so the plugin's hooks module registers each
 // comment's agent with these, the comment and the project written in.
 //
-// pre: refuses AskUserQuestion and Bash commands that write files, locks the
-//      file an edit writes (another comment's agent may hold it), and records
-//      the step for the widget.
+// pre: asks AskUserQuestion's questions in the comment's thread and waits on
+//      the reader's answer, which it hands to the tool; refuses Bash commands
+//      that write files, locks the file an edit writes (another comment's
+//      agent may hold it), and records the step for the widget.
 // post: records the step done or failed; after resolve.mjs or ask.mjs, ends
 //      the run: the agent's locks are released.
 // stop: the agent stopped; it holds nothing.
@@ -20,10 +21,12 @@
 import { createHash } from 'node:crypto'
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { fence } from './lib/fence.mjs'
 import { withFileLock } from './lib/filelock.mjs'
 import { currentRun, parseFile } from './lib/format.mjs'
-import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
-import { isActive, progressPath } from './lib/store.mjs'
+import { STATE_ROOT, project as projectAt, servedProject } from './lib/project.mjs'
+import { questionsOf, threadQuestion, toolAnswer } from './lib/question.mjs'
+import { StoreRefusal, createStore, isActive, progressPath } from './lib/store.mjs'
 
 /** @typedef {import('./lib/format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./lib/format.mjs').Step} Step */
@@ -31,6 +34,11 @@ import { isActive, progressPath } from './lib/store.mjs'
  * `project`: the root of the owner's project. One table serves the whole
  * repository, which may hold several projects.
  * @typedef {{ owner: string, project?: string, at: number }} Lock
+ */
+/**
+ * Where the comment went, as the server tells a hook waiting on the reader's
+ * answer: `working` with the run and the reply once it is the agent's.
+ * @typedef {{ state: string, run?: string, reply?: import('./lib/question.mjs').ReaderAnswer }} Answered
  */
 /**
  * What Claude Code sends a PreToolUse, PostToolUse or PostToolUseFailure hook.
@@ -47,6 +55,18 @@ import { isActive, progressPath } from './lib/store.mjs'
 const LOCK_WAIT_MS = Number(process.env.CODE_BUDDY_LOCK_WAIT_MS) || 6_000
 const LOCK_POLL_MS = 200
 const STALE_MS = 20 * 60 * 1000
+// How long AskUserQuestion waits on the reader: past this, their answer comes
+// back to the agent as a follow-up, through the hooks module.
+const ASK_WAIT_MS = Number(process.env.CODE_BUDDY_ASK_WAIT_MS) || 10 * 60 * 1000
+// One request to the server waits at most this (its own cap): then another.
+const ANSWER_POLL_MS = 25_000
+const RETRY_MS = 1_000
+/** Where a comment goes when the reader ends it, or it is gone. */
+const ENDED = new Set(['stopped', 'resolved', 'answered', 'deleted'])
+const ANSWERS_LATER =
+  "The reader has not answered in the browser yet. Your question is in the comment's thread, " +
+  'and their answer will come back to you as a follow-up: end your turn now, replying ' +
+  '"QUESTION: <your question>".'
 
 const BUILD = /\b(?:pnpm|npm|yarn|bun)\s+(?:run\s+)?build\b|\b(?:next|vite)\s+build\b/
 const WORD = String.raw`[^\s;&|()<>]+`
@@ -77,6 +97,16 @@ function flag(name) {
 const short = (text = '', max = MAX_LABEL) =>
   text.length > max ? `${text.slice(0, max - 1)}…` : text
 const unquote = (/** @type {string} */ value) => value.replace(/^["']|["']$/g, '')
+/**
+ * @param {unknown} value
+ * @returns {value is Answered}
+ */
+const isAnswered = (value) =>
+  typeof value === 'object' &&
+  value !== null &&
+  'state' in value &&
+  typeof value.state === 'string'
+
 /** `file` under `root`, relative; undefined outside it. */
 function within(root, file) {
   const relative = path.relative(root, file)
@@ -316,7 +346,7 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     const active = await activeIds()
     if (active && !active.has(comment)) {
       await log(`refused ${target}: the reader stopped or resolved the comment`)
-      return `Comment ${comment} was cancelled, resolved or deleted by the reader. Stop now: make no further changes and reply "CANCELLED".`
+      return cancelled()
     }
     const key =
       target === '@build' ? target : within(lockRoot, path.resolve(root, target))
@@ -357,8 +387,9 @@ function hooksFor({ comment, root, lockRoot, agent }) {
   }
 
   /**
-   * AskUserQuestion would reach the session's terminal, never the reader, who
-   * is on the page: the agent asks in the comment's thread instead.
+   * Without the project's server to wait on, AskUserQuestion would reach the
+   * session's terminal, never the reader, who is on the page: the agent asks
+   * in the comment's thread instead.
    */
   const askInThread = () =>
     'The reader answers in the browser, where AskUserQuestion never shows. Ask in ' +
@@ -367,16 +398,108 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     '"<question>" --option "<label>: <description>" --option "…" (2 to 6 options; ' +
     'add --multiple to let the reader pick several), then reply "QUESTION: <your question>".'
 
+  const cancelled = () =>
+    `Comment ${comment} was cancelled, resolved or deleted by the reader. Stop now: make no further changes and reply "CANCELLED".`
+
+  /** The project's server, as server.mjs picks its port. */
+  const port = Number(process.env.CODE_BUDDY_PORT ?? project.config.port ?? 4599)
+  const answerUrl = `http://127.0.0.1:${port}/api/comments/${encodeURIComponent(comment)}/answer`
+
+  /**
+   * What the server says of the question once it no longer waits on the
+   * reader (server.mjs's answerOf), or `asking` past ASK_WAIT_MS. A server
+   * restarting is asked again a moment later.
+   * @returns {Promise<Answered>}
+   */
+  async function awaitAnswer() {
+    const deadline = Date.now() + ASK_WAIT_MS
+    for (;;) {
+      const left = deadline - Date.now()
+      if (left <= 0) return { state: 'asking' }
+      const wait = Math.min(left, ANSWER_POLL_MS)
+      try {
+        const response = await fetch(answerUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ wait, final: wait === left }),
+          signal: AbortSignal.timeout(wait + 5_000),
+        })
+        if (response.ok) {
+          const read = await response.json()
+          if (isAnswered(read) && read.state !== 'asking') return read
+          continue
+        }
+        // No such endpoint (a server from before it), or another hook waits:
+        // the answer comes as a follow-up.
+        if (response.status < 500) {
+          await log(
+            `could not wait on the answer: the server answered ${response.status}`,
+          )
+          return { state: 'open' }
+        }
+      } catch {}
+      await new Promise((done) => setTimeout(done, RETRY_MS))
+    }
+  }
+
+  /**
+   * AskUserQuestion, asked in the comment's thread, where the reader is: the
+   * hook waits on their answer, then hands it to the tool as the dialog's,
+   * and the agent goes on in a run the server claimed for it.
+   * @param {Record<string, unknown>} input
+   * @returns {Promise<string | { updatedInput: Record<string, unknown> }>}
+   */
+  async function ask(input) {
+    const found = await readComment()
+    if (!found || !isActive(found)) {
+      await log('refused AskUserQuestion: the reader stopped or resolved the comment')
+      return cancelled()
+    }
+    const questions = questionsOf(input.questions)
+    const served = await servedProject(port).catch(() => undefined)
+    if (!questions || served !== project.root) {
+      await log('refused AskUserQuestion: no server to wait on, ask in the thread')
+      return askInThread()
+    }
+    const { body, options, multiple } = threadQuestion(questions)
+    try {
+      await createStore(project).answer(comment, body, {
+        question: true,
+        options,
+        multiple,
+      })
+    } catch (error) {
+      if (!(error instanceof StoreRefusal)) throw error
+      await log(`refused AskUserQuestion: ${error.message}`)
+      return cancelled()
+    }
+    // Nothing else to do until the reader answers.
+    const released = await releaseAll()
+    await log(`asked in the thread, released ${released.length} lock(s): waiting`)
+    // The question is filed: whatever fails now, the dialog must not open in
+    // a terminal nobody watches, and the answer comes as a follow-up.
+    try {
+      const read = await awaitAnswer()
+      if (read.state === 'working' && read.reply) {
+        await log(`the reader answered: the agent goes on in run ${read.run}`)
+        return { updatedInput: toolAnswer(input, questions, read.reply, fence) }
+      }
+      await log(`no answer for the agent: the comment is ${read.state}`)
+      return ENDED.has(read.state) ? cancelled() : ANSWERS_LATER
+    } catch (error) {
+      await log(`could not hand the answer over: ${String(error)}`)
+      return ANSWERS_LATER
+    }
+  }
+
   return {
     /**
      * @param {HookInput} event
-     * @returns {Promise<string | undefined>} why the tool is refused
+     * @returns {Promise<string | { updatedInput: Record<string, unknown> } | undefined>}
+     *   why the tool is refused, or its input once the reader answered
      */
     async pre({ tool_name: tool = '', tool_input: input = {}, tool_use_id: id }) {
-      if (tool === 'AskUserQuestion') {
-        await log('refused AskUserQuestion: ask in the thread')
-        return askInThread()
-      }
+      if (tool === 'AskUserQuestion') return ask(input)
       /** @type {Step} */
       const step = { at: Date.now(), ...(id && { id }), ...describe(tool, input) }
       const command = (tool === 'Bash' && textOf(input, 'command')) || ''
@@ -405,6 +528,8 @@ function hooksFor({ comment, root, lockRoot, agent }) {
 
     /** @param {HookInput} event */
     async post({ tool_name: tool = '', tool_input: input = {}, tool_use_id: id, error }) {
+      // The question and its answer are in the thread: not a step.
+      if (tool === 'AskUserQuestion') return
       const failed = error !== undefined
       const command = (tool === 'Bash' && textOf(input, 'command')) || ''
       /** @type {Step} */
@@ -482,14 +607,25 @@ async function main() {
     agent: event.agent_id ?? flag('--agent') ?? '-',
   })
   if (mode === 'pre') {
-    const deny = await hooks.pre(event)
-    if (deny)
+    const decided = await hooks.pre(event)
+    // An AskUserQuestion's input with its answers: Claude Code shows no dialog.
+    if (typeof decided === 'object')
+      console.log(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            updatedInput: decided.updatedInput,
+          },
+        }),
+      )
+    else if (decided)
       console.log(
         JSON.stringify({
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
             permissionDecision: 'deny',
-            permissionDecisionReason: deny,
+            permissionDecisionReason: decided,
           },
         }),
       )

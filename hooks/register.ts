@@ -358,7 +358,12 @@ let workerPrompt: Promise<string> | undefined
  * most of an agent's tools, are recorded once they end.
  */
 const PRE_TOOLS =
-  'Edit|Write|MultiEdit|NotebookEdit|Bash|AskUserQuestion|WebFetch|WebSearch|Skill|mcp__.*'
+  'Edit|Write|MultiEdit|NotebookEdit|Bash|WebFetch|WebSearch|Skill|mcp__.*'
+/**
+ * AskUserQuestion's hook asks in the thread and waits on the reader's answer,
+ * 10 minutes at most (hook.mjs's ASK_WAIT_MS): its own time, in seconds.
+ */
+const ASK_TIMEOUT_S = 11 * 60
 
 /** agents/worker.md's instructions, its frontmatter left out. */
 function readWorkerPrompt($: $) {
@@ -395,7 +400,9 @@ async function registerCommentAgent(
     ]
       .map(shellQuote)
       .join(' ')
-  const run = (mode: string) => [{ type: 'command', command: hook(mode) }]
+  const run = (mode: string, timeout?: number) => [
+    { type: 'command', command: hook(mode), ...(timeout && { timeout }) },
+  ]
   const { agent } = await $.agent.register({
     name: agentName(id),
     description: `Code Buddy: comment ${tag(id)}. Only the plugin's hooks start it.`,
@@ -403,7 +410,10 @@ async function registerCommentAgent(
     ...(model && { model }),
     ...(effort && { effort }),
     hooks: {
-      PreToolUse: [{ matcher: PRE_TOOLS, hooks: run('pre') }],
+      PreToolUse: [
+        { matcher: PRE_TOOLS, hooks: run('pre') },
+        { matcher: 'AskUserQuestion', hooks: run('pre', ASK_TIMEOUT_S) },
+      ],
       PostToolUse: [{ matcher: '*', hooks: run('post') }],
       PostToolUseFailure: [{ matcher: '*', hooks: run('post') }],
       // An agent's Stop hooks run as it stops.

@@ -30,19 +30,15 @@ test('the hooks pass the agent its paths, not its steps', () => {
 const header = (/** @type {string} */ source) =>
   source.match(/`(Each line below starting with \$\{marker\} [^`]+)`/)?.[1]
 
-test("the hooks and claim.mjs fence the reader's text behind the same header", async () => {
-  const claim = await readFile(path.join(SCRIPTS, 'claim.mjs'), 'utf8')
+test("the hooks and the scripts fence the reader's text behind the same header", async () => {
+  const scripts = await readFile(path.join(SCRIPTS, 'lib', 'fence.mjs'), 'utf8')
   assert.ok(header(hooks))
-  assert.equal(header(claim), header(hooks))
+  assert.equal(header(scripts), header(hooks))
 })
 
 test('the agent runs scripts the skill has', async () => {
   const names = [...agent.matchAll(/SKILL\/scripts\/(\w+\.mjs)/g)].map((m) => m[1])
-  assert.deepEqual([...new Set(names)].toSorted(), [
-    'ask.mjs',
-    'claim.mjs',
-    'resolve.mjs',
-  ])
+  assert.deepEqual([...new Set(names)].toSorted(), ['claim.mjs', 'resolve.mjs'])
   for (const name of names) await access(path.join(SCRIPTS, name))
 })
 

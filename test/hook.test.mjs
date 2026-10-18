@@ -238,10 +238,11 @@ test('refuses a Bash command that writes files, which no lock covers', async (t)
   )
 })
 
-test("sends AskUserQuestion to the comment's thread", async (t) => {
+test("sends AskUserQuestion to the comment's thread when no server waits on the answer", async (t) => {
   const w = await world(t)
   await w.claim(0)
-  const deny = await w.tool(0, 'AskUserQuestion', { questions: [] })
+  const questions = [{ question: 'Which layout?', options: [], multiSelect: false }]
+  const deny = await w.tool(0, 'AskUserQuestion', { questions })
   // The project quoted: a path may hold a space.
   assert.ok(
     deny?.includes(
@@ -249,7 +250,8 @@ test("sends AskUserQuestion to the comment's thread", async (t) => {
     ),
     deny,
   )
-  // Not a step the reader sees.
+  // Not a step the reader sees, nor once answered.
+  await w.hook(0, 'post', { tool_name: 'AskUserQuestion', tool_input: { questions } })
   assert.deepEqual(
     (await w.progress(0)).map((step) => step.kind),
     ['start'],
