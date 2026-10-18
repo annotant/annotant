@@ -519,7 +519,8 @@ export default function App({ root }: { root: Element }) {
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
   const [docked, setDocked] = useState(saved?.docked ?? false)
-  const [width, setWidth] = useState(saved?.width ?? PANEL_WIDTH)
+  // Saved in another window, maybe wider than this one.
+  const [width, setWidth] = useState(() => clampWidth(saved?.width ?? PANEL_WIDTH))
   const [view, setView] = useState<View>(saved?.view ?? 'page')
   const [threadId, setThreadId] = useState(saved?.threadId)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
@@ -681,6 +682,12 @@ export default function App({ root }: { root: Element }) {
     setDocked(!docked)
     setWidth(docked ? PANEL_WIDTH : clampWidth(window.innerWidth / 2))
   }
+
+  useEffect(() => {
+    const fit = () => setWidth(clampWidth)
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [])
 
   const resizeTo = (move: MouseEvent) => {
     setWidth(clampWidth(window.innerWidth - move.clientX))
