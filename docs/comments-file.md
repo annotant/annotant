@@ -66,12 +66,20 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `anchor.section` | string | Up to 300 characters. |
 | `anchor.quote` | string | Whitespace-collapsed, up to 2000 characters. |
 | `anchor.occurrence` | integer ≥ 0 | |
+| `anchor.prefix`, `anchor.suffix` | string, optional | With a quote: the page's text just before and after it, up to 32 characters, whitespace collapsed, a line break where a block ends. |
+| `anchor.occurrences` | integer ≥ 1, optional | With a quote: how many copies of it the page had. |
 | `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links (`href`, `src`, `srcset`, `data-*`…). |
 | `state` | State | See [States](#states-and-moves). |
 | `createdAt` | ISO date | Lists sort by it. |
 | `messages` | Message[] | The whole thread, the reader's comment first. |
 | `events` | Event[] | Every move, oldest first, never overwritten. |
 | `cancellation` | Cancellation, optional | Kept after a re-send, so the next agent sees it. |
+
+The widget finds a quote on the only copy the page still reads around as
+`prefix` and `suffix` say (both sides, in full or by their part in the quote's
+own block); else, while the page has `occurrences` copies, on the one at
+`occurrence`; else nowhere: the comment shows as detached, never on another
+copy.
 
 ### A message
 

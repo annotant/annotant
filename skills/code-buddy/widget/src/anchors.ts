@@ -8,6 +8,8 @@ import {
 } from './domain'
 
 const HEADINGS = 'h1, h2, h3'
+/** The page's text kept on each side of a quote, to tell its copies apart; as the server's. */
+const MAX_CONTEXT = 32
 const WIDGET = '[data-code-buddy]'
 /** Text that is code or a control's value, never part of what the reader reads. */
 const UNREAD = 'script, style, template, noscript, select, textarea'
@@ -18,6 +20,8 @@ interface TextIndex {
   text: string
   /** Raw offset of every normalised character. */
   rawOffsets: number[]
+  /** Offsets of the normalised spaces where a block or a line ends. */
+  breaks: Set<number>
 }
 
 /** Block-level by default, for a `display` the page's CSS leaves empty. */
@@ -105,14 +109,19 @@ function indexText(root: Element): TextIndex {
   const blocks = new Map<Element, boolean>()
   let block: Element | undefined
   let raw = ''
+  const rawBreaks = new Set<number>()
+  const lineBreak = () => {
+    rawBreaks.add(raw.length)
+    raw += '\n'
+  }
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (node instanceof Element) {
-      if (node.tagName === 'BR') raw += '\n'
+      if (node.tagName === 'BR') lineBreak()
       continue
     }
     if (!(node instanceof Text)) continue
     const current = blockOf(root, node, blocks)
-    if (block && current !== block) raw += '\n'
+    if (block && current !== block) lineBreak()
     block = current
     nodes.push({ node, start: raw.length })
     raw += node.textContent ?? ''
@@ -120,22 +129,27 @@ function indexText(root: Element): TextIndex {
 
   let text = ''
   const rawOffsets: number[] = []
+  const breaks = new Set<number>()
   let pendingSpace = false
+  let pendingBreak = false
   for (let i = 0; i < raw.length; i++) {
     const char = raw.charAt(i)
     if (/\s/.test(char)) {
       pendingSpace = text.length > 0
+      pendingBreak ||= rawBreaks.has(i)
       continue
     }
     if (pendingSpace) {
+      if (pendingBreak) breaks.add(text.length)
       text += ' '
       rawOffsets.push(i)
       pendingSpace = false
     }
+    pendingBreak = false
     text += char
     rawOffsets.push(i)
   }
-  return { nodes, text, rawOffsets }
+  return { nodes, text, rawOffsets, breaks }
 }
 
 function locate(index: TextIndex, rawOffset: number): [Text, number] {
@@ -189,6 +203,15 @@ function occurrencesOf(text: string, quote: string): number[] {
   return found
 }
 
+/** The page's text from `start` to `end`, a line break where a block or a line ends. */
+function contextOf(index: TextIndex, start: number, end: number): string {
+  let context = ''
+  for (let at = Math.max(0, start); at < end && at < index.text.length; at++) {
+    context += index.breaks.has(at) ? '\n' : index.text.charAt(at)
+  }
+  return context
+}
+
 function sectionOf(root: Element, range: Range): string {
   let section = ''
   root.querySelectorAll(HEADINGS).forEach((heading) => {
@@ -229,9 +252,20 @@ export function anchorFromSelection(
   const quote = normaliseQuote(index.text.slice(start, end))
   if (!quote) return undefined
 
-  const occurrence = Math.max(0, occurrencesOf(index.text, quote).indexOf(start))
+  const copies = occurrencesOf(index.text, quote)
+  const occurrence = Math.max(0, copies.indexOf(start))
+  const prefix = contextOf(index, start - MAX_CONTEXT, start).trimStart()
+  const after = start + quote.length
+  const suffix = contextOf(index, after, after + MAX_CONTEXT).trimEnd()
 
-  return { quote, occurrence, section: sectionOf(root, range) }
+  return {
+    quote,
+    occurrence,
+    ...(prefix ? { prefix } : {}),
+    ...(suffix ? { suffix } : {}),
+    ...(copies.length ? { occurrences: copies.length } : {}),
+    section: sectionOf(root, range),
+  }
 }
 
 /**
@@ -262,16 +296,62 @@ function looseMatches(index: TextIndex, quote: string): [number, number][] {
   ])
 }
 
+const compact = (text: string) => text.replace(/\s+/g, '')
+
+/**
+ * Whether the page reads around the copy from `start` to `end` as it did when
+ * the anchor was saved. Both sides must: one alone matches the copy before
+ * once the row between them is gone. A side matches in full, or by its part
+ * in the quote's own block, which changes in the next blocks leave as it was.
+ * Spaces are ignored: a layout adds line breaks.
+ */
+function readsAround(text: string, [start, end]: [number, number], anchor: ReviewAnchor) {
+  const { prefix = '', suffix = '' } = anchor
+  // Twice as long: the page may have more spaces than the saved text.
+  const before = compact(text.slice(Math.max(0, start - 2 * prefix.length), start))
+  const after = compact(text.slice(end, end + 2 * suffix.length))
+  const nearPrefix = compact(prefix.slice(prefix.lastIndexOf('\n') + 1))
+  const nearSuffix = compact(suffix.split('\n')[0] ?? '')
+  return (
+    (before.endsWith(compact(prefix)) || (!!nearPrefix && before.endsWith(nearPrefix))) &&
+    (after.startsWith(compact(suffix)) || (!!nearSuffix && after.startsWith(nearSuffix)))
+  )
+}
+
+/**
+ * The copy the anchor was saved on: the only one the page still reads around
+ * as then; else, while the page has as many copies as then, the one at its
+ * place. None rather than another copy: its own was rewritten or removed.
+ */
+function pick(
+  text: string,
+  copies: [number, number][],
+  anchor: ReviewAnchor,
+): [number, number] | undefined {
+  const around =
+    anchor.prefix || anchor.suffix
+      ? copies.filter((copy) => readsAround(text, copy, anchor))
+      : []
+  if (around.length === 1) return around[0]
+  // Saved without a count, its place is all there is to go by.
+  if (anchor.occurrences !== undefined && copies.length !== anchor.occurrences)
+    return undefined
+  const copy = copies[anchor.occurrence]
+  return copy && (around.length < 2 || around.includes(copy)) ? copy : undefined
+}
+
 function findAnchor(index: TextIndex, anchor: ReviewAnchor): Range | undefined {
   if (!anchor.quote) return undefined
-  const occurrences = occurrencesOf(index.text, anchor.quote)
-  const start = occurrences[anchor.occurrence] ?? occurrences[0]
-  if (start !== undefined) return rangeOf(index, start, start + anchor.quote.length)
+  const { length } = anchor.quote
+  const exact = occurrencesOf(index.text, anchor.quote).map((start): [number, number] => [
+    start,
+    start + length,
+  ])
   // A line break between blocks depends on the layout (a span may be a block on a
   // phone only), and comments saved before it was indexed have none: match
   // without spaces rather than lose the comment.
-  const loose = looseMatches(index, anchor.quote)
-  const match = loose[anchor.occurrence] ?? loose[0]
+  const copies = exact.length ? exact : looseMatches(index, anchor.quote)
+  const match = pick(index.text, copies, anchor)
   return match && rangeOf(index, match[0], match[1])
 }
 

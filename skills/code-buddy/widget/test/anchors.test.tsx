@@ -283,3 +283,92 @@ test.each(['main-nav', 'step-2', 'h2024', 'matrix-2', 'loginForm:email'])(
     expect(anchorFromElement(root, picked).element?.selector).toBe(`#${CSS.escape(id)}`)
   },
 )
+
+const SHOP = ['Guji', 'Sidamo', 'Huila', 'Kenya']
+  .map((name) => `<li><span>${name}</span> <button>Add to cart</button></li>`)
+  .join('')
+
+/** The anchor of a selection of the `n`th "Add to cart" of `root`. */
+function selectButton(root: Element, n: number) {
+  const button = root.querySelectorAll('button')[n]
+  if (!button) throw new Error(`no button ${n}`)
+  const range = document.createRange()
+  range.selectNodeContents(button)
+  const anchor = anchorFromSelection(root, select(range, 'Add to cart'))
+  if (!anchor) throw new Error('no anchor')
+  return anchor
+}
+
+test('a quote keeps the text around it, a line break where a block ends', () => {
+  const root = page(`<ul>${SHOP}</ul>`)
+  expect(selectButton(root, 2)).toMatchObject({
+    occurrence: 2,
+    occurrences: 4,
+    prefix: 'o cart\nSidamo Add to cart\nHuila ',
+    suffix: '\nKenya Add to cart',
+  })
+})
+
+test('of copies that read alike, a quote is found on its own', () => {
+  const root = page('<button>Add to cart</button>'.repeat(3))
+  const anchor = selectButton(root, 1)
+
+  const range = rangeFromAnchor(root, anchor)
+
+  expect(range?.startContainer.parentElement).toBe(root.querySelectorAll('button')[1])
+})
+
+test('a quote is found on its own copy once an earlier one is gone', () => {
+  const root = page(`<ul>${SHOP}</ul>`)
+  const anchor = selectButton(root, 2)
+  root.querySelector('li')?.remove()
+
+  const range = rangeFromAnchor(root, anchor)
+
+  expect(range?.startContainer.parentElement?.previousElementSibling?.textContent).toBe(
+    'Huila',
+  )
+})
+
+test.each([
+  ['rewritten', (button: Element) => (button.textContent = 'Buy')],
+  ['removed', (button: Element) => button.closest('li')?.remove()],
+])('a quote whose copy is %s is not found on another one', (_, change) => {
+  const root = page(`<ul>${SHOP}</ul>`)
+  const anchor = selectButton(root, 2)
+  const button = root.querySelectorAll('button')[2]
+  if (!button) throw new Error('no button')
+  change(button)
+
+  expect(rangeFromAnchor(root, anchor)).toBeUndefined()
+})
+
+test('a quote whose surroundings changed keeps its place while the copies are as many', () => {
+  const root = page(`<ul>${SHOP}</ul>`)
+  const anchor = selectButton(root, 2)
+  root.querySelectorAll('span').forEach((span) => (span.textContent += ' beans'))
+
+  const range = rangeFromAnchor(root, anchor)
+
+  expect(range?.startContainer.parentElement).toBe(root.querySelectorAll('button')[2])
+})
+
+test('a quote saved without its surroundings is not found on another copy', () => {
+  const root = page(`<ul>${SHOP}</ul>`)
+  root.querySelectorAll('li')[3]?.remove()
+
+  expect(
+    rangeFromAnchor(root, { section: '', quote: 'Add to cart', occurrence: 3 }),
+  ).toBeUndefined()
+})
+
+test('a quote matched without spaces is not found on another copy once its own is gone', () => {
+  // Saved before blocks were separated: "Part 1part 2" matches only without spaces.
+  const root = page(
+    '<div>Part 1</div><div>part 2</div><p>gap</p><div>Part 1</div><div>part 2</div>',
+  )
+  const anchor = { section: '', quote: 'Part 1part 2', occurrence: 1, occurrences: 2 }
+  root.querySelectorAll('div')[3]?.remove()
+
+  expect(rangeFromAnchor(root, anchor)).toBeUndefined()
+})

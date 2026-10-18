@@ -68,6 +68,9 @@ export const MAX_PICKED = 1
  * @property {string} section The heading the quote sits under.
  * @property {string} quote The selected text; empty for a page-level comment.
  * @property {number} occurrence Which occurrence of the quote on the page.
+ * @property {string} [prefix] The page's text just before the quote.
+ * @property {string} [suffix] The page's text just after the quote.
+ * @property {number} [occurrences] How many copies of the quote the page had.
  * @property {Element} [element] Set when the reader pointed at an element.
  * @property {Area} [area] Set when the reader drew a rectangle over the page.
  */
