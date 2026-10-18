@@ -89,6 +89,16 @@ released to the `stable` branch.
 
 ### Added
 
+- **Draw freehand on the page** (_Draw_, or _Draw on the page_ in a
+  page-level comment): arrows, circles, a sketch, with the mouse, a pen or a
+  finger, with _Undo_ and _Clear_. The drawing is an area, the box of its
+  lines: it stays drawn while the comment is written, in the rainbow frame
+  until Claude resolves the thread, and its chip (`2 lines · across <div>`)
+  shows it again or scrolls to it. Claude gets the area's fields, the lines
+  (`anchor.area.strokes`, `strokes=2` on the hooks' line), and a picture of
+  them over the outlines of the elements they cover, attached to the
+  reader's comment. (#38)
+
 - **An element picked in a message.** Every message box, a new comment's or a
   reply's, has a button that starts the element picker while the panel stays
   open: the element picked shows as a chip above the text and goes with the

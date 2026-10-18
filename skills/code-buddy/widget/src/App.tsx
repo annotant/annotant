@@ -11,13 +11,17 @@ import {
 } from 'react'
 import {
   anchorFromArea,
+  anchorFromDrawing,
   anchorFromElement,
   areaReady,
+  type DrawnPoint,
   elementFromAnchor,
   quoteFromSelection,
+  recordedBy,
   scrollToArea,
   startRect,
 } from './anchors'
+import { drawingImage } from './drawing'
 import {
   createComment,
   deleteComment,
@@ -63,6 +67,7 @@ import {
   ElementMarks,
   ElementPicker,
   QuoteBubbles,
+  SketchDrawer,
   TargetOutline,
 } from './overlays'
 import {
@@ -420,6 +425,8 @@ interface Draft extends ReviewAnchor {
   images?: NewImage[]
   /** The elements picked in the page for it. */
   elements?: ReviewPickedElement[]
+  /** With an area drawn freehand: its picture, sent with the images for Claude. */
+  sketch?: NewImage
   app?: boolean
   /** The page the draft was started on: the app may navigate before it is saved. */
   route: string
@@ -490,8 +497,13 @@ function areaContents(area: ReviewArea): string {
   return area.within ? `in <${area.within.tag}>` : 'on the page'
 }
 
+const linesOf = (count: number) => (count === 1 ? '1 line' : `${count} lines`)
+
 function areaSummary(area: ReviewArea): string {
-  return `An area of ${area.width} × ${area.height} px, drawn in a ${area.viewport.width} × ${area.viewport.height} window`
+  const what = area.strokes
+    ? `A drawing of ${linesOf(area.strokes.length)} over ${area.width} × ${area.height} px`
+    : `An area of ${area.width} × ${area.height} px`
+  return `${what}, drawn in a ${area.viewport.width} × ${area.viewport.height} window`
 }
 
 /**
@@ -544,7 +556,8 @@ export default function App({ root }: { root: Element }) {
   const [picking, setPicking] = useState(false)
   // The thread whose reply an element in the page is being picked for, or the draft's (`DRAFT`).
   const [attachingTo, setAttachingTo] = useState<string>()
-  const [drawing, setDrawing] = useState(false)
+  // What the reader draws over the page: a rectangle, or freehand.
+  const [drawing, setDrawing] = useState<false | 'area' | 'sketch'>(false)
   const [target, setTarget] = useState<Element>()
   // A drawn area shown again: while its chip is hovered, or for a moment once it is clicked.
   const [targetArea, setTargetArea] = useState<ReviewArea>()
@@ -869,6 +882,22 @@ export default function App({ root }: { root: Element }) {
       startDraft(anchorFromArea(root, rect), keptBody, keptImages, keptElements),
     [root, startDraft, keptBody, keptImages, keptElements],
   )
+  // Drawn freehand, the area is the lines' box, and Claude gets their picture too.
+  const drawSketch = useCallback(
+    (lines: DrawnPoint[][]) => {
+      const drawn = anchorFromDrawing(root, lines)
+      if (!drawn) return
+      const { anchor, rect, strokes } = drawn
+      const sketch = drawingImage(rect, strokes, recordedBy(root, rect))
+      startDraft(
+        { ...anchor, ...(sketch ? { sketch } : {}) },
+        keptBody,
+        keptImages,
+        keptElements,
+      )
+    },
+    [root, startDraft, keptBody, keptImages, keptElements],
+  )
 
   /** An element pointed at in the page, as a new comment's message holds it: on the page it is on. */
   const pickedOf = useCallback(
@@ -900,10 +929,10 @@ export default function App({ root }: { root: Element }) {
 
   const cancelDraw = useCallback(() => setDrawing(false), [])
 
-  const startDrawing = () => {
+  const startDrawing = (tool: 'area' | 'sketch') => {
     setPicking(false)
     setSelectionButton(undefined)
-    setDrawing(true)
+    setDrawing(tool)
   }
 
   const run = async (task: () => Promise<unknown>) => {
@@ -925,15 +954,23 @@ export default function App({ root }: { root: Element }) {
       key: _,
       app,
       body,
-      images,
+      images: attached,
       elements,
+      sketch,
       route: startedOn,
       url,
       ...anchor
     } = draft
+    // The drawing's picture goes last, while the message has room for it, and
+    // the area says so: the agent never takes one of the reader's for it.
+    const pictured = !!sketch && (attached?.length ?? 0) < MAX_IMAGES
+    const images = pictured ? [...(attached ?? []), sketch] : attached
     await run(async () => {
       const comment = await createComment({
-        anchor,
+        anchor:
+          pictured && anchor.area
+            ? { ...anchor, area: { ...anchor.area, pictured: true } }
+            : anchor,
         body,
         route: app ? APP_ROUTE : startedOn,
         url,
@@ -1302,9 +1339,15 @@ export default function App({ root }: { root: Element }) {
           goToPage(href, anchor, id)
         }}
       >
-        <Icon name="frame" />
+        <Icon name={area.strokes ? 'pencil' : 'frame'} />
         <code>
-          {area.width} × {area.height}
+          {area.strokes ? (
+            linesOf(area.strokes.length)
+          ) : (
+            <>
+              {area.width} × {area.height}
+            </>
+          )}
         </code>
         <span>{areaContents(area)}</span>
       </button>
@@ -1659,7 +1702,10 @@ export default function App({ root }: { root: Element }) {
 
       {/* Under the dock, whose Cancel must stay within reach, and under the panel,
           which is inert while it draws. */}
-      {drawing && <AreaDrawer root={root} onDraw={drawArea} onCancel={cancelDraw} />}
+      {drawing === 'area' && (
+        <AreaDrawer root={root} onDraw={drawArea} onCancel={cancelDraw} />
+      )}
+      {drawing === 'sketch' && <SketchDrawer onDraw={drawSketch} onCancel={cancelDraw} />}
       {!open && (
         <div ref={dock} className="cb-dock cb-live">
           <Button variant="secondary" icon="chat" onClick={() => startDraft(PAGE_LEVEL)}>
@@ -1667,10 +1713,21 @@ export default function App({ root }: { root: Element }) {
           </Button>
           <Button
             variant="secondary"
-            icon={drawing ? 'x' : 'frame'}
-            onClick={() => (drawing ? setDrawing(false) : startDrawing())}
+            icon={drawing === 'area' ? 'x' : 'frame'}
+            onClick={() =>
+              drawing === 'area' ? setDrawing(false) : startDrawing('area')
+            }
           >
-            {drawing ? 'Cancel' : 'Draw area'}
+            {drawing === 'area' ? 'Cancel' : 'Draw area'}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={drawing === 'sketch' ? 'x' : 'pencil'}
+            onClick={() =>
+              drawing === 'sketch' ? setDrawing(false) : startDrawing('sketch')
+            }
+          >
+            {drawing === 'sketch' ? 'Cancel' : 'Draw'}
           </Button>
           <Button
             icon={picking ? 'x' : 'cursor'}
@@ -1692,7 +1749,7 @@ export default function App({ root }: { root: Element }) {
           data-closing={!open || undefined}
           data-drawing={drawing || undefined}
           // While the reader draws, the message box must not take Escape or Enter.
-          inert={!open || drawing}
+          inert={!open || !!drawing}
           aria-label="Code Buddy"
           data-testid="code-buddy-panel"
           onKeyDown={(event) => {
@@ -1786,9 +1843,13 @@ export default function App({ root }: { root: Element }) {
                           {areaChip(draft)}
                           <IconButton
                             icon="x"
-                            label="Remove the area"
+                            label={
+                              draft.area.strokes
+                                ? 'Remove the drawing'
+                                : 'Remove the area'
+                            }
                             onClick={() => {
-                              const { area: _, ...rest } = draft
+                              const { area: _, sketch: __, ...rest } = draft
                               setTargetArea(undefined)
                               setDraft({ ...rest, ...PAGE_LEVEL })
                             }}
@@ -1807,9 +1868,17 @@ export default function App({ root }: { root: Element }) {
                             small
                             variant="tertiary"
                             icon="frame"
-                            onClick={startDrawing}
+                            onClick={() => startDrawing('area')}
                           >
                             Draw an area
+                          </Button>
+                          <Button
+                            small
+                            variant="tertiary"
+                            icon="pencil"
+                            onClick={() => startDrawing('sketch')}
+                          >
+                            Draw on the page
                           </Button>
                         </div>
                       )}

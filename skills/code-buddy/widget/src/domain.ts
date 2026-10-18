@@ -56,7 +56,18 @@ interface ReviewHolder extends ReviewNode {
   size: ReviewSize
 }
 
-/** A rectangle the reader drew over the page; never empty. */
+/** A line drawn freehand: its points, `[x, y]` from the area's corner, in CSS pixels. */
+export type ReviewStroke = [number, number][]
+
+/**
+ * The most strokes a drawing keeps, points a stroke keeps, and points in all,
+ * as the server caps them: a drawing stays well under what a request holds.
+ */
+export const MAX_STROKES = 40
+export const MAX_STROKE_POINTS = 400
+export const MAX_DRAWING_POINTS = 4000
+
+/** A rectangle the reader drew over the page, or the box of a drawing; never empty. */
 export interface ReviewArea extends ReviewBox {
   /** The viewport's size and scroll when it was drawn; `top` and `left` are from the page's corner. */
   viewport: ReviewSize & { scrollX: number; scrollY: number }
@@ -70,6 +81,10 @@ export interface ReviewArea extends ReviewBox {
   crosses: ReviewNode[]
   /** The area held more elements than `covers` and `crosses` keep. */
   truncated?: true
+  /** Set when the reader drew freehand: the lines, the area being their box. */
+  strokes?: ReviewStroke[]
+  /** With `strokes`: the last image of the comment's first message is their picture. */
+  pictured?: true
 }
 
 export interface ReviewAnchor {
@@ -86,7 +101,7 @@ export interface ReviewAnchor {
   occurrences?: number
   /** Set when the reader pointed at an element instead of selecting text. */
   element?: ReviewElement
-  /** Set when the reader drew a rectangle over the page. */
+  /** Set when the reader drew a rectangle, or freehand, over the page. */
   area?: ReviewArea
 }
 

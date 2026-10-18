@@ -344,6 +344,92 @@ test('ignores an area with no surface, and a holder it cannot place it in', asyn
   }
 })
 
+test('keeps the lines drawn freehand in an area, in its box, and says how many', async () => {
+  const printed = output.length
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/cards',
+        body: 'Move this here',
+        anchor: {
+          area: {
+            top: 300,
+            left: 10,
+            width: 200,
+            height: 100,
+            covers: [],
+            crosses: [],
+            strokes: [
+              [
+                [8.4, 8],
+                [150, 'far'],
+                [900, -20],
+              ],
+              [],
+              'not a line',
+              [[20, 30], 'not a point'],
+              ...Array.from({ length: 45 }, () => [[1, 1]]),
+            ],
+          },
+        },
+      }),
+    ),
+  )
+  const { strokes } = created.anchor.area
+  // The last 40 strokes, each point rounded and in the area's box.
+  assert.equal(strokes.length, 40)
+  assert.deepEqual(strokes[0], [[1, 1]])
+
+  const drawing = await createArea({
+    width: 200,
+    height: 100,
+    strokes: [
+      [
+        [8.4, 8],
+        [150, 'far'],
+        [900, -20],
+      ],
+      [],
+      'not a line',
+      [[20, 30], 'not a point'],
+      Array.from({ length: 500 }, (_, i) => [i % 200, 50]),
+    ],
+  })
+  assert.deepEqual(drawing.strokes.slice(0, 2), [
+    [
+      [8, 8],
+      [150, 0],
+      [200, 0],
+    ],
+    [[20, 30]],
+  ])
+  // A long line keeps its first 400 points.
+  assert.equal(drawing.strokes[2].length, 400)
+  // 4000 points in all at most, and `pictured` only with lines.
+  const long = await createArea({
+    width: 400,
+    height: 100,
+    pictured: true,
+    strokes: Array.from({ length: 12 }, () =>
+      Array.from({ length: 400 }, (_, x) => [x, 50]),
+    ),
+  })
+  assert.equal(long.strokes.flat().length, 4000)
+  assert.equal(long.pictured, true)
+  assert.equal(
+    (await createArea({ width: 40, height: 40, pictured: true })).pictured,
+    undefined,
+  )
+  // No line at all is no drawing.
+  assert.equal(
+    (await createArea({ width: 40, height: 40, strokes: [[], 'x'] })).strokes,
+    undefined,
+  )
+
+  const event = await nextLine(`NEW ${created.id} `, printed)
+  assert.match(event, / area=200x100@10,300 strokes=40 covers=\[\] crosses=\[\] body=/)
+})
+
 test("takes the reader's choice among the options Claude asked with", async () => {
   const created = await json(
     await post(JSON.stringify({ route: '/cards', body: 'Rework the cards' })),
