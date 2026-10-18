@@ -28,6 +28,13 @@ function layout() {
     range.mockRestore()
     lines.mockRestore()
   })
+  /** Lays every box out at `next` instead, as a reflow would, with no change to the nodes. */
+  return (next: DOMRect) => {
+    element.mockReturnValue(next)
+    range.mockReturnValue(next)
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    lines.mockReturnValue([next] as unknown as DOMRectList)
+  }
 }
 
 /** Resolved once, then followed up: open again, about something else. */
@@ -352,4 +359,63 @@ test('a text in an inline box that hides its overflow keeps its rainbow', async 
 
   await waitFor(() => expect(lines()).toHaveLength(1))
   expect(pins()).toHaveLength(1)
+})
+
+/** A ResizeObserver whose callbacks the test calls: happy-dom lays nothing out. */
+function resizes() {
+  const observers: { callback: ResizeObserverCallback; targets: Set<Element> }[] = []
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      targets = new Set<Element>()
+      constructor(callback: ResizeObserverCallback) {
+        observers.push({ callback, targets: this.targets })
+      }
+      observe(target: Element) {
+        this.targets.add(target)
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target)
+      }
+      disconnect() {
+        this.targets.clear()
+      }
+    },
+  )
+  return (target: Element | null) => {
+    for (const { callback, targets } of observers) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the widget reads no entry
+      if (target && targets.has(target)) callback([], {} as ResizeObserver)
+    }
+  }
+}
+
+test('marks follow their element when the page is squeezed with no change to its nodes', async () => {
+  const move = layout()
+  const resize = resizes()
+  document.body.replaceChildren()
+  fakeServer([comment({ element: TITLE })])
+  renderWidget()
+  await waitFor(() => expect(pins()[0]?.style.left).toBe('40px'))
+
+  // The docked panel squeezes the page through an animation: no node, no attribute changes.
+  move(DOMRect.fromRect({ x: 20, y: 100, width: 150, height: 30 }))
+  resize(document.querySelector('main'))
+
+  await waitFor(() => expect(pins()[0]?.style.left).toBe('20px'))
+})
+
+test('a rainbow follows its text when the element holding it changes size', async () => {
+  stubHighlights()
+  const move = layout()
+  const resize = resizes()
+  document.body.replaceChildren()
+  fakeServer([comment({ quote: 'Playground' })])
+  renderWidget()
+  await waitFor(() => expect(lines()[0]?.style.left).toBe('40px'))
+
+  move(DOMRect.fromRect({ x: 60, y: 100, width: 200, height: 30 }))
+  resize(document.querySelector('h1'))
+
+  await waitFor(() => expect(lines()[0]?.style.left).toBe('60px'))
 })

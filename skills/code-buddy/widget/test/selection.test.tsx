@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
 import { comment, fakeServer } from './server'
@@ -218,4 +218,16 @@ test('the quote being written is not marked on another page', async () => {
 test('pressing Comment keeps the selection: the press takes no focus', async () => {
   const { button } = await selectAcrossBlocks()
   expect(fireEvent.mouseDown(button)).toBe(false)
+})
+
+test('a drag reads the page once per frame, however many changes it makes', async () => {
+  const walks = vi.spyOn(document, 'createTreeWalker')
+  onTestFinished(() => walks.mockRestore())
+  const { button } = await selectAcrossBlocks()
+  walks.mockClear()
+  // A drag fires several changes before the next frame.
+  for (let i = 0; i < 5; i++) document.dispatchEvent(new Event('selectionchange'))
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(walks).toHaveBeenCalledTimes(1)
+  expect(button.isConnected).toBe(true)
 })

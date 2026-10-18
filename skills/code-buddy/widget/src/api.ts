@@ -129,7 +129,12 @@ function useCommentList(url: string | undefined, { merge = true } = {}) {
     const asked = merges.current
     try {
       const list = await request<ReviewComment[]>(url)
-      if (asked === merges.current) setComments(list)
+      // The same list keeps its reference: a change of a comment elsewhere
+      // would read the whole page again for its marks.
+      if (asked === merges.current)
+        setComments((current) =>
+          JSON.stringify(current) === JSON.stringify(list) ? current : list,
+        )
       setReachable(true)
     } catch {
       setReachable(false)
@@ -161,8 +166,15 @@ function useCommentList(url: string | undefined, { merge = true } = {}) {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       const updated = event.detail as ReviewComment
       merges.current++
+      // Not in the list, or as it was: the list keeps its reference.
       setComments((current) =>
-        current.map((comment) => (comment.id === updated.id ? updated : comment)),
+        current.some(
+          (comment) =>
+            comment.id === updated.id &&
+            JSON.stringify(comment) !== JSON.stringify(updated),
+        )
+          ? current.map((comment) => (comment.id === updated.id ? updated : comment))
+          : current,
       )
     }
     window.addEventListener(UPDATED, update)

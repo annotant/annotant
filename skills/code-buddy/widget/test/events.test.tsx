@@ -1,6 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
+import { updateComment } from '../src/api'
 import { renderWidget } from './widget'
 
 const listed = (fetch: ReturnType<typeof fakeServer>['fetch']) =>
@@ -151,4 +152,46 @@ test('the dev widget reloads the page when the server says it was rebuilt', asyn
   expect(reload).not.toHaveBeenCalled()
   events.send('widget')
   expect(reload).toHaveBeenCalledOnce()
+})
+
+test('a change that leaves the page’s comments as they were does not read the page again', async () => {
+  // happy-dom lays nothing out: the quote gets a box for its bubble to show.
+  const measure = vi
+    .spyOn(Range.prototype, 'getBoundingClientRect')
+    .mockImplementation(() => DOMRect.fromRect({ x: 120, y: 100, width: 0, height: 20 }))
+  onTestFinished(() => measure.mockRestore())
+  const events = fakeEvents()
+  const server = fakeServer([comment({ quote: 'Playground' })])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Open the comment on “Playground”' })
+  const walks = vi.spyOn(document, 'createTreeWalker')
+  onTestFinished(() => walks.mockRestore())
+  const before = listed(server.fetch)
+
+  // A step of a comment on another page: the server says something changed.
+  events.send('changed')
+  await waitFor(() => expect(listed(server.fetch)).toBeGreaterThan(before))
+  // The reload lands, then a frame for the marks to follow it.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(walks).not.toHaveBeenCalled()
+})
+
+test('a change the reader makes to a comment of another page does not read this page again', async () => {
+  const measure = vi
+    .spyOn(Range.prototype, 'getBoundingClientRect')
+    .mockImplementation(() => DOMRect.fromRect({ x: 120, y: 100, width: 0, height: 20 }))
+  onTestFinished(() => measure.mockRestore())
+  fakeEvents()
+  fakeServer([
+    comment({ quote: 'Playground' }),
+    comment({ id: 'c2', route: '/other', url: 'http://localhost/other' }),
+  ])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Open the comment on “Playground”' })
+  const walks = vi.spyOn(document, 'createTreeWalker')
+  onTestFinished(() => walks.mockRestore())
+
+  await act(() => updateComment('c2', { status: 'resolved' }))
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(walks).not.toHaveBeenCalled()
 })

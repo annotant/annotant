@@ -234,6 +234,17 @@ export function anchorFromSelection(
   root: Element,
   selection: Selection,
 ): ReviewAnchor | undefined {
+  return quoteFromSelection(root, selection)?.anchor
+}
+
+/**
+ * `anchorFromSelection`, with the range `rangeFromAnchor` finds for it,
+ * reading the page's text once: a drag changes the selection many times a second.
+ */
+export function quoteFromSelection(
+  root: Element,
+  selection: Selection,
+): { anchor: ReviewAnchor; range: Range | undefined } | undefined {
   if (selection.rangeCount === 0 || selection.isCollapsed) return undefined
   const range = selection.getRangeAt(0)
   const container = range.commonAncestorContainer
@@ -258,7 +269,7 @@ export function anchorFromSelection(
   const after = start + quote.length
   const suffix = contextOf(index, after, after + MAX_CONTEXT).trimEnd()
 
-  return {
+  const anchor = {
     quote,
     occurrence,
     ...(prefix ? { prefix } : {}),
@@ -266,6 +277,7 @@ export function anchorFromSelection(
     ...(copies.length ? { occurrences: copies.length } : {}),
     section: sectionOf(root, range),
   }
+  return { anchor, range: findAnchor(index, anchor) }
 }
 
 /**
