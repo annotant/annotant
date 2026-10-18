@@ -232,3 +232,31 @@ test('a reload asked for before the answer does not bring the question back', as
   expect(screen.getByTestId('cb-working').textContent).toBe('Sent…')
   expect(screen.getByRole('button', { name: /Blue/ })).toHaveProperty('disabled', true)
 })
+
+test('the options ticked for a question do not carry over to the next one', async () => {
+  const events = fakeEvents()
+  const asked = question({ multiple: true })
+  const comments = [asking(asked)]
+  fakeServer(comments)
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('checkbox', { name: /Red/ }))
+  // Resolved without an answer, then followed up from another tab: Claude asks again.
+  comments[0] = comment({
+    state: 'asking',
+    messages: [
+      asked,
+      { author: 'reader', body: 'Later, then.', at: '2026-01-01T10:02:00.000Z' },
+      question({ multiple: true, body: 'Which shade?', at: '2026-01-01T10:03:00.000Z' }),
+    ],
+  })
+  events.send('changed')
+
+  await screen.findByText('Which shade?')
+  const red = screen
+    .getAllByRole('checkbox', { name: /Red/ })
+    .find((box) => !box.hasAttribute('disabled'))
+  expect(red?.getAttribute('aria-checked')).toBe('false')
+  expect(sendChoices()).toHaveProperty('disabled', true)
+})
