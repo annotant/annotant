@@ -260,3 +260,32 @@ test('the options ticked for a question do not carry over to the next one', asyn
   expect(red?.getAttribute('aria-checked')).toBe('false')
   expect(sendChoices()).toHaveProperty('disabled', true)
 })
+
+test('the options ticked for a question do not go out with a reply to the next one', async () => {
+  const events = fakeEvents()
+  const asked = question({ multiple: true })
+  const comments = [asking(asked)]
+  const server = fakeServer(comments)
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('checkbox', { name: /Red/ }))
+  comments[0] = comment({
+    state: 'asking',
+    messages: [
+      asked,
+      { author: 'reader', body: 'Later, then.', at: '2026-01-01T10:02:00.000Z' },
+      question({ multiple: true, body: 'Which shade?', at: '2026-01-01T10:03:00.000Z' }),
+    ],
+  })
+  events.send('changed')
+
+  await screen.findByText('Which shade?')
+  const box = screen.getByPlaceholderText('Or answer in your own words…')
+  fireEvent.change(box, { target: { value: 'a darker one' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { followUp: 'a darker one' } }]),
+  )
+})
