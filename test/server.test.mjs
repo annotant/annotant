@@ -1289,4 +1289,16 @@ test('keeps what the reader lets the agent do, and tells the hooks an Ask', asyn
   )
   assert.equal(followed.capability, 'edit')
   assert.doesNotMatch(await nextLine(`FOLLOWUP ${asked.id} `, printed), /capability=/)
+
+  // Stopped, then sent again as an Ask; a value it does not know changes nothing.
+  await patch({ cancelled: true })
+  assert.equal(
+    (await json(await patch({ cancelled: false, capability: 'reply' }))).capability,
+    'reply',
+  )
+  await patch({ cancelled: true })
+  assert.equal(
+    (await json(await patch({ cancelled: false, capability: 'all' }))).capability,
+    'reply',
+  )
 })

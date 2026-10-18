@@ -250,23 +250,64 @@ test('refuses every edit on a comment that only asks, and lets it read and answe
     ['MultiEdit', { file_path: file, edits: [] }],
     ['NotebookEdit', { notebook_path: path.join(w.root, 'a.ipynb'), new_source: '' }],
   ]
+  // Bash too, when it may change a file, in the repository or not.
+  for (const command of [
+    'printf x > /tmp/elsewhere.ts',
+    'cp src/a.ts src/b.ts',
+    'git checkout -- src/App.tsx',
+    'npm install left-pad',
+  ])
+    edits.push(['Bash', { command }])
   for (const [name, input] of edits) {
     const deny = await w.tool(0, name, input)
     assert.match(
       deny ?? '',
       /This comment asks a question: answer it in the thread/,
-      name,
+      `${name} ${JSON.stringify(input)}`,
     )
     assert.ok(deny?.includes(path.join(SCRIPTS, 'resolve.mjs')), deny)
   }
-  assert.equal((await w.progress(0)).at(-1).state, 'failed')
-  assert.equal(await w.tool(0, 'Read', { file_path: file }), undefined)
-  assert.equal(await w.tool(0, 'Grep', { pattern: 'x' }), undefined)
-  // Switched to Change with a follow-up, the same agent may edit.
+  const refused = (await w.progress(0)).filter((step) => step.state === 'failed')
+  assert.equal(refused.length, edits.length)
+  for (const step of refused) assert.equal(step.error, 'the comment only asks')
+  /** @type {[string, Record<string, unknown>][]} */
+  const reads = [
+    ['Read', { file_path: file }],
+    ['Grep', { pattern: 'x' }],
+    ['Bash', { command: 'git log -3 2>&1 | head -5 > /dev/null' }],
+  ]
+  for (const [name, input] of reads)
+    assert.equal(await w.tool(0, name, input), undefined, name)
+  // Its answer passes, whatever it quotes.
+  const answer = `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project ${w.root} "Use cp a > b."`
+  assert.equal(
+    await w.hook(0, 'pre', { tool_name: 'Bash', tool_input: { command: answer } }),
+    undefined,
+  )
+})
+
+test('a comment switched between Change and Ask is held to its latest', async (t) => {
+  const w = await world(t, 2, { capability: 'reply' })
+  await w.claim(0)
+  const file = path.join(w.root, 'src/App.tsx')
+  assert.ok(await w.tool(0, 'Edit', edit(file)))
+  // Refused before its lock: another comment's agent takes the file at once.
+  await w.comments.update(w.id(1), { cancelled: true })
+  await w.comments.update(w.id(1), { cancelled: false, capability: 'edit' })
+  await w.claim(1)
+  assert.equal(await w.tool(1, 'Edit', edit(file)), undefined)
+
+  // Switched to Change with a follow-up, the same agent may edit…
   await w.comments.answer(w.id(0), 'It is greyed out while the form is invalid.')
   await w.comments.update(w.id(0), { followUp: 'Show why, then.', capability: 'edit' })
   await w.claim(0)
-  assert.equal(await w.tool(0, 'Edit', edit(file)), undefined)
+  const other = path.join(w.root, 'src/Other.tsx')
+  assert.equal(await w.tool(0, 'Edit', edit(other)), undefined)
+  // …and switched back to Ask, it may not.
+  await w.comments.answer(w.id(0), 'Done.')
+  await w.comments.update(w.id(0), { followUp: 'Why there?', capability: 'reply' })
+  await w.claim(0)
+  assert.match((await w.tool(0, 'Edit', edit(other))) ?? '', /asks a question/)
 })
 
 test("sends AskUserQuestion to the comment's thread", async (t) => {

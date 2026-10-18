@@ -96,6 +96,15 @@ function textOf(input, key) {
 
 /** The tools that change files, refused on a comment that only asks. */
 const EDITS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+// On a comment that only asks, a Bash command that may change a file is
+// refused too, locked or not: a redirection into a file, or a command that
+// moves, removes or rewrites files. Best effort, on the usual forms.
+const REDIRECT = /(?:^|[^<>&=\-\d])\d?>>?\s*(?!&|\/dev\/null\b)\S/
+const CHANGES = new RegExp(
+  String.raw`^\s*(?:sudo\s+)?(?:cp|mv|rm|rmdir|touch|mkdir|ln|truncate|install|patch|chmod|` +
+    String.raw`git\s+(?:apply|checkout|restore|reset|rm|mv|stash|commit|add|merge|rebase|cherry-pick|switch|clean)|` +
+    String.raw`(?:npm|pnpm|yarn|bun)\s+(?:install|i|add|remove|rm|uninstall|update|up|pkg|version|ci))\b`,
+)
 
 /**
  * The file a tool writes, `@build` for a build, or undefined.
@@ -315,6 +324,17 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     })
   }
 
+  /** Whether a command may change a file at all, in or out of the repository. */
+  function changesFromBash(command) {
+    if (CLAIM.test(command) || RESOLVE.test(command)) return false
+    return (
+      writesFromBash(command) ||
+      command
+        .split(/&&|\|\||[;|\n]/)
+        .some((segment) => REDIRECT.test(segment) || CHANGES.test(segment))
+    )
+  }
+
   /** The deny message, or undefined once the agent holds the lock. */
   async function lockTarget(target, step) {
     const active = await activeIds()
@@ -390,15 +410,15 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       }
       /** @type {Step} */
       const step = { at: Date.now(), ...(id && { id }), ...describe(tool, input) }
-      if (EDITS.has(tool)) {
+      const command = (tool === 'Bash' && textOf(input, 'command')) || ''
+      if (EDITS.has(tool) || (command && changesFromBash(command))) {
         const found = await readComment()
         if (found && !mayEdit(found)) {
-          await log(`refused ${tool}: the comment asks a question`)
-          await record([{ ...step, state: 'failed', error: 'this comment only asks' }])
+          await log(`refused ${tool}: the comment only asks`)
+          await record([{ ...step, state: 'failed', error: 'the comment only asks' }])
           return answerOnly()
         }
       }
-      const command = (tool === 'Bash' && textOf(input, 'command')) || ''
       if (command && writesFromBash(command)) {
         await log(`refused a Bash write: ${short(command, 120)}`)
         await record([

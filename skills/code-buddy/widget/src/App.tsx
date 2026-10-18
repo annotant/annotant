@@ -41,7 +41,7 @@ import {
   type ReviewProgress,
   type Status,
   answered,
-  asks,
+  onlyAsks,
   gist,
   isActive,
   isAsking,
@@ -1584,7 +1584,7 @@ export default function App({ root }: { root: Element }) {
         />
         <div className="cb-summary-head">
           <Chip tone={status}>{STATUS_CHIPS[status]}</Chip>
-          {asks(comment) && <Chip tone="ask">Ask</Chip>}
+          {onlyAsks(comment) && <Chip tone="ask">Ask</Chip>}
           {!href ? (
             <span className="cb-label">Whole app</span>
           ) : showPage ? (
