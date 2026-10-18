@@ -52,13 +52,17 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    stopped agent left changed: keep, finish or revert them to match the
    current text. When the element is unclear, screenshot it with Playwright
    on `devUrl`.
-3. Make the change, only under `editable`, with the Edit and Write tools:
-   never write files from Bash (`sed -i`, scripts, redirections). Other
-   agents may edit the project at the same time: a hook locks every file you
-   write and blocks an edit, with an explanation, when another comment's
-   agent holds the file. Then re-read the files you are changing and retry.
-   If the hook says the reader cancelled the comment, stop at once and reply
-   `CANCELLED`.
+3. If the reader's last message only asks a question ("why is this greyed
+   out?", "is this the brand's colour?"), change nothing: read what you
+   need, then answer it at step 5, skipping step 4. Offer the change in the
+   answer when one seems wanted; the reader follows up to get it.
+   Otherwise, make the change, only under `editable`, with the Edit and
+   Write tools: never write files from Bash (`sed -i`, scripts,
+   redirections). Other agents may edit the project at the same time: a hook
+   locks every file you write and blocks an edit, with an explanation, when
+   another comment's agent holds the file. Then re-read the files you are
+   changing and retry. If the hook says the reader cancelled the comment,
+   stop at once and reply `CANCELLED`.
 4. Run `checks`, and `build` when a component or a dependency changed.
    Errors only in files you did not touch belong to another agent's work in
    progress: re-run once, then ignore them.
@@ -66,7 +70,7 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    `node SKILL/scripts/resolve.mjs <id> --project PROJECT "<answer>"` (pipe
    the answer on stdin when it is long). On a thread resolved before, it
    prints `answered`: your answer waits on the reader, who resolves it.
-6. Reply with one line saying what changed. If the comment is unclear or
+6. Reply with one line saying what changed, or what you answered. If the comment is unclear or
    needs a product decision, do not guess: ask it in the thread with
    `node SKILL/scripts/ask.mjs <id> --project PROJECT "<question>"` (stdin
    works too) and reply `QUESTION: <your question>`. To offer choices, add 2
