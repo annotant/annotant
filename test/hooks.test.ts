@@ -236,14 +236,17 @@ function world(
 
   // The project's server: the lines the test prints, until it ends.
   const servers: string[][] = []
-  const printing: string[] = []
+  // A line on stdout, or `{ stderr }` one on stderr.
+  const printing: (string | { stderr: string })[] = []
   let wake: () => void = ignore
   let exitCode: number | undefined
   on('process.spawn', async function* (_$, e) {
     servers.push([...e.argv])
     for (;;) {
       const line = printing.shift()
-      if (line !== undefined) yield { stream: 'stdout' as const, text: `${line}\n` }
+      if (typeof line === 'object')
+        yield { stream: 'stderr' as const, text: `${line.stderr}\n` }
+      else if (line !== undefined) yield { stream: 'stdout' as const, text: `${line}\n` }
       else if (exitCode !== undefined) {
         // The next server runs until it is told to exit in turn.
         const code = exitCode
@@ -253,7 +256,7 @@ function world(
     }
   })
   /** The server prints lines; what they start has started once it resolves. */
-  const print = async (...lines: string[]) => {
+  const print = async (...lines: (string | { stderr: string })[]) => {
     printing.push(...lines)
     wake()
     await clock.settle()
@@ -1109,4 +1112,81 @@ test("/code-buddy in a git worktree watches the main checkout's project", async 
   expect((await answer).text).toMatch(/watching \/repo\/web/)
   expect(w.servers[0]?.[3]).toBe(ROOT)
   await w.exit(0)
+})
+
+test('/code-buddy status tells the server, the agents at work and the queue in order', async ($, on) => {
+  const w = world(on, ['c1', 'c2', 'c3', 'c4', 'c5'].map(open))
+  expect((await $.command.run(watchCommand('status'))).text).toMatch(
+    /^Code Buddy is not watching any project in this session/,
+  )
+  await watch($, w)
+  w.classifyAs('trivial')
+  await w.print(newLine('c1'))
+  w.classifyAs('hard')
+  await w.print(newLine('c2'), newLine('c3'), newLine('c4'), followUpLine('c5'), {
+    stderr: 'warning: comments.json rewritten',
+  })
+  const { text } = await $.command.run(watchCommand('status'))
+  expect(text).toBe(
+    [
+      'Code Buddy: 3 of 3 agents at work in this session.',
+      '',
+      '/repo/web: server ready at http://127.0.0.1:4599',
+      '  At work:',
+      '    c1 "make the title bigger": agent a1 on haiku, for 0 s',
+      '    c2 "make the title bigger": agent a2 on opus, for 0 s',
+      '    c3 "make the title bigger": agent a3 on opus, for 0 s',
+      '  Waiting for a free agent, in order:',
+      '    1. c4 "make the title bigger" (new comment)',
+      '    2. c5 "make the title bigger" (follow-up)',
+      '  Last server error: warning: comments.json rewritten',
+    ].join('\n'),
+  )
+  // The skill asks the same through the tool.
+  const { result } = await $.tool.call({
+    tool: 'mcp__code-buddy__watch',
+    status: true,
+    tool_use_id: 's1',
+  })
+  expect(result).toBe(text)
+  await w.exit(0)
+})
+
+test('/code-buddy status says why a server stopped, and the agents still at work', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(newLine('c1'))
+  await w.exit(1)
+  const { text } = await $.command.run(watchCommand('status'))
+  expect(text).toMatch(
+    /\/repo\/web: server stopped: the server exited \(code 1\)\. \/code-buddy starts it again\.\n  At work:\n    c1 "make the title bigger": agent a1 on claude-sonnet-5-5, for 0 s$/,
+  )
+  // Stopping the watch forgets the server that ended.
+  await $.command.run(watchCommand('stop'))
+  expect((await $.command.run(watchCommand('status'))).text).not.toMatch(/server stopped/)
+})
+
+test('/code-buddy status tells an agent starting, an edit waiting, and a server that failed', async ($, on) => {
+  const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
+  await watch($, w)
+  w.holdSpawns()
+  await w.print(newLine('c1'))
+  expect((await $.command.run(watchCommand('status'))).text).toMatch(
+    /\n  At work:\n    c1 "make the title bigger": agent starting, for 0 s\n/,
+  )
+  await w.releaseSpawns()
+  await w.print(newLine('c2'), newLine('c3'), `EDIT c4 route=/ page-level body="x"`)
+  expect((await $.command.run(watchCommand('status'))).text).toMatch(
+    /in order:\n    1\. c4 "make the title bigger" \(edit\)$/,
+  )
+  await w.exit(0)
+
+  // A server that cannot start: its line, not its exit code.
+  const again = $.command.run(watchCommand())
+  await w.print('PORT_BUSY 4599 is used by another program')
+  await again
+  await w.exit(3)
+  expect((await $.command.run(watchCommand('status'))).text).toMatch(
+    /\/repo\/web: server stopped: PORT_BUSY 4599 is used by another program\./,
+  )
 })

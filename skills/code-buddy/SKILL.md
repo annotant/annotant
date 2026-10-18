@@ -32,7 +32,7 @@ else. It refuses while a `/live-feedback` session still serves the project;
 then ask the user to close that session and run it again.
 
 Read the arguments as `[mode] [dir]`, in any order: the mode is `init`,
-`update`, `uninstall` or `stop`, or none for the watch; any other argument is the
+`update`, `uninstall`, `stop` or `status`, or none for the watch; any other argument is the
 directory (`/code-buddy:code-buddy web`, `/code-buddy:code-buddy init web`).
 Without a mode and no `.code-buddy.json` in PROJECT (or above it when no
 directory was given), offer `init` first, for that directory if one was named.
@@ -44,7 +44,8 @@ snippet, `.code-buddy.json`, and (usually git-ignored) the comments file.
 ## Watch
 
 Call the tool `mcp__code-buddy__watch` with `{ "project": "<PROJECT>" }` and
-give the user its answer; for `stop`, call it with `{ "stop": true }`. The
+give the user its answer; for `stop`, call it with `{ "stop": true }`, for
+`status` with `{ "status": true }`. The
 plugin's hooks run the server for this session's life and start one
 background agent per comment, with no turn of yours: never start or message
 those agents yourself. If the tool is

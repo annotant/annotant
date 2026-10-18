@@ -340,12 +340,14 @@ async function routeComment(
   }
 }
 
-/** The projects watched, and the agents at work on comments. */
+/** The projects watched, the agents at work on comments, and those waiting. */
 async function showStatus($: $) {
   const count = Object.values(await read($, workers)).filter((one) => one.running).length
+  const queued = [...watches.values()].reduce((sum, one) => sum + one.queue.length, 0)
   const parts = [
     ...(watches.size ? [`watching ${[...watches.keys()].map(basename).join(', ')}`] : []),
     ...(count ? [`${count} agent(s) on comments`] : []),
+    ...(queued ? [`${queued} queued`] : []),
   ]
   $.ui.status(parts.length ? `code-buddy: ${parts.join(' · ')}` : undefined)
 }
@@ -511,6 +513,10 @@ type Watch = {
   root: string
   /** The server's first line: `READY`, an error line, or `ENDED <why>`. */
   started: Promise<string>
+  /** That line, once it came. */
+  first?: string
+  /** The last line the server wrote to stderr. */
+  lastError?: string
   /** Comments waiting for a free agent, oldest first. */
   queue: Queued[]
   /** By comment, how many lines came about it: a later one supersedes a wait. */
@@ -524,11 +530,20 @@ type Watch = {
 /** The servers this module runs, by project root: they die with it. */
 const watches = new Map<string, Watch>()
 /**
- * Comments whose agent is starting, and what came for them meanwhile: a stop,
- * the reader's latest edit or follow-up, handed over once it started, or,
- * after a stop, the comment sent again, which a new agent takes.
+ * The servers that ended on their own, by project root, and why: until the
+ * project is watched again.
  */
-const starting = new Map<string, { stop: boolean; message?: Queued; again?: Queued }>()
+const endedWatches = new Map<string, string>()
+/**
+ * Comments whose agent is starting, its project and since when, and what came
+ * for them meanwhile: a stop, the reader's latest edit or follow-up, handed
+ * over once it started, or, after a stop, the comment sent again, which a new
+ * agent takes.
+ */
+const starting = new Map<
+  string,
+  { root: string; since: number; stop: boolean; message?: Queued; again?: Queued }
+>()
 /**
  * How many sends are resuming each comment's agent type. Claude Code resumes
  * an agent whose turn ended the way the Agent tool does, through
@@ -660,7 +675,11 @@ async function send($: $, worker: Worker, { id, line, kind }: Queued) {
   )
   if (sent.isDelivered) {
     await markHandedOver($, id, line)
-    await setWorker($, id, { ...worker, running: true })
+    await setWorker($, id, {
+      ...worker,
+      running: true,
+      since: worker.running ? worker.since : Date.now(),
+    })
   }
   return sent.isDelivered
 }
@@ -678,7 +697,7 @@ async function handOver($: $, watched: Watch, next: Queued) {
 
 async function startWorker($: $, watched: Watch, id: string, line: string) {
   const name = agentName(id)
-  starting.set(id, { stop: false })
+  starting.set(id, { root: watched.root, since: Date.now(), stop: false })
   const started = await spawnWorker($, watched, id, name, line).catch(
     (error: unknown) => ({
       deny: error instanceof Error ? error.message : String(error),
@@ -711,6 +730,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     agent,
     root: watched.root,
     running: true,
+    since: meanwhile?.since ?? Date.now(),
     ...(started.route && { model: started.route.model }),
     ...(started.route?.effort && { effort: started.route.effort }),
   }
@@ -887,6 +907,8 @@ function serve($: $, root: string): Watch {
     },
   }
   watches.set(root, watched)
+  endedWatches.delete(root)
+  void started.then((line) => (watched.first = line))
   void (async () => {
     let pending = ''
     let errors = ''
@@ -901,6 +923,8 @@ function serve($: $, root: string): Watch {
         }
         if (piece.value.stream === 'stderr') {
           errors = (errors + piece.value.text).slice(-2_000)
+          const last = errors.trim().split('\n').at(-1)
+          if (last) watched.lastError = short(last, 300)
           continue
         }
         const lines = (pending + piece.value.text).split('\n')
@@ -913,11 +937,19 @@ function serve($: $, root: string): Watch {
       ended = `the server could not run: ${error instanceof Error ? error.message : String(error)}`
     }
     const why = errors.trim().split('\n').at(-1)
-    settle(`ENDED ${ended}${why ? `: ${short(why, 300)}` : ''}`)
+    const reason = `${ended}${why ? `: ${short(why, 300)}` : ''}`
+    settle(`ENDED ${reason}`)
     if (watches.get(root) !== watched) return
     watches.delete(root)
+    const first = await watched.started
+    // A server that could not start: its first line says why.
+    if (!watched.stopped)
+      endedWatches.set(
+        root,
+        first.startsWith('ENDED') || first.startsWith('READY') ? reason : first,
+      )
     await showStatus($)
-    if (!watched.stopped && (await watched.started).startsWith('READY')) {
+    if (!watched.stopped && first.startsWith('READY')) {
       $.ui.toast(
         `Code Buddy stopped watching ${basename(root)}: ${ended}. /code-buddy starts it again.`,
       )
@@ -980,6 +1012,7 @@ async function startWatch($: $, root: string) {
 }
 
 async function stopWatching($: $) {
+  endedWatches.clear()
   if (!watches.size) return 'Code Buddy is not watching any project in this session.'
   const roots = [...watches.keys()]
   for (const watched of watches.values()) watched.stop()
@@ -987,6 +1020,108 @@ async function stopWatching($: $) {
   await update($, watching, () => noWatching)
   await showStatus($)
   return `Code Buddy stopped watching ${roots.join(', ')}. Agents at work finish their comments.`
+}
+
+/** How long since `since`, for the person. */
+function ago(since: number) {
+  const seconds = Math.max(0, Math.round((Date.now() - since) / 1000))
+  if (seconds < 60) return `${seconds} s`
+  const minutes = Math.floor(seconds / 60)
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
+}
+
+/** A comment's short id and the reader's last words on it, quoted as data. */
+async function described($: $, project: Project | undefined, id: string) {
+  const comment = project && (await readComment($, project, id))
+  const said = comment?.messages?.findLast((message) => message.author === 'reader')
+  const words = said?.body.trim().replace(/\s+/g, ' ')
+  return words ? `${tag(id)} ${JSON.stringify(short(words, 60))}` : tag(id)
+}
+
+/** What the project's server is doing, or why it ended. */
+function serverState(root: string) {
+  const watched = watches.get(root)
+  if (!watched) {
+    const why = endedWatches.get(root)
+    return why
+      ? `server stopped: ${why}. /code-buddy starts it again.`
+      : 'not watched any more; its agents finish their comments.'
+  }
+  const [kind, url] = watched.first?.split(' ') ?? []
+  if (kind === undefined) return 'server starting'
+  return kind === 'READY' ? `server ready at ${url}` : `server failed: ${watched.first}`
+}
+
+const KINDS: Record<Kind, string> = {
+  new: 'new comment',
+  followup: 'follow-up',
+  edit: 'edit',
+}
+
+/**
+ * `/code-buddy status`: by project, its server, the agents at work, the
+ * comments waiting for one in order, and the server's last error.
+ */
+async function statusText($: $) {
+  const all = Object.entries(await read($, workers))
+  const running = all.filter(([, worker]) => worker.running)
+  const roots = new Set([
+    ...watches.keys(),
+    ...endedWatches.keys(),
+    ...running.map(([, worker]) => worker.root),
+    ...[...starting.values()].map((one) => one.root),
+  ])
+  if (!roots.size)
+    return 'Code Buddy is not watching any project in this session: /code-buddy starts it.'
+  const lines = [
+    `Code Buddy: ${running.length + starting.size} of ${MAX_RUNNING} agents at work in this session.`,
+  ]
+  for (const root of roots) {
+    const project = await loadProject($, root).catch(() => undefined)
+    const working = [
+      ...(await Promise.all(
+        [...starting]
+          .filter(([, one]) => one.root === root)
+          .map(
+            async ([id, one]) =>
+              `${await described($, project, id)}: agent starting, for ${ago(one.since)}`,
+          ),
+      )),
+      ...(await Promise.all(
+        running
+          .filter(([, worker]) => worker.root === root)
+          .map(async ([id, worker]) => {
+            const model = worker.model ?? "the session's model"
+            const effort = worker.effort ? ` at ${worker.effort} effort` : ''
+            const since = worker.since === undefined ? '' : `, for ${ago(worker.since)}`
+            return `${await described($, project, id)}: agent ${worker.agent} on ${model}${effort}${since}`
+          }),
+      )),
+    ]
+    const watched = watches.get(root)
+    const queue = await Promise.all(
+      (watched?.queue ?? []).map(
+        async (one, index) =>
+          `${index + 1}. ${await described($, project, one.id)} (${KINDS[one.kind]})`,
+      ),
+    )
+    lines.push(
+      '',
+      `${root}: ${serverState(root)}`,
+      ...(working.length
+        ? ['  At work:', ...working.map((one) => `    ${one}`)]
+        : ['  No agent at work.']),
+      ...(queue.length
+        ? ['  Waiting for a free agent, in order:', ...queue.map((one) => `    ${one}`)]
+        : watched
+          ? ['  No comment waiting.']
+          : []),
+      ...(watched?.lastError ? [`  Last server error: ${watched.lastError}`] : []),
+    )
+  }
+  return lines.join('\n')
 }
 
 const hasConfig = ($: $, dir: string) =>
@@ -1049,10 +1184,11 @@ async function registerCommand($: $, command: Parameters<$['command']['register'
     )
 }
 
-/** `/code-buddy [dir|stop]`: the answer the person reads. */
+/** `/code-buddy [dir|stop|status]`: the answer the person reads. */
 async function watchCommand($: $, args: string) {
   const word = args.trim()
   if (word === 'stop') return stopWatching($)
+  if (word === 'status') return statusText($)
   const root = await findProject($, word)
   if (root) return startWatch($, root)
   return (
@@ -1137,7 +1273,7 @@ export const register: Register = (on) => {
     await $.tool.register({
       name: 'watch',
       description:
-        "Starts Code Buddy's watch on a project: its server, and one background agent per comment the reader leaves; or, with stop, ends it. Call it only when the code-buddy skill says so.",
+        "Starts Code Buddy's watch on a project: its server, and one background agent per comment the reader leaves; with stop, ends it; with status, tells the agents at work, the comments waiting and the server's state. Call it only when the code-buddy skill says so.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -1149,6 +1285,11 @@ export const register: Register = (on) => {
           stop: {
             type: 'boolean',
             description: 'true ends the watch instead; project is then left out.',
+          },
+          status: {
+            type: 'boolean',
+            description:
+              "true answers the watch's state instead; project is then left out.",
           },
         },
       },
@@ -1165,8 +1306,8 @@ export const register: Register = (on) => {
     await registerCommand($, {
       name: 'code-buddy',
       description:
-        'Code Buddy: watch the app for comments, one background agent each (a folder, or stop)',
-      argumentHint: '[dir|stop]',
+        'Code Buddy: watch the app for comments, one background agent each (a folder, stop, or status)',
+      argumentHint: '[dir|stop|status]',
       immediate: true,
     })
     const { version } = await $.session.version()
@@ -1186,6 +1327,7 @@ export const register: Register = (on) => {
 
   on('tool.call', { tool: WATCH_TOOL }, async ($, e) => {
     if (e.stop === true) return { result: await stopWatching($) }
+    if (e.status === true) return { result: await statusText($) }
     const { project } = e
     if (typeof project !== 'string' || !project.startsWith('/'))
       return { deny: 'Give the project root as an absolute path.' }

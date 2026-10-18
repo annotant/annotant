@@ -34,6 +34,8 @@ export type Worker = {
   agent: string
   root: string
   running: boolean
+  /** When its agent started, or a message resumed it. */
+  since?: number
   model?: string
   /** The effort its agent type was registered with, when routing set one. */
   effort?: string
@@ -42,7 +44,7 @@ export type Worker = {
 declare module 'claude-code' {
   interface McpToolInputs {
     /** The skill's way in: the project root, absolute. */
-    'mcp__code-buddy__watch': { project?: string; stop?: boolean }
+    'mcp__code-buddy__watch': { project?: string; stop?: boolean; status?: boolean }
   }
   interface PluginState {
     'code-buddy': {
