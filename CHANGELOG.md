@@ -89,12 +89,6 @@ released to the `stable` branch.
 
 ### Added
 
-- **"Ask" or "Change", per comment.** A switch in the message box sets
-  what the comment's agent may do: "Change" (the default) makes the change;
-  "Ask" only answers in the thread, and the hooks refuse its edits and the
-  Bash commands that would change files. A follow-up can switch it either
-  way, and an Ask shows a chip on its card. Stored as `capability` (`edit`
-  or `reply`) on the comment. (#125)
 - **An element picked in a message.** Every message box, a new comment's or a
   reply's, has a button that starts the element picker while the panel stays
   open: the element picked shows as a chip above the text and goes with the
