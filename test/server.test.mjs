@@ -431,6 +431,32 @@ test('groups the anchor of a new comment, and describes it to the hooks', async 
   assert.match(event, / section="Beans" element=<h2> "Ethiopia Guji" body="Bigger"$/)
 })
 
+test('keeps the text around a quote, cut to 32 characters on each side', async () => {
+  const created = await json(
+    await post(
+      JSON.stringify({
+        route: '/shop',
+        body: 'Bigger',
+        anchor: {
+          quote: 'Add to cart',
+          occurrence: 2,
+          prefix: `${'x'.repeat(40)} Sidamo  \n  Huila `,
+          suffix: ` \n Kenya\tAdd to cart ${'y'.repeat(40)}`,
+          occurrences: 4.2,
+        },
+      }),
+    ),
+  )
+  assert.deepEqual(created.anchor, {
+    section: '',
+    quote: 'Add to cart',
+    occurrence: 2,
+    prefix: 'xxxxxxxxxxxxxxxxxxx Sidamo\nHuila',
+    suffix: 'Kenya Add to cart yyyyyyyyyyyyyy',
+    occurrences: 4,
+  })
+})
+
 test('prints one line per event, whatever line breaks the reader sent', async () => {
   const printed = output.length
   const created = await json(

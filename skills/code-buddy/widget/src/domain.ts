@@ -68,6 +68,11 @@ export interface ReviewAnchor {
   quote: string
   /** Which occurrence of the quote on the page, when it appears several times. */
   occurrence: number
+  /** The page's text just before and after the quote, to tell its copies apart. */
+  prefix?: string
+  suffix?: string
+  /** How many copies of the quote the page had then. */
+  occurrences?: number
   /** Set when the reader pointed at an element instead of selecting text. */
   element?: ReviewElement
   /** Set when the reader drew a rectangle over the page. */

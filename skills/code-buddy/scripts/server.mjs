@@ -347,16 +347,36 @@ function sanitiseUrl(url) {
   return `${parsed.origin}${pathname}${redactParams(parsed.search)}`.slice(0, 2000)
 }
 
+/** The most characters of the page's text kept on each side of a quote. */
+const MAX_CONTEXT = 32
+
+/**
+ * The page's text on one side of a quote: whitespace collapsed, a line break
+ * kept where a block ends.
+ * @param {unknown} text
+ */
+const sanitiseContext = (text) =>
+  (typeof text === 'string' ? text : '')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ ?\n\s*/g, '\n')
+    .trim()
+
 /** The anchor of a new comment: where on the page it is. */
 function sanitiseAnchor(anchor = {}) {
   const element = sanitiseElement(anchor.element)
   const area = sanitiseArea(anchor.area)
+  const prefix = sanitiseContext(anchor.prefix).slice(-MAX_CONTEXT).trimStart()
+  const suffix = sanitiseContext(anchor.suffix).slice(0, MAX_CONTEXT).trimEnd()
+  const occurrences = Math.floor(Number(anchor.occurrences) || 0)
   return {
     section: String(anchor.section ?? '')
       .trim()
       .slice(0, 300),
     quote: normaliseQuote(String(anchor.quote ?? '')).slice(0, 2000),
     occurrence: Math.max(0, Math.floor(Number(anchor.occurrence) || 0)),
+    ...(prefix ? { prefix } : {}),
+    ...(suffix ? { suffix } : {}),
+    ...(occurrences > 0 ? { occurrences } : {}),
     ...(element ? { element } : {}),
     ...(area ? { area } : {}),
   }

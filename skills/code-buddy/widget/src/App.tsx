@@ -566,10 +566,17 @@ export default function App({ root }: { root: Element }) {
   // on its own page only: the app may navigate before it is saved.
   const draftHere = draft?.route === route
   const draftQuote = view === 'page' && draftHere ? draft.quote : undefined
-  const draftOccurrence = draft?.occurrence ?? 0
+  const { occurrence = 0, prefix, suffix, occurrences } = draft ?? {}
   useEffect(() => {
     const drafted = draftQuote
-      ? { section: '', quote: draftQuote, occurrence: draftOccurrence }
+      ? {
+          section: '',
+          quote: draftQuote,
+          occurrence,
+          ...(prefix ? { prefix } : {}),
+          ...(suffix ? { suffix } : {}),
+          ...(occurrences ? { occurrences } : {}),
+        }
       : undefined
     const paint = () => paintHighlights(root, drafted)
     paint()
@@ -579,7 +586,7 @@ export default function App({ root }: { root: Element }) {
       observer.disconnect()
       clearHighlights()
     }
-  }, [root, draftQuote, draftOccurrence])
+  }, [root, draftQuote, occurrence, prefix, suffix, occurrences])
 
   useEffect(() => {
     const onSelectionChange = () => {
