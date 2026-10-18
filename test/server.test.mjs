@@ -1064,23 +1064,15 @@ test('takes a comment of the elements the reader picked alone, and tells the hoo
       JSON.stringify({
         route: '/cart',
         anchor: { quote: '' },
-        elements: [
-          { ...title, route: '/cart' },
-          { ...title, route: '/help' },
-        ],
+        // One per message: the first the server can keep.
+        elements: [title, { ...title, route: '/help' }, { ...title, route: '/cart' }],
       }),
     ),
   )
   assert.equal(created.messages[0].body, '')
-  assert.deepEqual(created.messages[0].elements, [
-    { ...title, route: '/cart' },
-    { ...title, route: '/help' },
-  ])
+  assert.deepEqual(created.messages[0].elements, [{ ...title, route: '/help' }])
   const event = await nextLine(`NEW ${created.id} `, printed)
-  assert.match(
-    event,
-    / page-level body="" elements=\["<h1> Cart","<h1> Cart on \/help"\]$/,
-  )
+  assert.match(event, / page-level body="" elements=\["<h1> Cart on \/help"\]$/)
 })
 
 test('takes the elements the reader picked with a reply, and tells the hooks', async () => {
@@ -1105,7 +1097,8 @@ test('takes the elements the reader picked with a reply, and tells the hooks', a
     await patch({
       followUp: 'This one too',
       elements: [
-        { ...button, route: '/cart' },
+        // The page it was on is unknown: dropped.
+        { ...button },
         {
           selector: 'footer > a',
           tag: 'a',
@@ -1113,21 +1106,19 @@ test('takes the elements the reader picked with a reply, and tells the hooks', a
           html: '<a href="/help?token=abc" data-token="x">Help</a>',
           route: '/help',
         },
-        // The page it was on is unknown: dropped.
-        { ...button },
-        ...Array.from({ length: 5 }, () => ({ ...button, route: '/cart' })),
+        { ...button, route: '/cart' },
       ],
     }),
   )
   const { elements } = reopened.messages.at(-1)
-  // The one with no route dropped, then the first five, the html redacted as a comment's.
-  assert.equal(elements.length, 5)
-  assert.deepEqual(elements[0], { ...button, route: '/cart' })
-  assert.equal(elements[1].html, '<a href="/help?token=redacted">Help</a>')
+  // The one with no route dropped, then the first left: one per message, the
+  // html redacted as a comment's.
+  assert.equal(elements.length, 1)
+  assert.equal(elements[0].html, '<a href="/help?token=redacted">Help</a>')
   const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
   assert.match(
     event,
-    / followup="This one too" elements=\["<button> Buy","<a> Help on \/help"(,"<button> Buy"){3}\] messages=2$/,
+    / followup="This one too" elements=\["<a> Help on \/help"\] messages=2$/,
   )
 
   // An element alone is a reply; with only another move, it is ignored.

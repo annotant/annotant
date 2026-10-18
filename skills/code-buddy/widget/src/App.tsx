@@ -394,7 +394,7 @@ const written = (draft: Pick<Draft, 'body' | 'images' | 'elements'>) =>
 
 /**
  * The elements picked for a message, with `added` once: picked again, it is
- * there already; past the cap, the reader is told and it is left out.
+ * there already; past the cap, it takes the place of the earliest.
  */
 function joining(elements: ReviewPickedElement[] = [], added: ReviewPickedElement) {
   if (
@@ -403,11 +403,7 @@ function joining(elements: ReviewPickedElement[] = [], added: ReviewPickedElemen
     )
   )
     return elements
-  if (elements.length >= MAX_PICKED) {
-    toast(`A message holds up to ${MAX_PICKED} elements.`, true)
-    return elements
-  }
-  return [...elements, added]
+  return [...elements, added].slice(-MAX_PICKED)
 }
 
 /** The message box being written in, when an element in the page is picked for a new comment. */
@@ -1144,7 +1140,7 @@ export default function App({ root }: { root: Element }) {
   )
 
   // The element the message being written will mark stays outlined, as its
-  // text would: the first picked for it, when it is on this page.
+  // text would, when it is on this page.
   const [writtenFor] = (drafting ? draft.elements : replyElements) ?? []
   const outlined =
     target ??

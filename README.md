@@ -143,7 +143,8 @@ directory, else from the repository root.
   it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
 - **Pick an element in the page** from any message box, a new comment's or a
   reply's: its pointer button picks one with the panel still open ("this one
-  too"). Up to 5 per message; their chips in the thread scroll to them.
+  too"). One per message: picking another replaces it. Its chip in the thread
+  scrolls to it.
 - **All comments** lists every discussion, newest first, filtered by status.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,

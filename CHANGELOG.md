@@ -11,8 +11,7 @@ released to the `stable` branch.
 
 - **Point at element starts a comment about the page, the element in its
   message box.** The element is no longer the comment's anchor: it goes with
-  the message, as an image does, and the comment may pick more. The page
-  still marks it until the thread is first resolved; a reply that picks an
+  the message, as an image does. The page still marks it until the thread is first resolved; a reply that picks an
   element afterwards moves the mark to it, in place of the comment's text,
   area or element. (#36)
 - **Breaking: comments no longer wait on a managing session.** `/code-buddy`
@@ -84,13 +83,13 @@ released to the `stable` branch.
 
 ### Added
 
-- **Elements picked in a message.** Every message box, a new comment's or a
+- **An element picked in a message.** Every message box, a new comment's or a
   reply's, has a button that starts the element picker while the panel stays
-  open: each element picked shows as a chip above the text and goes with the
-  message, alone or with words, up to 5. Its bubble shows them; a chip
-  outlines its element when hovered, and scrolls to it and flashes it when
-  clicked, on its own page. The agent reads each one's selector, text, HTML
-  and page. (#36)
+  open: the element picked shows as a chip above the text and goes with the
+  message, alone or with words; one per message, another picked takes its
+  place. Its bubble shows it; the chip outlines the element when hovered, and
+  scrolls to it and flashes it when clicked, on its own page. The agent reads
+  its selector, text, HTML and page. (#36)
 - **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
   message box, of a new comment or a reply: it shows as a thumbnail, goes
   with the message and shows in its bubble; an image alone is a message too.

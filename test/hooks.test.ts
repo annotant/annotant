@@ -509,7 +509,7 @@ test('a hard comment goes to opus, a standard one keeps the parent model', async
   await w.exit(0)
 })
 
-test('the classifier reads the elements picked in the page with the message', async ($, on) => {
+test('the classifier reads the element picked in the page with the message', async ($, on) => {
   const picked: Comment = {
     ...titleComment,
     anchor: { quote: '' },
@@ -517,10 +517,7 @@ test('the classifier reads the elements picked in the page with the message', as
       {
         author: 'reader',
         body: 'same size as this',
-        elements: [
-          { tag: 'h1', text: 'Plans' },
-          { tag: 'h2', text: 'Pro' },
-        ],
+        elements: [{ tag: 'h2', text: 'Pro' }],
       },
     ],
   }
@@ -529,7 +526,7 @@ test('the classifier reads the elements picked in the page with the message', as
   await watch($, w)
   await w.print(newLine('c1'))
   expect(w.classified[0]).toMatch(
-    /Page: \/pricing\nElement: <h1> Plans\nElement: <h2> Pro\nComment: same size as this$/,
+    /Page: \/pricing\nElement: <h2> Pro\nComment: same size as this$/,
   )
   await w.exit(0)
 })

@@ -172,14 +172,14 @@ test('an element is recorded with the page it was picked on', async () => {
   )
 })
 
-test('a message holds up to 5 elements', async () => {
-  fakeServer([resolved()])
+test('a message holds one element: another picked takes its place', async () => {
+  const server = fakeServer([resolved()])
   openThread('c1')
   renderWidget()
   await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
   const page = document.querySelector('main')
   if (!page) throw new Error('no page')
-  page.innerHTML = Array.from({ length: 6 }, (_, i) => `<p id="p${i}">P${i}</p>`).join('')
+  page.innerHTML = '<p id="first">First</p><p id="second">Second</p>'
   const pointed = vi.spyOn(document, 'elementFromPoint')
   onTestFinished(() => pointed.mockRestore())
   for (const paragraph of page.querySelectorAll('p')) {
@@ -188,8 +188,14 @@ test('a message holds up to 5 elements', async () => {
     fireEvent.click(paragraph, { clientX: 5, clientY: 5 })
   }
 
-  expect(screen.getAllByRole('button', { name: /Remove the element/ })).toHaveLength(5)
-  expect(await screen.findByText('A message holds up to 5 elements.')).toBeTruthy()
+  expect(screen.getAllByRole('button', { name: /Remove the element/ })).toHaveLength(1)
+  expect(screen.getByTestId('cb-picked').textContent).toContain('Second')
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() =>
+    expect(server.patches[0]?.patch.elements?.map((element) => element.text)).toEqual([
+      'Second',
+    ]),
+  )
 })
 
 test('a stopped reply of elements alone goes again without words', async () => {

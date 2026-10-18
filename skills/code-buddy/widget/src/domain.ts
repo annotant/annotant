@@ -26,7 +26,7 @@ export interface ReviewPickedElement extends ReviewElement {
 }
 
 /** The most elements one message may hold, as lib/format.mjs caps them. */
-export const MAX_PICKED = 5
+export const MAX_PICKED = 1
 
 /** An element an area covers or cuts through: enough to find it in the code. */
 export type ReviewNode = Omit<ReviewElement, 'html'>
@@ -229,8 +229,8 @@ export interface ReviewCommentPatch {
 type Lifecycle = Pick<ReviewComment, 'state'>
 
 /**
- * The element the reader picked last, the first of their latest message that
- * holds some, when it is still to mark: picked since the thread was last
+ * The element the reader picked last, in their latest message that holds
+ * one, when it is still to mark: picked since the thread was last
  * resolved, on a thread not resolved now. It takes the place of the comment's
  * anchor on the page.
  */

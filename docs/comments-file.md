@@ -98,7 +98,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
-| `elements` | PickedElement[], reader only | The elements they picked in the page with it, up to 5: an element's `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
+| `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
 
 ### An event
 
@@ -179,23 +179,24 @@ first (`open → working`).
 
 The page marks a comment's anchor (an element's outline, a text's rainbow)
 until its thread is first resolved: a follow-up does not bring it back, unless
-it picks elements. The first element of the reader's latest message holding
-some takes the anchor's place, while the thread is not resolved and when it
+it picks an element. The element of the reader's latest message holding one
+takes the anchor's place, while the thread is not resolved and when it
 was picked since the thread was last resolved (the comment itself, before any
-resolution). The page marks it only when it is on that page. Every picked
+resolution). The page marks it only when it is on that page. A picked
 element's chip in the thread also outlines it while hovered, and scrolls to it
 and flashes it once clicked.
 
 ### Elements picked in a message
 
-The reader may pick elements in the page for any message, the comment or a
+The reader may pick an element in the page for any message, the comment or a
 reply (the composer's pointer button; the widget's _Point at element_ starts
-a comment with one): they go with the message, up to 5, as `elements` (see
-[A message](#a-message)), alone or with words, images or choices; the server
-drops one with no `route`. The widget no longer writes `anchor.element`, which
+a comment with one): it goes with the message as `elements` (see
+[A message](#a-message)), alone or with words, images or choices. One per
+message: another picked takes its place in the message box, and the server
+keeps the first it can, dropping one with no `route`. The widget no longer writes `anchor.element`, which
 older comments keep. The `NEW` line for the hooks names them after the
 comment's `body`, the `FOLLOWUP` and `EDIT` lines after the reply's `choices`:
-` elements=["<button> Buy","<a> Help on /help"]`, the page added when it is
+` elements=["<a> Help on /help"]`, the page added when it is
 not the comment's. The agent reads them whole in the thread `claim.mjs`
 prints.
 

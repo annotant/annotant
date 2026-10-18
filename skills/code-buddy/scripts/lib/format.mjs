@@ -59,8 +59,8 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @typedef {Element & { route: string }} PickedElement
  */
 
-/** The most elements one message may hold. */
-export const MAX_PICKED = 5
+/** The most elements one message may hold: the one the page marks. */
+export const MAX_PICKED = 1
 
 /**
  * Where on the page a comment is.
