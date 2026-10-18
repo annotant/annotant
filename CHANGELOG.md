@@ -173,6 +173,9 @@ released to the `stable` branch.
 
 ### Fixed
 
+- Comment marks stayed where the text was before the docked panel squeezed
+  the page, or before an image or a font moved it, until the next scroll or
+  poll. They now follow their text whenever the layout changes. (#62)
 - A panel width saved in a wider window came back as is after a reload: the
   docked panel and the page's margin overflowed the window. The panel now
   fits a narrower window, and gets its width back once the window is wide
