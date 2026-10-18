@@ -33,6 +33,9 @@ const PROGRESS_SHOWN = 10
 const WRITE_KINDS = new Set(['edit', 'write', 'multiedit'])
 // What the agent says and thinks accompanies its steps; it is not one.
 const NARRATION_KINDS = new Set(['thinking', 'message'])
+// The line an agent writes, with `understood` on, before it changes anything:
+// after a preamble or in bold too, since the hooks join a message's lines.
+const UNDERSTOOD = /(?:^|\s)[*_`]*Understood:[*_`]*\s*/
 
 /** Waiting for an agent, or worked on by one: what agents and the server act on. */
 export const isActive = (comment) =>
@@ -95,11 +98,10 @@ function move(comment, to, { by, run, agent, model, complexity, message }) {
  * step, in the place where it started. Sorted by time.
  * @param {{ progressDir: string }} project
  * @param {string} id
- * @param {number} [limit]
  * @param {{ history?: boolean }} [options]
  * @returns {Promise<import('./format.mjs').Step[]>}
  */
-export async function readProgress(project, id, limit, { history = false } = {}) {
+export async function readProgress(project, id, { history = false } = {}) {
   let lines
   try {
     const file = history ? historyPath(project, id) : progressPath(project, id)
@@ -127,7 +129,7 @@ export async function readProgress(project, id, limit, { history = false } = {})
   // By time: the hooks module writes what the agent thinks while hook.mjs
   // writes its tools, and either may land first.
   steps.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
-  return limit ? steps.slice(-limit) : steps
+  return steps
 }
 
 /** @param {string} file */
@@ -433,17 +435,28 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         )
         return Promise.all(
           comments.map(async (c) => {
-            /** @type {CommentV2 & { progress?: unknown[], history?: unknown[] }} */
+            /** @type {CommentV2 & { progress?: unknown[], understood?: string, history?: unknown[] }} */
             const listed = { ...c }
             // Only a run in progress has steps to show.
             if (c.state === 'working') {
-              const progress = await readProgress(project, c.id, PROGRESS_SHOWN)
-              if (progress.length) listed.progress = progress
+              const steps = await readProgress(project, c.id)
+              if (steps.length) listed.progress = steps.slice(-PROGRESS_SHOWN)
+              // From the whole run, later steps pushing it out of `progress`; the
+              // latest, as the reader's edit has the agent say it again.
+              const understood = steps
+                .filter((s) => s.kind === 'message')
+                .map((s) => UNDERSTOOD.exec(s.label))
+                .findLast((match) => match)
+              if (understood) {
+                listed.understood = understood.input.slice(
+                  understood.index + understood[0].length,
+                )
+              }
             }
             if (history) {
               // The runs that ended, then the one in progress.
               const steps = [
-                ...(await readProgress(project, c.id, undefined, { history })),
+                ...(await readProgress(project, c.id, { history })),
                 ...(await readProgress(project, c.id)),
               ]
               if (steps.length) listed.history = steps

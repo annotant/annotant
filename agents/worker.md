@@ -47,7 +47,11 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    before changing anything. A `cancellation` field lists files an earlier,
    stopped agent left changed: keep, finish or revert them to match the
    current text. When the element is unclear, screenshot it with Playwright
-   on `devUrl`.
+   on `devUrl`. When `understood` is `true` in `.code-buddy.json`, before
+   your first edit write one line alone, as its own message, `Understood:
+   <what you will change, and where>` (`Understood: the card's title becomes "Plans", in
+   src/pages/Home.tsx`), and go on without waiting: the reader sees it and
+   may correct you with an edit.
 3. Make the change, only under `editable`, with the Edit and Write tools:
    never write files from Bash (`sed -i`, scripts, redirections). Other
    agents may edit the project at the same time: a hook locks every file you

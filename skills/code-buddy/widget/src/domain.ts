@@ -165,6 +165,8 @@ export interface ReviewComment {
   cancellation?: ReviewCancellation
   /** Latest tool calls of the agent working on it; never stored in the file. */
   progress?: ReviewProgress[]
+  /** What the agent at work said it understood, before its first edit; never stored in the file. */
+  understood?: string
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
   /**
