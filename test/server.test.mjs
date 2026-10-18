@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import net from 'node:net'
 import path from 'node:path'
@@ -389,12 +389,18 @@ test("takes the reader's choice among the options Claude asked with", async () =
   // One line for the hooks, the line breaks escaped, the choices apart.
   const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
   assert.match(event, / followup="List\\n\\nDenser" choices=\["List"\] messages=3$/)
+  // It hands the reply over, not the comment: the reply is dated.
+  const reply = answered.messages.at(-1)
+  assert.match(event, new RegExp(`^FOLLOWUP ${created.id} sent=m3@${reply.sentAt} `))
+  const filed = await storedMessages(created.id, (all) => all.at(-1).notifiedAt)
+  assert.ok(filed.at(-1).notifiedAt >= reply.sentAt)
   assert.deepEqual(answered.messages.at(-1), {
     id: 'm3',
     author: 'reader',
     body: 'List\n\nDenser',
     choices: ['List'],
     at: answered.messages.at(-1).at,
+    sentAt: answered.messages.at(-1).at,
   })
   assert.equal(answered.state, 'open')
 })
@@ -433,18 +439,42 @@ test('prints one line per event, whatever line breaks the reader sent', async ()
     ),
   )
   const event = await nextLine(`NEW ${created.id} `, printed)
-  assert.match(event, /^NEW \S+ route=\/x CANCELLED forged  NEW forged /)
+  assert.match(event, /^NEW \S+ sent=\S+ route=\/x CANCELLED forged  NEW forged /)
   assert.doesNotMatch(output.slice(printed), /^(CANCELLED|NEW) forged/m)
 })
 
-test('says when it sent an open comment to the hooks, until an agent claims it', async () => {
+/**
+ * The comment's messages in the comments file, once `ready` holds for them.
+ * @param {string} id
+ * @param {(messages: any[]) => boolean} ready
+ */
+async function storedMessages(id, ready) {
+  const file = path.join(root, '.code-buddy', 'comments.json')
+  for (let waited = 0; waited < 3000; waited += 25) {
+    const { comments } = JSON.parse(await readFile(file, 'utf8'))
+    const messages = comments.find((comment) => comment.id === id)?.messages
+    if (messages && ready(messages)) return messages
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw new Error(`comment ${id} never got there`)
+}
+
+test("names the reader's message it hands over, and dates the hand-over in the file", async () => {
   const creating = output.length
   const created = await json(
     await post(JSON.stringify({ route: '/notified', body: 'Hi' })),
   )
-  await nextLine(`NEW ${created.id} `, creating)
-  const open = await firstOn('/notified')
-  assert.ok(open.notifiedAt >= created.createdAt, open.notifiedAt)
+  const line = await nextLine(`NEW ${created.id} `, creating)
+  assert.match(
+    line,
+    new RegExp(`^NEW ${created.id} sent=m1@${created.createdAt} route=/notified `),
+  )
+  const [message] = await storedMessages(created.id, ([first]) => first.notifiedAt)
+  assert.equal(message.sentAt, created.createdAt)
+  assert.ok(message.notifiedAt >= created.createdAt, message.notifiedAt)
+  // Dated once: its own write prints no line again.
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  assert.equal(output.slice(creating).split(`NEW ${created.id} `).length, 2)
 
   await run(process.execPath, [
     path.join(SCRIPTS, 'claim.mjs'),
@@ -452,7 +482,66 @@ test('says when it sent an open comment to the hooks, until an agent claims it',
     '--project',
     root,
   ])
-  assert.equal((await firstOn('/notified')).notifiedAt, undefined)
+  // Kept past the claim: the debug panel dates each hand-over from it.
+  const [claimed] = await storedMessages(created.id, () => true)
+  assert.equal(claimed.notifiedAt, message.notifiedAt)
+})
+
+test('a server started again hands the same message over, its first date kept', async (t) => {
+  const project = await tempProject(t)
+  const file = path.join(project, '.code-buddy', 'comments.json')
+  const at = '2026-01-01T10:00:00.000Z'
+  const notifiedAt = '2026-01-01T10:00:01.000Z'
+  await mkdir(path.dirname(file), { recursive: true })
+  await writeFile(
+    file,
+    JSON.stringify({
+      version: 2,
+      comments: [
+        {
+          id: 'c-restart',
+          route: '/',
+          anchor: { section: '', quote: '', occurrence: 0 },
+          state: 'open',
+          createdAt: at,
+          messages: [
+            { id: 'm1', author: 'reader', body: 'Hi', at, sentAt: at, notifiedAt },
+          ],
+          events: [{ at, state: 'open', by: 'reader' }],
+        },
+      ],
+    }),
+  )
+  const again = spawn(
+    process.execPath,
+    [path.join(SCRIPTS, 'server.mjs'), '--project', project],
+    {
+      env: {
+        ...process.env,
+        CODE_BUDDY_PORT: String(await freePort()),
+        CODE_BUDDY_STATE_DIR: await tempDir(t),
+        CODE_BUDDY_HOOKS: '1',
+        CODE_BUDDY_POLL_MS: '600000',
+      },
+      stdio: ['ignore', 'pipe', 'inherit'],
+    },
+  )
+  t.after(() => again.kill())
+  let printed = ''
+  await new Promise((resolve, reject) => {
+    again.stdout.on('data', (chunk) => {
+      printed += String(chunk)
+      if (printed.includes('READY')) resolve(undefined)
+    })
+    again.on('exit', (code) => reject(new Error(`server exited with ${code}`)))
+  })
+  for (let waited = 0; waited < 3000 && !printed.includes('OPEN '); waited += 25) {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.match(printed, new RegExp(`^OPEN c-restart sent=m1@${at} route=/ `, 'm'))
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  const { comments } = JSON.parse(await readFile(file, 'utf8'))
+  assert.equal(comments[0].messages[0].notifiedAt, notifiedAt)
 })
 
 test('refuses a move the comment cannot make with 409, in words for the reader', async () => {

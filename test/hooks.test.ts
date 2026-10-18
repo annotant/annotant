@@ -206,8 +206,11 @@ function world(
   // Held, a spawn answers only once released: an agent slow to start.
   let held: Promise<void> | undefined
   let release = ignore
+  // Claude Code refuses the spawn, saying why.
+  let denied: string | undefined
   on('agent.spawn', async (_$, e) => {
     await held
+    if (denied !== undefined) return { deny: denied }
     // A plugin's spawn reaches here as the Agent tool's input.
     const input: Record<string, unknown> = { ...e }
     const type = String(input.subagent_type ?? e.subagentType)
@@ -241,8 +244,12 @@ function world(
     for (;;) {
       const line = printing.shift()
       if (line !== undefined) yield { stream: 'stdout' as const, text: `${line}\n` }
-      else if (exitCode !== undefined) return { value: { code: exitCode, signal: null } }
-      else await new Promise<void>((resolve) => (wake = resolve))
+      else if (exitCode !== undefined) {
+        // The next server runs until it is told to exit in turn.
+        const code = exitCode
+        exitCode = undefined
+        return { value: { code, signal: null } }
+      } else await new Promise<void>((resolve) => (wake = resolve))
     }
   })
   /** The server prints lines; what they start has started once it resolves. */
@@ -268,6 +275,9 @@ function world(
     },
     resumesThrough: (next: typeof engine) => {
       engine = next
+    },
+    denySpawns: (why: string) => {
+      denied = why
     },
     holdSpawns: () => {
       held = new Promise<void>((done) => (release = done))
@@ -711,6 +721,84 @@ test("a follow-up or an edit goes to the comment's agent; none, one starts", asy
   await w.exit(0)
 })
 
+/** An opening line, naming the reader's message it hands over. */
+const handOver = (kind: string, sent: string, id = 'c1') =>
+  `${kind} ${id} sent=${sent} route=/ page-level body="make the title bigger"`
+const SENT = 'm1@2026-01-01T10:00:00.000Z'
+
+test('a message handed over again, as a server restart prints it, starts no agent', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(handOver('NEW', SENT))
+  // Its agent ended its turn with the comment still open.
+  await $.turn.complete(ended('a1', 'Looking.'))
+  await w.clock.settle()
+
+  await w.print(handOver('OPEN', SENT))
+  expect(w.spawned).toHaveLength(1)
+
+  // Sent again by the reader: a hand-over of its own.
+  await w.print(handOver('NEW', 'm1@2026-01-01T10:05:00.000Z'))
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  await w.exit(0)
+})
+
+test('a comment still queued when the watch starts again starts on the same line', async ($, on) => {
+  const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
+  await watch($, w)
+  await w.print(...['c1', 'c2', 'c3', 'c4'].map((id) => handOver('NEW', SENT, id)))
+  expect(w.spawned).toHaveLength(3)
+
+  // The server stops with c4 in line, and starts again once an agent ended.
+  await w.exit(1)
+  await $.turn.complete(ended('a1', 'Done.'))
+  await watch($, w)
+  await w.print(handOver('OPEN', SENT, 'c1'), handOver('OPEN', SENT, 'c4'))
+  expect(w.spawned.map((agent) => agent.name)).toEqual([
+    'cb-c1',
+    'cb-c2',
+    'cb-c3',
+    'cb-c4',
+  ])
+  await w.exit(0)
+})
+
+test('a follow-up handed over again reaches its agent once', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(handOver('NEW', SENT))
+  const reply = `FOLLOWUP c1 sent=m3@2026-01-01T10:05:00.000Z route=/ page-level followup="smaller" messages=3`
+  await w.print(reply, reply)
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  // An edit of it still goes.
+  await w.print(`EDIT c1 route=/ page-level followup="smaller still" messages=3`)
+  expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a1'])
+  await w.exit(0)
+})
+
+test('a comment stopped and sent again while its agent starts gets a new agent', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  w.holdSpawns()
+  await w.print(handOver('NEW', SENT))
+  await w.print('CANCELLED c1', handOver('NEW', 'm1@2026-01-01T10:05:00.000Z'))
+  await w.releaseSpawns()
+  expect(w.stopped).toEqual(['a1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  await w.exit(0)
+})
+
+test('a message whose agent could not start is handed over again', async ($, on) => {
+  const w = world(on, [open('c1')])
+  w.denySpawns('no room')
+  await watch($, w)
+  const line = `NEW c1 sent=m1@2026-01-01T10:00:00.000Z route=/ page-level body="hi"`
+  await w.print(line)
+  await w.print(line)
+  expect(w.toasts.filter((toast) => toast.includes('could not start'))).toHaveLength(2)
+  await w.exit(0)
+})
+
 test('a comment the reader stops or deletes stops its agent, or leaves the queue', async ($, on) => {
   const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
   await watch($, w)
@@ -968,9 +1056,12 @@ test('a server that stops after it started says so', async ($, on) => {
     /^Code Buddy stopped watching web: the server exited \(code 1\)\. \/code-buddy starts it again\.$/,
   )
   // Not watching any more: the command starts a new server.
-  void $.command.run(watchCommand())
+  const again = $.command.run(watchCommand())
   await w.clock.settle()
   expect(w.servers).toHaveLength(2)
+  await w.print(READY)
+  await again
+  await w.exit(0)
 })
 
 test('the skill watches only a project of its session', async ($, on) => {

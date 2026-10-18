@@ -28,6 +28,7 @@ import {
   imagesDir,
   parseImages,
 } from './lib/images.mjs'
+import { openingOf, sentKey } from './lib/format.mjs'
 import { AGENT_ID, TOOL_ID, findAgentPrompt, findToolCall } from './lib/transcripts.mjs'
 import {
   APP_ROUTE,
@@ -519,8 +520,7 @@ async function handle(req, res) {
       // history=1: every step of every run, for the widget's debug panel.
       const history = url.searchParams.get('history') === '1'
       const comments = await store.list(route ?? undefined, { history })
-      const served = comments.map(withNotified)
-      return send(res, 200, history ? served.map(withLines) : served, cors)
+      return send(res, 200, history ? comments.map(withLines) : comments, cors)
     }
     if (req.method === 'POST') {
       const input = await readJson(req)
@@ -568,27 +568,10 @@ async function handle(req, res) {
 
 /**
  * By comment id, when last seen active: when it last opened (its latest
- * `open` event), its latest reader message, as `<id> <body>`, and when the
- * hooks were sent the line for that opening.
- * @type {Map<string, { opened: number, text: string, notified: string }>}
+ * `open` event) and its latest reader message, as `<id> <body>`.
+ * @type {Map<string, { opened: number, text: string }>}
  */
 const seen = new Map()
-
-/**
- * An open comment with `notifiedAt`, once the hooks were sent its line: the
- * widget tells a comment waiting for a free agent from one not handed over
- * yet. Never stored in the file.
- * @template {{ id: string, state: string, events: { state: string }[] }} T
- * @param {T} comment
- * @returns {T & { notifiedAt?: string }}
- */
-function withNotified(comment) {
-  const known = seen.get(comment.id)
-  const opened = comment.events.findLastIndex((event) => event.state === 'open')
-  return comment.state === 'open' && known?.opened === opened
-    ? { ...comment, notifiedAt: known.notified }
-    : comment
-}
 
 /** The most lines kept per comment for the debug panel. */
 const LINES_KEPT = 50
@@ -693,6 +676,20 @@ function describe(comment) {
   return `${comment.id} route=${comment.route}${url}${section} ${where} ${text}${images}`
 }
 
+/**
+ * The opening line of a comment, `sent=` naming the reader's message it hands
+ * over (format.mjs's sentKey): the hooks act once on each. With that key.
+ * @param {string} kind
+ * @param {Comments[number]} comment
+ */
+function openingLine(kind, comment) {
+  const message = openingOf(comment)
+  const key = message ? sentKey(message) : undefined
+  // describe() starts with the id: the key goes right after it.
+  const rest = describe(comment).slice(comment.id.length)
+  return { key, line: `${kind} ${comment.id}${key ? ` sent=${key}` : ''}${rest}` }
+}
+
 /** @typedef {Awaited<ReturnType<typeof store.readAll>>} Comments */
 
 /**
@@ -700,8 +697,12 @@ function describe(comment) {
  * last read.
  * @param {Comments} comments
  * @param {boolean} first
+ * @returns {[string, string][]} The comments handed over, by id, with the key
+ *   of the message: the store dates the hand-over.
  */
 function tick(comments, first) {
+  /** @type {[string, string][]} */
+  const handed = []
   const current = new Set()
   for (const comment of comments) {
     if (!isActive(comment)) continue
@@ -715,15 +716,15 @@ function tick(comments, first) {
     if (previous && previous.opened !== opened) {
       print(comment.id, goneLine(comment.id, comment.events[opened - 1]?.state))
     }
-    let notified = previous?.notified ?? ''
     if (previous === undefined || previous.opened !== opened) {
       const kind = latestReply(comment) ? 'FOLLOWUP' : first ? 'OPEN' : 'NEW'
-      print(comment.id, `${kind} ${describe(comment)}`)
-      notified = new Date().toISOString()
+      const { key, line } = openingLine(kind, comment)
+      print(comment.id, line)
+      if (key) handed.push([comment.id, key])
     } else if (previous.text !== text) {
       print(comment.id, `EDIT ${describe(comment)}`)
     }
-    seen.set(comment.id, { opened, text, notified })
+    seen.set(comment.id, { opened, text })
   }
   for (const id of seen.keys()) {
     if (current.has(id)) continue
@@ -734,6 +735,7 @@ function tick(comments, first) {
   // A deleted comment's lines go with it, even one deleted while inactive.
   const ids = new Set(comments.map((comment) => comment.id))
   for (const id of printed.keys()) if (!ids.has(id)) printed.delete(id)
+  return handed
 }
 
 /**
@@ -808,7 +810,14 @@ async function refresh(first) {
   } catch {
     return
   }
-  tick(comments, first)
+  // Dated in the file: its write brings the next read, which prints nothing new.
+  for (const [id, key] of tick(comments, first)) {
+    await store.notify(id, key).catch((error) => {
+      console.error(`code-buddy server: could not date the hand-over of ${id}: ${error}`)
+      // Printed again at the next read, which dates it: the hooks take a message once.
+      seen.delete(id)
+    })
+  }
   const ids = await changedIds(comments)
   if (first || !ids.length) return
   const event = `event: changed\ndata: ${JSON.stringify({ ids })}\n\n`

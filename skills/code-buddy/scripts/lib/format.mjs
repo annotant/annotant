@@ -110,6 +110,12 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
+ * @property {string} [sentAt] Reader only, on a message that opened the
+ *   comment (its first, an answer, a follow-up): when the reader sent it, anew
+ *   when they send it again after a stop. The hooks start or message an agent once per `id` and
+ *   `sentAt`.
+ * @property {string} [notifiedAt] With `sentAt`: when the server first printed
+ *   its line for the hooks, which a restart keeps.
  */
 
 /**
@@ -220,6 +226,21 @@ export const nextMessageId = (comment) =>
     'm',
     comment.messages.map((message) => message.id),
   )
+
+/**
+ * The reader's message the comment is open for: their latest, the one its
+ * line hands over.
+ * @param {Pick<CommentV2, 'messages'>} comment
+ */
+export const openingOf = (comment) =>
+  comment.messages.findLast((message) => message.author === 'reader')
+
+/**
+ * What the hooks key a hand-over on: the message and when it was sent, its
+ * `at` for a message written before `sentAt` was.
+ * @param {MessageV2} message
+ */
+export const sentKey = (message) => `${message.id}@${message.sentAt ?? message.at}`
 
 /** A new run starts with each claim. @param {Pick<CommentV2, 'events'>} comment */
 export const nextRunId = (comment) =>

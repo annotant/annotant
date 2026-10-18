@@ -76,13 +76,14 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 ### A message
 
 ```jsonc
-{ "id": "m1", "author": "reader", "body": "change le titre", "at": "…" }
+{ "id": "m1", "author": "reader", "body": "change le titre", "at": "…",
+  "sentAt": "…", "notifiedAt": "…" }
 { "id": "m2", "run": "r1", "author": "claude", "question": true,
   "body": "Quel nouveau titre veux-tu ?",
   "options": [{ "label": "Café torréfié la semaine où tu le bois", "description": "traduction en français" }],
   "at": "…" }
 { "id": "m3", "author": "reader", "body": "Café torréfié la semaine où tu le bois",
-  "choices": ["Café torréfié la semaine où tu le bois"], "at": "…" }
+  "choices": ["Café torréfié la semaine où tu le bois"], "at": "…", "sentAt": "…" }
 { "id": "m4", "run": "r2", "author": "claude", "body": "Le titre est changé.", "at": "…" }
 ```
 
@@ -98,6 +99,8 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
+| `sentAt` | ISO date, reader only | On a message that opened the comment (its first, an answer, a follow-up): when the reader sent it, written again on a re-send. Absent from messages written before it existed, which key on `at`. |
+| `notifiedAt` | ISO date, with `sentAt` | When the server first printed the line handing it over (see [Hand-overs](#hand-overs)); a re-send drops it. |
 
 ### An event
 
@@ -165,8 +168,8 @@ stateDiagram-v2
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
-| `asking`, `answered` or `resolved → open` | PATCH `followUp` and/or `choices` | reader | A `reader` message. |
-| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | With `text`, the last `reader` message's new words, its `choices` dropped; empty, its images alone when it has some. |
+| `asking`, `answered` or `resolved → open` | PATCH `followUp` and/or `choices` | reader | A `reader` message, with `sentAt`. |
+| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
 The store refuses any other move, and writes nothing: the server answers 409
@@ -272,12 +275,22 @@ full paths to the comment's line for the hooks (`NEW`, `OPEN`, `FOLLOWUP`,
 line, for the images of the message it carries. The agent opens them with
 Read. Deleting the comment deletes its folder.
 
-## What the server adds
+## Hand-overs
 
-On an open comment, the server also serves `notifiedAt`, an ISO date: when it
-printed that opening's line (`OPEN`, `NEW` or `FOLLOWUP`) for the plugin's hooks. It
-lives in the server's memory, never in `comments.json`: a restart prints the
-line again and dates it anew. The widget reads "Sent…" until then, "Claude
+An open comment waits on the reader's latest message, the one with the
+latest `sentAt`. Each time it opens, the server prints its line for the
+plugin's hooks (`OPEN`, `NEW` or `FOLLOWUP`), naming that message right after
+the comment's id: `NEW <id> sent=m1@2026-10-10T15:44:37.597Z route=/ …`,
+`<message id>@<sentAt>`. It then writes `notifiedAt` on the message, once: a
+restart prints the line again and leaves the date. The hooks start or message
+an agent once per comment and key, for the session, once an agent took it
+(started on it, or was sent it): a line about a message already taken starts
+nothing, whatever a restart or a reload did. A re-send dates the message
+anew, a key of its own; a message still waiting (queued, or whose agent could
+not start) starts with the next line about it. A failed write of
+`notifiedAt` prints the line again at the next read, which dates it.
+
+The widget reads "Sent…" until the message's `notifiedAt`, "Claude
 has your comment, an agent is starting…" once it is, "Claude has your
 comment, waiting for a free agent…" when no agent has claimed the comment 15
 seconds later, and "No agent has started. Check the Claude Code session
@@ -286,6 +299,8 @@ watching." after 60 seconds. On the reader's reply (an answer or a follow-up:
 up…", "Claude has your reply, waiting for a free agent…" and "No agent has
 picked up your reply. Check the Claude Code session watching." Each return to `open` (an answer, a follow-up, a re-send)
 starts again.
+
+## What the server adds
 
 With `history=1` (the debug panel), every comment the server printed a line
 about since it started also has `lines`: `{ at, line }` objects, oldest first,
