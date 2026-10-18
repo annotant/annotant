@@ -123,9 +123,11 @@ directory, else from the repository root.
   then marks the text on the page; clicking it opens the comment's thread.
 - **Point at element** starts a comment with that element in its message
   box, as an image would be: the comment is about the page, and the element
-  goes with its message. Hovering the element chip outlines it on the page,
-  clicking it scrolls to it (navigating first if it lives on another page).
-  Comments anchored to an element before keep their bubble on it.
+  goes with its message. It stays outlined while you write, then a bubble
+  marks it until the thread is first resolved. A reply that picks an element
+  afterwards moves the mark to it. Hovering an element chip outlines it on the
+  page, clicking it scrolls to it (navigating first if it lives on another
+  page).
 - **Draw area** to frame a part of the page no single element holds: the gap
   between two blocks, a misaligned group, empty space. Drag a rectangle
   (scroll the page while dragging to stretch it past the window); the elements

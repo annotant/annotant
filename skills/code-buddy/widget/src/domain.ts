@@ -229,6 +229,40 @@ export interface ReviewCommentPatch {
 type Lifecycle = Pick<ReviewComment, 'state'>
 
 /**
+ * The element the reader picked last, the first of their latest message that
+ * holds some, when it is still to mark: picked since the thread was last
+ * resolved, on a thread not resolved now. It takes the place of the comment's
+ * anchor on the page.
+ */
+export function pickedMark(
+  // Without its thread when the server sent it broken: the page's marks are
+  // drawn out of the panel's guard, and the others' must still show.
+  comment: Pick<ReviewComment, 'state' | 'events'> & { messages?: ReviewMessage[] },
+): ReviewPickedElement | undefined {
+  if (comment.state === 'resolved') return undefined
+  const resolved = comment.events.findLast((event) => event.state === 'resolved')
+  const picked = comment.messages?.findLast(
+    (message) => message.author === 'reader' && message.elements?.length,
+  )
+  if (!picked || (resolved && picked.at <= resolved.at)) return undefined
+  return picked.elements?.[0]
+}
+
+/**
+ * The element page `route` marks for a comment: the one picked last, when it
+ * was picked there, else the element it is anchored to, until its thread is
+ * first resolved.
+ */
+export function markedElement(
+  comment: Parameters<typeof pickedMark>[0] & Pick<ReviewComment, 'anchor'>,
+  route: string,
+): ReviewElement | undefined {
+  const picked = pickedMark(comment)
+  if (picked) return picked.route === route ? picked : undefined
+  return wasResolved(comment) ? undefined : comment.anchor.element
+}
+
+/**
  * Resolved once already: Claude's later answers wait on the reader, and the
  * page no longer marks what the comment is about.
  */

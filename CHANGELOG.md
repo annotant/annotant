@@ -11,9 +11,10 @@ released to the `stable` branch.
 
 - **Point at element starts a comment about the page, the element in its
   message box.** The element is no longer the comment's anchor: it goes with
-  the message, as an image does, and the comment may pick more. A comment
-  started this way gets no bubble on the element; its chip in the thread
-  outlines it. (#36)
+  the message, as an image does, and the comment may pick more. The page
+  still marks it until the thread is first resolved; a reply that picks an
+  element afterwards moves the mark to it, in place of the comment's text,
+  area or element. (#36)
 - **Breaking: comments no longer wait on a managing session.** `/code-buddy`
   is now a command of the plugin's hooks: it starts the server for the
   session's life, and every comment starts its agent at once, in the

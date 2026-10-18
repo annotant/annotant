@@ -178,9 +178,13 @@ change nothing. `ask.mjs` and `resolve.mjs` on a comment still `open` claim it
 first (`open → working`).
 
 The page marks a comment's anchor (an element's outline, a text's rainbow)
-until its thread is first resolved: a follow-up does not bring it back. The
-elements picked in a message are not marked: their chip in the thread outlines
-one while it is hovered, and scrolls to it and flashes it once clicked.
+until its thread is first resolved: a follow-up does not bring it back, unless
+it picks elements. The first element of the reader's latest message holding
+some takes the anchor's place, while the thread is not resolved and when it
+was picked since the thread was last resolved (the comment itself, before any
+resolution). The page marks it only when it is on that page. Every picked
+element's chip in the thread also outlines it while hovered, and scrolls to it
+and flashes it once clicked.
 
 ### Elements picked in a message
 

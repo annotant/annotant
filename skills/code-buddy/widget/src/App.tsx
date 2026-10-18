@@ -1143,8 +1143,15 @@ export default function App({ root }: { root: Element }) {
     </Button>
   )
 
-  // An element is outlined while its chip is hovered, or for a moment once clicked.
-  const outlined = target ?? flash
+  // The element the message being written will mark stays outlined, as its
+  // text would: the first picked for it, when it is on this page.
+  const [writtenFor] = (drafting ? draft.elements : replyElements) ?? []
+  const outlined =
+    target ??
+    flash ??
+    (writtenFor?.route === route
+      ? elementFromAnchor(root, { ...PAGE_LEVEL, element: writtenFor })
+      : undefined)
   // The area the comment being written was drawn on stays outlined, as its text would.
   const outlinedArea =
     targetArea ?? flashArea ?? (drafting && draftHere ? draft.area : undefined)
