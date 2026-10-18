@@ -1941,6 +1941,10 @@ export default function App({ root }: { root: Element }) {
                   onSubmit={() =>
                     sendReply(replying, asked && offered ? ticked(replying, asked) : [])
                   }
+                  // Like a new comment's: never at the cost of what the reader wrote.
+                  onEscape={() =>
+                    !reply && !replyImages.length && !replyElements.length && backToList()
+                  }
                 />
               )}
               {composing && !overflowing && (

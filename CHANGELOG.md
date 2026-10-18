@@ -179,7 +179,8 @@ released to the `stable` branch.
   Opening a thread from a bubble now focuses the panel's heading, closing it
   gives the focus back to what opened it (or the dock), Escape closes it once
   the message box and the element picker have had theirs, and the panel is
-  named Code Buddy. (#68)
+  named Code Buddy. A message box with text keeps Escape for itself; an empty
+  one goes back to the list. (#68)
 - Options ticked under a multiple-choice question, but not sent, stayed
   ticked once the thread left the question another way (resolved, stopped):
   Claude's next question in the thread showed an option of the same label

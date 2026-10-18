@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { comment, fakeServer, openPanel } from './server'
+import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
 const TITLE = {
@@ -124,4 +124,34 @@ test('Escape while composing a word with an input method leaves the panel open',
   fireEvent.keyDown(card, { key: 'Escape', isComposing: true })
 
   expect(panel().hasAttribute('data-closing')).toBe(false)
+})
+
+test("Escape in a thread's reply box is the box's, not the panel's", async () => {
+  fakeServer([
+    comment({
+      state: 'answered',
+      messages: [
+        { author: 'claude', body: 'Bigger.', at: '2026-01-01T10:01:00.000Z', run: 'r1' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  box.focus()
+
+  fireEvent.change(box, { target: { value: 'Bolder too' } })
+  fireEvent.keyDown(box, { key: 'Escape' })
+  expect(panel().hasAttribute('data-closing')).toBe(false)
+  expect(screen.getByRole('heading', { name: 'Comment' })).toBeTruthy()
+
+  // Empty, it leaves the thread for the list, as a new comment's does.
+  fireEvent.change(box, { target: { value: '' } })
+  fireEvent.keyDown(box, { key: 'Escape' })
+  expect(panel().hasAttribute('data-closing')).toBe(false)
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Comments' }),
+    ),
+  )
 })
