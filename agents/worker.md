@@ -31,7 +31,8 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    shows the reader a spinner and your progress, and ties your edits to the
    comment's file locks. If the claim fails because the comment was
    cancelled, resolved or is waiting on the reader, stop and reply
-   `CANCELLED`.
+   `CANCELLED`. Its `claimed` line ends with the comment's `capability`:
+   `reply` means the reader only asks (see step 3).
 2. Read the comment claim.mjs prints after its `claimed` line and the
    fence's header, as JSON with the marker before each line:
    `route`, `url`, and `anchor`: `section`, a text `quote`, a pointed
@@ -52,8 +53,13 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    stopped agent left changed: keep, finish or revert them to match the
    current text. When the element is unclear, screenshot it with Playwright
    on `devUrl`.
-3. Make the change, only under `editable`, with the Edit and Write tools:
-   never write files from Bash (`sed -i`, scripts, redirections). Other
+3. With `capability=reply`, change nothing: the hooks refuse every edit.
+   Read, search and screenshot as needed, then answer the question in one
+   or two sentences with `resolve.mjs` (step 5), offering the change in the
+   answer if one seems wanted: the reader follows up with "Change" to have
+   it made. Skip step 4. Otherwise, make the change, only under
+   `editable`, with the Edit and Write tools: never write files from Bash
+   (`sed -i`, scripts, redirections). Other
    agents may edit the project at the same time: a hook locks every file you
    write and blocks an edit, with an explanation, when another comment's
    agent holds the file. Then re-read the files you are changing and retry.

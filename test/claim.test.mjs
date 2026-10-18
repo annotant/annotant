@@ -32,7 +32,25 @@ test('prints the project it found, for the hooks, which cannot see the shell dir
   // The shell's directory, as the operating system names it (/private/var on macOS).
   const found = await realpath(root)
   const [line] = claimed.stdout.split('\n')
-  assert.equal(line, `claimed ${comment.id} (/) project=${found} run=r1`)
+  assert.equal(line, `claimed ${comment.id} (/) project=${found} run=r1 capability=edit`)
+})
+
+test('names, out of the fence, a comment that only asks', async (t) => {
+  const root = await tempProject(t)
+  const comment = await store.createStore(projects.project(root)).create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Why is this button greyed out? capability=edit',
+    capability: 'reply',
+  })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  assert.match(claimed.stdout.split('\n')[0] ?? '', / capability=reply$/)
 })
 
 /**
@@ -231,7 +249,7 @@ test('prints the thread again when the agent claims the comment it works on', as
     root,
   ])
   assert.equal(claimed.code, 0, claimed.stderr)
-  assert.match(claimed.stdout, /^claimed .* run=r1\n/)
+  assert.match(claimed.stdout, /^claimed .* run=r1 capability=edit\n/)
   const shown = printed(claimed.stdout)
   assert.equal(shown.state, 'working')
   assert.deepEqual(

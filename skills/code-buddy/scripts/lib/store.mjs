@@ -20,6 +20,7 @@ import {
 import { isDevWidget } from './project.mjs'
 
 /** @typedef {import('./format.mjs').Actor} Actor */
+/** @typedef {import('./format.mjs').Capability} Capability */
 /** @typedef {import('./format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./format.mjs').Complexity} Complexity */
 /** @typedef {import('./images.mjs').Image} Image */
@@ -458,11 +459,20 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
 
     /**
      * The reader's new comment: their words, the images they attached and
-     * the elements they picked in the page, open the thread.
-     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[], elements?: PickedElement[] }} input
+     * the elements they picked in the page, open the thread, which may change
+     * the code (`edit`) or only answer (`reply`).
+     * @param {{ route: string, url?: string, anchor: import('./format.mjs').Anchor, body: string, images?: Image[], elements?: PickedElement[], capability?: Capability }} input
      * @returns {Promise<CommentV2>}
      */
-    create({ route, url, anchor, body, images = [], elements = [] }) {
+    create({
+      route,
+      url,
+      anchor,
+      body,
+      images = [],
+      elements = [],
+      capability = 'edit',
+    }) {
       return exclusive(async () => {
         const comments = await readAll()
         const at = new Date().toISOString()
@@ -475,6 +485,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           anchor,
           state: 'open',
           createdAt: at,
+          capability,
           messages: [
             {
               id: 'm1',
@@ -506,17 +517,27 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * true`), send it again (`cancelled: false`, with new words in `text`),
      * answer or follow up (`followUp`, `choices`, with the `images` the
      * reader attached and the `elements` they picked in the page), or
-     * resolve it (`status`).
+     * resolve it (`status`). A `capability` goes with a move that opens it
+     * again: a re-send, an answer or a follow-up.
      * A stop or a re-send the comment is past changes nothing: a double
      * click, or a click on a button a poll late, is not an error. Undefined
      * when there is no such comment.
      * @param {string} id
-     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], elements?: PickedElement[], text?: string, status?: 'resolved' }} patch
+     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], elements?: PickedElement[], text?: string, status?: 'resolved', capability?: Capability }} patch
      * @returns {Promise<CommentV2 | undefined>}
      */
     update(
       id,
-      { cancelled, followUp, choices, images = [], elements = [], text, status },
+      {
+        cancelled,
+        followUp,
+        choices,
+        images = [],
+        elements = [],
+        text,
+        status,
+        capability,
+      },
     ) {
       return exclusive(async () => {
         const comments = await readAll()
@@ -548,6 +569,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             }
             comment.messages[comment.messages.indexOf(last)] = resent
           }
+          if (capability) comment.capability = capability
         }
         const reply = readerReply(
           comment,
@@ -576,6 +598,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               if (message) message.sentAt = sentAt
               if (message) names = await saveImages(project, id, message.id, images)
               if (message && names.length) message.images = names
+              if (capability) comment.capability = capability
             }
             if (status === 'resolved' && comment.state !== 'resolved') {
               move(comment, 'resolved', { by: 'reader', run })

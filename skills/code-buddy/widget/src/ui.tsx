@@ -120,7 +120,8 @@ export function Chip({
   small = false,
   children,
 }: {
-  tone: Status
+  /** A status, or `ask` for a comment that only asks. */
+  tone: Status | 'ask'
   /** The debug panel's: smaller, beside a line of text. */
   small?: boolean
   children: ReactNode
@@ -387,19 +388,25 @@ export function Toggle<T extends string>({
   value,
   options,
   onChange,
+  label,
+  className = '',
 }: {
   value: T
-  options: { value: T; label: string }[]
+  options: { value: T; label: string; title?: string }[]
   onChange: (value: T) => void
+  /** Names the group for assistive technology. */
+  label?: string
+  className?: string
 }) {
   return (
-    <div className="cb-toggle" role="radiogroup">
+    <div className={`cb-toggle ${className}`.trim()} role="radiogroup" aria-label={label}>
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           role="radio"
           aria-checked={option.value === value}
+          title={option.title}
           onClick={() => onChange(option.value)}
         >
           {option.label}

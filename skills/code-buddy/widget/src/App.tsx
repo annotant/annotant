@@ -34,12 +34,14 @@ import {
   type ReviewAnchor,
   type ReviewArea,
   type ReviewBox,
+  type ReviewCapability,
   type ReviewComment,
   type ReviewMessage,
   type ReviewPickedElement,
   type ReviewProgress,
   type Status,
   answered,
+  asks,
   gist,
   isActive,
   isAsking,
@@ -421,6 +423,8 @@ interface Draft extends ReviewAnchor {
   /** The elements picked in the page for it. */
   elements?: ReviewPickedElement[]
   app?: boolean
+  /** What its agent may do: `edit` until the reader picks Ask. */
+  capability?: ReviewCapability
   /** The page the draft was started on: the app may navigate before it is saved. */
   route: string
   url: string
@@ -560,6 +564,8 @@ export default function App({ root }: { root: Element }) {
     images?: NewImage[]
     /** The elements picked in the page for it. */
     elements?: ReviewPickedElement[]
+    /** Switched by the reader: else the comment's goes on. */
+    capability?: ReviewCapability
   }>()
   // The options ticked so far, under the question (`question`, its message id)
   // that takes several: another question of the thread starts with none.
@@ -927,6 +933,7 @@ export default function App({ root }: { root: Element }) {
       body,
       images,
       elements,
+      capability = 'edit',
       route: startedOn,
       url,
       ...anchor
@@ -937,6 +944,7 @@ export default function App({ root }: { root: Element }) {
         body,
         route: app ? APP_ROUTE : startedOn,
         url,
+        capability,
         ...(images?.length ? { images } : {}),
         ...(elements?.length ? { elements } : {}),
       })
@@ -986,6 +994,10 @@ export default function App({ root }: { root: Element }) {
   const replyElements =
     (replying && followUp?.id === replying.id && followUp.elements) || []
   const replyingId = replying?.id
+  const replyCapability =
+    (replying && followUp?.id === replying.id && followUp.capability) ||
+    replying?.capability ||
+    'edit'
   // The message box an element is picked for: the draft's, or the reply's.
   const writingIn = drafting ? DRAFT : replyingId
 
@@ -1082,7 +1094,10 @@ export default function App({ root }: { root: Element }) {
       const text = own?.body.trim() ?? ''
       const images = own?.images ?? []
       const elements = own?.elements ?? []
+      // Switched for this reply, it goes with an option clicked alone too.
+      const capability = followUp?.id === comment.id ? followUp.capability : undefined
       await updateComment(comment.id, {
+        ...(capability ? { capability } : {}),
         ...(choices.length ? { choices } : {}),
         ...(text ? { followUp: text } : {}),
         ...(images.length ? { images } : {}),
@@ -1221,6 +1236,27 @@ export default function App({ root }: { root: Element }) {
 
   const composing = drafting || !!replying
   const sendHint = <span className="cb-send-hint">Enter to send</span>
+  // Change lets the agent edit the code; Ask gets an answer only.
+  const capabilityToggle = composing && (
+    <Toggle<ReviewCapability>
+      label="What Claude may do"
+      className="cb-capability"
+      value={drafting ? (draft.capability ?? 'edit') : replyCapability}
+      options={[
+        { value: 'edit', label: 'Change', title: 'Claude may change the code' },
+        { value: 'reply', label: 'Ask', title: 'Claude answers, and changes nothing' },
+      ]}
+      onChange={(capability) => {
+        if (drafting) setDraft((current) => current && { ...current, capability })
+        else if (replying)
+          setFollowUp((current) => ({
+            ...(current?.id === replying.id ? current : { body: '' }),
+            id: replying.id,
+            capability,
+          }))
+      }}
+    />
+  )
   const cancelDraft = (
     <Button small variant="tertiary" className="cb-composer-cancel" onClick={backToList}>
       Cancel
@@ -1548,6 +1584,7 @@ export default function App({ root }: { root: Element }) {
         />
         <div className="cb-summary-head">
           <Chip tone={status}>{STATUS_CHIPS[status]}</Chip>
+          {asks(comment) && <Chip tone="ask">Ask</Chip>}
           {!href ? (
             <span className="cb-label">Whole app</span>
           ) : showPage ? (
@@ -1949,7 +1986,10 @@ export default function App({ root }: { root: Element }) {
               )}
               {composing && !overflowing && (
                 <div className="cb-composer-foot" ref={hintRow}>
-                  {drafting ? cancelDraft : <span />}
+                  <span className="cb-composer-foot-start">
+                    {drafting && cancelDraft}
+                    {capabilityToggle}
+                  </span>
                   {sendHint}
                 </div>
               )}
@@ -1965,6 +2005,7 @@ export default function App({ root }: { root: Element }) {
             {composing && overflowing && (
               <span className="cb-panel-foot-hint">
                 {drafting && cancelDraft}
+                {capabilityToggle}
                 {sendHint}
               </span>
             )}
