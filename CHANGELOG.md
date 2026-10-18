@@ -89,6 +89,12 @@ released to the `stable` branch.
 
 ### Added
 
+- **`/code-buddy status`.** For each project watched, the server's state and
+  address or why it stopped, the agents at work (comment, agent, model, for
+  how long), the comments waiting for a free agent in order, and the server's
+  last error line. The skill asks the same through its tool, and the status
+  line counts the comments waiting. (#131)
+
 - **Draw freehand on the page** (_Draw_, or _Draw on the page_ in a
   page-level comment): arrows, circles, a sketch, with the mouse, a pen or a
   finger, with _Undo_ and _Clear_. The drawing is an area, the box of its

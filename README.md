@@ -95,6 +95,7 @@ Then, in your frontend project:
 /code-buddy:code-buddy init    install in this project (asks only what it cannot detect)
 /code-buddy                    watch the app; open your dev app and comment
 /code-buddy stop               stop watching
+/code-buddy status             the server, the agents at work and the comments waiting
 /code-buddy:code-buddy update  migrate an older install
 /code-buddy:code-buddy uninstall
 ```
@@ -170,6 +171,12 @@ directory, else from the repository root.
   its context when it is still around.
 
 ## Troubleshooting
+
+When a comment seems to wait for nothing, run `/code-buddy status`. For each
+project it watches, it tells the server's state and address (or why it
+stopped), the agents at work (their comment, agent, model and for how long),
+the comments waiting for a free agent in order, and the server's last error
+line. The status line counts the comments waiting too.
 
 When an agent shows no progress under its comment, edits a file another agent
 is changing, or seems stuck, turn on the **hook log**. It writes one line for
