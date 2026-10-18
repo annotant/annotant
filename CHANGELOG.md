@@ -173,6 +173,14 @@ released to the `stable` branch.
 
 ### Fixed
 
+- The panel left the keyboard's focus where it was: a thread opened from a
+  bubble kept it on the page, and closing the panel dropped it on the page's
+  body. Escape did not close it, and screen readers had no name for it.
+  Opening a thread from a bubble now focuses the panel's heading, closing it
+  gives the focus back to what opened it (or the dock), Escape closes it once
+  the message box and the element picker have had theirs, and the panel is
+  named Code Buddy. A message box with text keeps Escape for itself; an empty
+  one goes back to the list. (#68)
 - Options ticked under a multiple-choice question, but not sent, stayed
   ticked once the thread left the question another way (resolved, stopped):
   Claude's next question in the thread showed an option of the same label

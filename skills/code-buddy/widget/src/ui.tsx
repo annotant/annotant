@@ -319,7 +319,11 @@ export function Composer({
         }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return
-          if (event.key === 'Escape') return onEscape?.()
+          if (event.key === 'Escape') {
+            // The box's, not the panel's around it.
+            if (onEscape) event.preventDefault()
+            return onEscape?.()
+          }
           if (event.key !== 'Enter' || event.shiftKey) return
           event.preventDefault()
           event.currentTarget.form?.requestSubmit()
