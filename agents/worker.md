@@ -44,7 +44,8 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    `crosses` reach past the box, and `pointsAt` is the element the longest
    line points at, under its end or, past a gap, next along it; with
    `pictured`, their comment's last image is its picture, the lines over
-   the page as the reader saw it.
+   the page close to how the reader saw it (its colours, text and same-origin
+   images; no SVG, video or stacking order).
    `route` `*` means the whole app.
    `messages` holds the thread, the reader's comment first (`elided` says how
    many older ones are left out): your earlier answers (`claude`) were

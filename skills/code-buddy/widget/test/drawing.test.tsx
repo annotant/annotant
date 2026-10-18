@@ -193,6 +193,33 @@ test('an arrow ending in a gap points at the element it heads for, never at what
   expect(pointed([100, 250], [100, 330], [96, 326])).toBe('Card B')
   // From card A right into the empty section: nothing ahead, and the section holds it all.
   expect(pointed([300, 150], [700, 150])).toBeUndefined()
+  // From the heading into the section, away from the cards: the section, which does not hold it.
+  expect(pointed([600, 30], [600, 80], [600, 200])).toBe('Card A Card B')
+  // A dot in a gap has no direction: nothing past it, and the section holds it.
+  expect(pointed([100, 330])).toBeUndefined()
+  // Down card A under its text: card B's is 170px past the tip, too far to be what it points at.
+  expect(pointed([100, 150], [100, 180])).toBeUndefined()
+  expect(pointed([100, 150], [100, 200])).toBe('Card B')
+})
+
+test('an arrow ending on a block with text of its own, or on a control, points at it', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">
+    <div data-box="0,0,1000,200">Notes<p data-box="0,100,400,40">Body</p></div>
+    <p data-box="0,240,400,40">Above</p>
+    <button data-box="0,300,400,100" style="display: flex">
+      <span data-box="20,320,100,20">Save</span>
+    </button>
+    <p data-box="0,500,400,40">Below</p>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+  const pointed = (...points: [number, number][]) =>
+    anchorFromDrawing(root, [points.map(([x, y]) => ({ x, y }))])?.anchor.area?.pointsAt
+      ?.tag
+
+  expect(pointed([600, 300], [600, 250], [600, 180])).toBe('div')
+  expect(pointed([300, 600], [300, 450], [300, 380])).toBe('button')
 })
 
 test('a long line keeps at most 400 points, its ends among them', () => {

@@ -1,13 +1,13 @@
+import { UNREAD, WIDGET } from './anchors'
 import type { NewImage, ReviewBox, ReviewStroke } from './domain'
 
 /** The widest side of the picture, in pixels: a drawing over a whole page stays readable. */
 const MAX_SIDE = 1600
 /** The lines' colour, styles.ts's --cb-ink. */
 const INK = '#e5306b'
-const WIDGET = '[data-code-buddy]'
-/** Never painted: no box of their own, or a picture the canvas cannot copy. */
-const SKIPPED = 'script, style, template, noscript, head, svg, canvas, video, iframe'
-/** What the picture paints at most: a long page stays quick. */
+/** Never painted: what the reader does not read, no box of its own, or a picture the canvas cannot copy. */
+const SKIPPED = `${WIDGET}, ${UNREAD}, head, svg, canvas, video, iframe`
+/** What the picture paints at most, in its frame: a busy page stays quick. */
 const MAX_ELEMENTS = 3000
 const MAX_WORDS = 4000
 
@@ -53,12 +53,18 @@ function transformed(word: string, transform: string): string {
 }
 
 /**
- * Paints the page under `frame` on `context`, from its corner, as the reader
- * sees it, close enough: the elements of `root` in the order the page has
- * them, each with its ground, its borders and its image, then its own text,
- * word by word where it is, in its font and colour.
+ * Paints the page under `frame` on `context`, from its corner, close to what
+ * the reader sees: the elements of `root` in the order the page has them,
+ * each with its ground, its borders and, with `images`, its image, then its
+ * own text, word by word where it is, in its font and colour; what an element
+ * clips stays in it. No stacking order, SVG, video, canvas or shadow DOM.
  */
-function paintPage(context: CanvasRenderingContext2D, root: Element, frame: ReviewBox) {
+function paintPage(
+  context: CanvasRenderingContext2D,
+  root: Element,
+  frame: ReviewBox,
+  images: boolean,
+) {
   context.fillStyle = groundOf()
   context.fillRect(0, 0, frame.width, frame.height)
   context.textBaseline = 'middle'
@@ -70,12 +76,12 @@ function paintPage(context: CanvasRenderingContext2D, root: Element, frame: Revi
     if (!shows(style.color)) return
     context.fillStyle = style.color
     context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
-    for (const { 0: word, index } of (node.data ?? '').matchAll(/\S+/g)) {
-      if (++words > MAX_WORDS) return
+    for (const { 0: word, index } of node.data.matchAll(/\S+/g)) {
       range.setStart(node, index)
       range.setEnd(node, index + word.length)
       const box = range.getBoundingClientRect()
       if (!overlaps(frame, box)) continue
+      if (++words > MAX_WORDS) return
       context.fillText(
         transformed(word, style.textTransform),
         box.left - frame.left,
@@ -85,81 +91,71 @@ function paintPage(context: CanvasRenderingContext2D, root: Element, frame: Revi
     }
   }
 
-  const paint = (element: Element) => {
-    if (element.closest(WIDGET) || element.matches(SKIPPED)) return
-    const style = getComputedStyle(element)
-    if (style.display === 'none' || ++elements > MAX_ELEMENTS) return
-    const box = element.getBoundingClientRect()
-    const seen = style.visibility !== 'hidden' && style.opacity !== '0'
-    if (seen && overlaps(frame, box)) {
-      const left = box.left - frame.left
-      const top = box.top - frame.top
-      if (shows(style.backgroundColor)) {
-        context.fillStyle = style.backgroundColor
+  const paintBox = (element: Element, style: CSSStyleDeclaration, box: DOMRect) => {
+    const left = box.left - frame.left
+    const top = box.top - frame.top
+    if (shows(style.backgroundColor)) {
+      context.fillStyle = style.backgroundColor
+      const radius = parseFloat(style.borderRadius) || 0
+      if (radius && typeof context.roundRect === 'function') {
         context.beginPath()
-        context.roundRect(
-          left,
-          top,
-          box.width,
-          box.height,
-          parseFloat(style.borderRadius) || 0,
-        )
+        context.roundRect(left, top, box.width, box.height, radius)
         context.fill()
-      }
-      for (const side of BORDERS) {
-        const width = parseFloat(style[`border${side}Width`]) || 0
-        const color = style[`border${side}Color`]
-        if (!width || !shows(color) || /none|hidden/.test(style[`border${side}Style`]))
-          continue
-        context.fillStyle = color
-        if (side === 'Top') context.fillRect(left, top, box.width, width)
-        if (side === 'Bottom')
-          context.fillRect(left, top + box.height - width, box.width, width)
-        if (side === 'Left') context.fillRect(left, top, width, box.height)
-        if (side === 'Right')
-          context.fillRect(left + box.width - width, top, width, box.height)
-      }
-      if (element instanceof HTMLImageElement && copyable(element))
-        context.drawImage(element, left, top, box.width, box.height)
+      } else context.fillRect(left, top, box.width, box.height)
+    }
+    for (const side of BORDERS) {
+      const width = parseFloat(style[`border${side}Width`]) || 0
+      const color = style[`border${side}Color`]
+      if (!width || !shows(color) || /none|hidden/.test(style[`border${side}Style`]))
+        continue
+      context.fillStyle = color
+      if (side === 'Top') context.fillRect(left, top, box.width, width)
+      if (side === 'Bottom')
+        context.fillRect(left, top + box.height - width, box.width, width)
+      if (side === 'Left') context.fillRect(left, top, width, box.height)
+      if (side === 'Right')
+        context.fillRect(left + box.width - width, top, width, box.height)
+    }
+    if (images && element instanceof HTMLImageElement && copyable(element))
+      context.drawImage(element, left, top, box.width, box.height)
+  }
+
+  const paint = (element: Element) => {
+    if (element.matches(SKIPPED)) return
+    const style = getComputedStyle(element)
+    // Opacity is not inherited: an element see-through hides what it holds.
+    if (style.display === 'none' || style.opacity === '0') return
+    const box = element.getBoundingClientRect()
+    const inFrame = overlaps(frame, box)
+    if (inFrame && ++elements > MAX_ELEMENTS) return
+    // Visibility is inherited, and a child can show again.
+    const seen = style.visibility !== 'hidden'
+    if (seen && inFrame) paintBox(element, style, box)
+    const clips = style.overflowX !== 'visible' || style.overflowY !== 'visible'
+    if (clips) {
+      context.save()
+      context.beginPath()
+      context.rect(box.left - frame.left, box.top - frame.top, box.width, box.height)
+      context.clip()
     }
     for (const child of element.childNodes) {
       if (child instanceof Text) {
         if (seen) paintText(child, style)
       } else if (child instanceof Element) paint(child)
     }
+    if (clips) context.restore()
   }
   paint(root)
 }
 
-/**
- * A picture of a drawing for Claude, which reads lines in a picture better
- * than as points: the page under `frame`, wider than the lines' box (`rect`),
- * with its colours and text where the reader saw them, and the lines over it.
- * None where the browser draws no canvas.
- */
-export function drawingImage(
-  frame: ReviewBox,
-  rect: ReviewBox,
+/** The lines on `context`, from the corner of their box at `left`, `top`, a light edge under them so they show on any ground. */
+function paintStrokes(
+  context: CanvasRenderingContext2D,
   strokes: ReviewStroke[],
-  root: Element,
-): NewImage | undefined {
-  const scale = Math.min(1, MAX_SIDE / Math.max(frame.width, frame.height))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(frame.width * scale))
-  canvas.height = Math.max(1, Math.round(frame.height * scale))
-  let context: CanvasRenderingContext2D | null = null
-  try {
-    context = canvas.getContext('2d')
-  } catch {
-    return undefined
-  }
-  if (!context) return undefined
-  context.scale(scale, scale)
-  paintPage(context, root, frame)
-
-  // The lines are from the corner of their box, inside the frame, a light edge
-  // under them so they show on any ground.
-  context.translate(rect.left - frame.left, rect.top - frame.top)
+  left: number,
+  top: number,
+) {
+  context.translate(left, top)
   context.lineCap = 'round'
   context.lineJoin = 'round'
   for (const [color, width] of [
@@ -178,15 +174,40 @@ export function drawingImage(
       context.stroke()
     }
   }
+}
 
-  let url: string
-  try {
-    url = canvas.toDataURL('image/png')
-  } catch {
-    // A picture the page could not vouch for taints the canvas.
-    return undefined
+/**
+ * A picture of a drawing for Claude, which reads lines in a picture better
+ * than as points: the page under `frame`, wider than the lines' box (`rect`),
+ * with its colours and text where the reader saw them, and the lines over it.
+ * Without the page's images when one of them keeps the picture from being
+ * read; none where the browser draws no canvas.
+ */
+export function drawingImage(
+  frame: ReviewBox,
+  rect: ReviewBox,
+  strokes: ReviewStroke[],
+  root: Element,
+): NewImage | undefined {
+  const scale = Math.min(1, MAX_SIDE / Math.max(frame.width, frame.height))
+  const draw = (images: boolean): string | undefined => {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(frame.width * scale))
+    canvas.height = Math.max(1, Math.round(frame.height * scale))
+    try {
+      const context = canvas.getContext('2d')
+      if (!context) return undefined
+      context.scale(scale, scale)
+      paintPage(context, root, frame, images)
+      paintStrokes(context, strokes, rect.left - frame.left, rect.top - frame.top)
+      return canvas.toDataURL('image/png')
+    } catch {
+      // No canvas, or one an image of another origin tainted.
+      return undefined
+    }
   }
-  return url.startsWith('data:image/png;base64,')
+  const url = draw(true) ?? draw(false)
+  return url?.startsWith('data:image/png;base64,')
     ? { type: 'image/png', data: url.slice(url.indexOf(',') + 1) }
     : undefined
 }

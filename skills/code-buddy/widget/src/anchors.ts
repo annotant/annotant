@@ -14,9 +14,9 @@ import {
 const HEADINGS = 'h1, h2, h3'
 /** The page's text kept on each side of a quote, to tell its copies apart; as the server's. */
 const MAX_CONTEXT = 32
-const WIDGET = '[data-code-buddy]'
+export const WIDGET = '[data-code-buddy]'
 /** Text that is code or a control's value, never part of what the reader reads. */
-const UNREAD = 'script, style, template, noscript, select, textarea'
+export const UNREAD = 'script, style, template, noscript, select, textarea'
 
 interface TextIndex {
   nodes: { node: Text; start: number }[]
@@ -691,12 +691,17 @@ function hitAt(root: Element, { x, y }: DrawnPoint): Element | undefined {
     )
 }
 
+/** Pointed at as a whole, wherever in it: a control, not what holds its label. */
+const CONTROLS = 'a, button, label, summary, [role="button"], [role="link"]'
+
 /**
  * Whether a point on `element`, the innermost there, is in a gap between what
- * it holds: a block with blocks or boxes in it and no text of its own.
+ * it holds: a block, not a control, with blocks or boxes in it and no text of
+ * its own.
  */
 function isGap(element: Element): boolean {
-  if (!isBlock(element) || !laidOut(element).length) return false
+  if (element.matches(CONTROLS) || !isBlock(element) || !laidOut(element).length)
+    return false
   return !Array.from(element.childNodes).some(
     (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
   )
