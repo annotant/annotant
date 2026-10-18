@@ -33,13 +33,16 @@ repository root.
    Kill → `kill <pid>…` (only those PIDs), then run it again; still busy →
    report and stop. Stop → report what holds the ports and stop.
 3. Start the app with the Bash tool, `run_in_background: true`:
-   `npm --prefix .playground run dev`.
+   `npm --prefix .playground run dev`. Start `npm run watch` the same way: it
+   rebuilds the widget on every change to `widget/src/`, and the page reloads
+   (type errors print in its output, never holding a rebuild back).
 4. Start `LAUNCH open` the same way: it opens the browser once the app and
    the Code Buddy server answer.
 5. Invoke the skill `code-buddy:code-buddy` with the argument `.playground`
    and follow it: the plugin's hooks start the server and watch for comments.
 
 Tell the user, in one line, that the changes stay in `.playground/` and that
-`/playground keep` resumes them; `/playground` alone starts over. After a
-change to `skills/code-buddy/SKILL.md`, `agents/` or `hooks/`, they need
+`/playground keep` resumes them; `/playground` alone starts over. A change to
+`widget/src/` shows by itself; one to `scripts/server.mjs` needs
+`/code-buddy stop`, then `/code-buddy .playground`. After a change to `skills/code-buddy/SKILL.md`, `agents/` or `hooks/`, they need
 `/reload-plugins` before the next `/playground`.

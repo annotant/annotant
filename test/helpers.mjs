@@ -2,10 +2,28 @@
 // the scripts as Claude Code would.
 import { spawn } from 'node:child_process'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 export const SCRIPTS = new URL('../skills/code-buddy/scripts/', import.meta.url).pathname
+
+/**
+ * A TCP port nothing listens on.
+ * @returns {Promise<number>}
+ */
+export function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer().listen(0, '127.0.0.1', () => {
+      const address = probe.address()
+      if (address === null || typeof address === 'string') {
+        reject(new Error('no TCP port'))
+        return
+      }
+      probe.close(() => resolve(address.port))
+    })
+  })
+}
 
 /**
  * A response's JSON, as the test expects it to be.

@@ -4,10 +4,9 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import http from 'node:http'
-import net from 'node:net'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
-import { SCRIPTS, json, run, tempDir, tempProject } from './helpers.mjs'
+import { SCRIPTS, freePort, json, run, tempDir, tempProject } from './helpers.mjs'
 
 const WIDGET = path.join(SCRIPTS, '..', 'widget', 'dist', 'widget.js')
 
@@ -20,20 +19,6 @@ let port = 0
 let output = ''
 /** @type {import('node:child_process').ChildProcess | undefined} */
 let server
-
-/** @returns {Promise<number>} */
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const probe = net.createServer().listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      if (address === null || typeof address === 'string') {
-        reject(new Error('no TCP port'))
-        return
-      }
-      probe.close(() => resolve(address.port))
-    })
-  })
-}
 
 before(async (t) => {
   if (!existsSync(WIDGET)) throw new Error('build the widget first: npm run build')

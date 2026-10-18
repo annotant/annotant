@@ -44,7 +44,9 @@ browser, and one background agent per comment makes the change. See the
 - `npm run format`: apply Prettier.
 - `npm run build`: rebuild `widget/dist/` (the bundle and its third-party
   licenses). `npm run build:dev`: the same with the debug panel (Alt+Shift+D),
-  behind `CODE_BUDDY_DEBUG`, which `/playground` builds.
+  behind `CODE_BUDDY_DEBUG`, which `/playground` builds. `npm run watch`: the
+  dev build on every change, with `tsc --watch`; the server reloads the page
+  (`/playground` runs it).
 - `/playground`: try Code Buddy on the playground. A session started here
   loads the plugin from the clone (`.claude/skills/code-buddy` links to the
   root; `.claude/settings.json` disables the installed one): no `--plugin-dir`.
