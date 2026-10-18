@@ -173,6 +173,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- Options ticked under a multiple-choice question, but not sent, stayed
+  ticked once the thread left the question another way (resolved, stopped):
+  Claude's next question in the thread showed an option of the same label
+  ticked, and sent it. Each question now starts with none ticked. (#73)
 - A panel width saved in a wider window came back as is after a reload: the
   docked panel and the page's margin overflowed the window. The panel now
   fits a narrower window, and gets its width back once the window is wide
