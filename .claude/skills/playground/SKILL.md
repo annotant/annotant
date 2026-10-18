@@ -44,5 +44,6 @@ repository root.
 Tell the user, in one line, that the changes stay in `.playground/` and that
 `/playground keep` resumes them; `/playground` alone starts over. A change to
 `widget/src/` shows by itself; one to `scripts/server.mjs` needs
-`/code-buddy stop`, then `/code-buddy .playground`. After a change to `skills/code-buddy/SKILL.md`, `agents/` or `hooks/`, they need
+`/code-buddy stop`, then `/code-buddy .playground`. After a change to
+`skills/code-buddy/SKILL.md`, `agents/` or `hooks/`, they need
 `/reload-plugins` before the next `/playground`.

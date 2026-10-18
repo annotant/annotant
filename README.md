@@ -251,7 +251,7 @@ What to do after a change:
 | `SKILL.md`, `agents/*`, `hooks/*`     | `/reload-plugins` in the session, or a new session     |
 | `scripts/*.mjs` except the server     | Nothing: each call runs the script again               |
 | `scripts/server.mjs`, `scripts/lib/*` | Restart the server: `/code-buddy stop`, then `/code-buddy` |
-| `widget/src/*`                        | Rebuild the widget, then reload the app page (`npm run watch` does both) |
+| `widget/src/*`                        | Rebuild, reload the page: `npm run watch` does both     |
 
 The server reads `dist/widget.js` on every page load, so a rebuild and a page
 reload are enough for the widget. From the repository root:

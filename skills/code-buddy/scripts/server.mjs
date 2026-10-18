@@ -5,10 +5,11 @@
 // OPEN (backlog at start), NEW, FOLLOWUP, EDIT, ASKED, ANSWERED, RESOLVED, CANCELLED,
 // DELETED.
 // It watches the comments file's folder and the step files' folder, and pushes
-// `changed` to the widgets on /api/events: they reload only then. With a dev
-// widget, it watches the bundle too, and pushes `widget` when it is rebuilt.
+// `changed` to the widgets on /api/events: they reload only then. It watches
+// the widget's bundle too, and pushes `widget` when a dev build replaces it.
 // Only runs while a session watches (/code-buddy): no server, no widget.
-import { existsSync, statSync, watch } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, statSync, watch } from 'node:fs'
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
@@ -924,15 +925,13 @@ function changeSeen() {
 }
 
 /**
- * A dev widget only: `npm run watch` rebuilds it on every change, and its
- * pages reload on `widget`. A released widget never changes while served.
+ * The bundle's hash, or undefined while it is missing. Its content, not its
+ * size and time: a rebuild of the same size within the same second of a
+ * coarse clock would look unchanged.
  */
-const WIDGET_WATCHED = isDevWidget(WIDGET)
-/** The bundle's size and time, or undefined while it is missing. */
 function widgetStamp() {
   try {
-    const { size, mtimeMs } = statSync(WIDGET)
-    return `${size} ${mtimeMs}`
+    return createHash('sha1').update(readFileSync(WIDGET)).digest('hex')
   } catch {
     return undefined
   }
@@ -946,8 +945,9 @@ let widgetSeen = widgetStamp()
 let widgetBatch
 
 /**
- * Tells the pages a new widget is there, once its write is over: each event
- * puts it off, so a page never loads half a bundle.
+ * Tells the pages a new dev widget is there, once its write is over: each
+ * event puts it off, so a page never loads half a bundle. `npm run watch`
+ * writes one on every change, even over a released one the server started on.
  * @param {string} _event
  * @param {string | Buffer | null} file
  */
@@ -958,6 +958,8 @@ function widgetChanged(_event, file) {
     const built = widgetStamp()
     if (!built || built === widgetSeen) return
     widgetSeen = built
+    // A released widget never listens, and never changes while served but by hand.
+    if (!isDevWidget(WIDGET)) return
     for (const res of listeners) res.write('event: widget\ndata: {}\n\n')
   }, BATCH_MS)
 }
@@ -988,8 +990,8 @@ function watchFolders() {
   const folders = [
     [path.dirname(project.commentsFile), changeSeen],
     [project.progressDir, changeSeen],
+    [path.dirname(WIDGET), widgetChanged],
   ]
-  if (WIDGET_WATCHED) folders.push([path.dirname(WIDGET), widgetChanged])
   for (const [dir, onChange] of folders) {
     const ino = inodeOf(dir)
     const known = watchers.get(dir)

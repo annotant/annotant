@@ -48,7 +48,8 @@ async function serve(t, widget) {
 }
 
 /**
- * The events the server sends on /api/events within `ms`, by type.
+ * Listens to /api/events: the returned function gives the types of the
+ * events received within `ms`.
  * @param {import('node:test').TestContext} t
  * @param {string} base
  */
@@ -60,13 +61,22 @@ async function events(t, base) {
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let received = ''
   // The stream is open once its first comment is in.
-  while (!received.includes(': listening')) received += (await reader.read()).value ?? ''
+  while (!received.includes(': listening')) {
+    const { value, done } = await reader.read()
+    if (done) throw new Error('the event stream closed')
+    received += value
+  }
   /** @param {number} ms */
   return async (ms) => {
     const deadline = setTimeout(() => controller.abort(), ms)
     try {
-      for (;;) received += (await reader.read()).value ?? ''
-    } catch {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) throw new Error('the event stream closed')
+        received += value
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) throw error
       return [...received.matchAll(/^event: (\w+)$/gm)].map((match) => match[1])
     } finally {
       clearTimeout(deadline)
@@ -79,6 +89,22 @@ test('tells the pages once when the dev widget is rebuilt', async (t) => {
   const received = await events(t, base)
   // As esbuild writes it: truncated, then written, in two calls.
   await writeFile(bundle, '')
+  await writeFile(bundle, `${DEV_BANNER}two`)
+  assert.deepEqual(await received(1000), ['widget'])
+})
+
+test("tells the pages nothing when another file of the bundle's folder changes", async (t) => {
+  const { bundle, base } = await serve(t, `${DEV_BANNER}one`)
+  const received = await events(t, base)
+  await writeFile(path.join(path.dirname(bundle), 'THIRD_PARTY_LICENSES.txt'), 'MIT')
+  // Written again, the same: no new widget.
+  await writeFile(bundle, `${DEV_BANNER}one`)
+  assert.deepEqual(await received(500), [])
+})
+
+test('tells the pages when a dev build replaces the released one it started on', async (t) => {
+  const { bundle, base } = await serve(t, '/* code-buddy widget */\none')
+  const received = await events(t, base)
   await writeFile(bundle, `${DEV_BANNER}two`)
   assert.deepEqual(await received(1000), ['widget'])
 })

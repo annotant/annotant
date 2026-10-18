@@ -60,12 +60,13 @@ Edits are read from your clone: after a change to `skills/code-buddy/SKILL.md`,
 
 It builds the widget (a dev build, see below) when `widget/dist/` is missing,
 a release build or older than `widget/src/`, copies `playground/` to
-`.playground/` (git-ignored), starts the app there on <http://localhost:5190>, starts `npm run watch`, runs `/code-buddy:code-buddy .playground`
-and opens the app in your browser. `npm run watch` rebuilds the dev widget on
-every change to `widget/src/`, and the server tells the page to reload; a
-build that fails keeps the last good bundle and prints the error, and
-`tsc --watch` next to it prints the type errors without holding the reload back. Comment on it: the agents edit
-`.playground/`, so `git status` stays clean. `/playground` starts again from
+`.playground/` (git-ignored), starts the app there on <http://localhost:5190>,
+starts `npm run watch`, runs `/code-buddy:code-buddy .playground` and opens
+the app in your browser. `npm run watch` rebuilds the dev widget on every
+change to `widget/src/`, and the server tells the page to reload; a build that
+fails keeps the last good bundle and prints the error, and `tsc --watch` next
+to it prints the type errors without holding the reload back. Comment on it:
+the agents edit `.playground/`, so `git status` stays clean. `/playground` starts again from
 a fresh copy, comments included; `/playground keep` keeps the copy and the
 changes made to it. To change the playground itself (a page for a new
 feature), edit `playground/` and commit it like the rest. `npm run playground`
