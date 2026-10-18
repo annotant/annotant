@@ -140,6 +140,43 @@ test("prints the reader's images as files the agent opens", async (t) => {
   ])
 })
 
+test('prints the elements the reader picked with a message, for the agent to find', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const title = {
+    selector: 'h1',
+    tag: 'h1',
+    text: 'Home',
+    html: '<h1>Home</h1>',
+    route: '/',
+  }
+  const comment = await comments.create({
+    route: '/',
+    anchor: { section: '', quote: '', occurrence: 0 },
+    body: 'Bigger',
+    elements: [title],
+  })
+  await comments.update(comment.id, { status: 'resolved' })
+  const element = {
+    selector: 'footer > a',
+    tag: 'a',
+    text: 'Help',
+    html: '<a>Help</a>',
+    route: '/help',
+  }
+  await comments.update(comment.id, { followUp: 'And this', elements: [element] })
+  const claimed = await run(process.execPath, [
+    path.join(SCRIPTS, 'claim.mjs'),
+    comment.id,
+    '--project',
+    root,
+  ])
+  assert.equal(claimed.code, 0, claimed.stderr)
+  const { messages } = printed(claimed.stdout)
+  assert.deepEqual(messages[0].elements, [title])
+  assert.deepEqual(messages.at(-1).elements, [element])
+})
+
 test('prints the files a stopped run left changed', async (t) => {
   const root = await tempProject(t)
   const project = projects.project(root)

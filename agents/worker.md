@@ -44,7 +44,11 @@ Read `PROJECT/.code-buddy.json` first: `devUrl`, `editable`, `checks` and
    applied; act on the reader's last message. A message's `images` are the
    files the reader attached to it (a screenshot, a mockup), which may be all
    it holds, with an empty body: open each of the last message's with Read
-   before changing anything. A `cancellation` field lists files an earlier,
+   before changing anything. A reader message's `elements`, the comment's
+   too, are elements they picked in the page with it, like the anchor's
+   `element`, each with the
+   `route` of the page it was on: "this one too" means them; find them in
+   the code. A `cancellation` field lists files an earlier,
    stopped agent left changed: keep, finish or revert them to match the
    current text. When the element is unclear, screenshot it with Playwright
    on `devUrl`.

@@ -21,6 +21,8 @@ import {
   type ReviewArea,
   type ReviewBox,
   gist,
+  markedElement,
+  pickedMark,
   type ReviewComment,
   wasResolved,
 } from './domain'
@@ -201,6 +203,8 @@ function useTracked<Found, Measured>(
 
 interface Mark {
   comment: ReviewComment
+  /** The element's tag, for the bubble's name. */
+  tag: string
   /** The element's box. */
   frame: Box
   /** The part of it that shows, out of the scrolling boxes that hide the rest. */
@@ -210,28 +214,31 @@ interface Mark {
 
 function findElements(root: Element, comments: ReviewComment[]) {
   return comments.flatMap((comment) => {
-    if (wasResolved(comment)) return []
-    const element = elementFromAnchor(root, comment.anchor)
+    const marked = markedElement(comment, window.location.pathname)
+    const element =
+      marked && elementFromAnchor(root, { ...comment.anchor, element: marked })
     // Read with the page's changes, not on every scroll: a scroll leaves them as they are.
-    if (!element) return []
+    if (!marked || !element) return []
     const { position } = getComputedStyle(element)
     const clippers = clippersOf(element.parentElement, position)
-    return [{ comment, element, corners: cornersOf(element), clippers }]
+    const { tag } = marked
+    return [{ comment, tag, element, corners: cornersOf(element), clippers }]
   })
 }
 
 function measureElements(found: ReturnType<typeof findElements>): Mark[] {
-  return found.flatMap(({ comment, element, corners, clippers }) => {
+  return found.flatMap(({ comment, tag, element, corners, clippers }) => {
     const frame = boxOf(element)
     const shown = within(frame, clipOf(clippers))
-    return shown ? [{ comment, frame, shown, corners }] : []
+    return shown ? [{ comment, tag, frame, shown, corners }] : []
   })
 }
 
 /**
  * Frames around the elements that open comments point at, until their thread
  * is first resolved: a follow-up, often about something else, does not bring
- * them back. A bubble on each opens the comment's thread.
+ * them back, unless it picks an element, which is then framed in their place.
+ * A bubble on each opens the comment's thread.
  */
 export function ElementMarks({
   root,
@@ -246,7 +253,7 @@ export function ElementMarks({
 
   return (
     <>
-      {marks.map(({ comment, frame, shown, corners }) => (
+      {marks.map(({ comment, tag, frame, shown, corners }) => (
         <Fragment key={comment.id}>
           {/* The frame, cut to the part of the element that shows. */}
           <div className="cb-clip" style={shown}>
@@ -266,7 +273,7 @@ export function ElementMarks({
             type="button"
             className="cb-quote-pin cb-live"
             style={{ top: shown.top, left: shown.left }}
-            aria-label={`Open the comment on <${comment.anchor.element?.tag ?? 'element'}>`}
+            aria-label={`Open the comment on <${tag}>`}
             title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
           >
@@ -289,7 +296,8 @@ interface AreaMark {
 function findAreas(root: Element, comments: ReviewComment[]) {
   return comments.flatMap((comment) => {
     const { area } = comment.anchor
-    if (wasResolved(comment) || !area) return []
+    // An element picked since takes the area's place.
+    if (wasResolved(comment) || !area || pickedMark(comment)) return []
     const holder = holderOf(root, area)
     return [{ comment, area, holder, clippers: clippersOf(holder ?? null) }]
   })
@@ -389,7 +397,11 @@ function textParts(
 /** The ranges of the comments on a text never resolved, read from the page's text once. */
 function findQuotes(root: Element, comments: ReviewComment[]) {
   const quoted = comments.filter(
-    (comment) => !wasResolved(comment) && !comment.anchor.element && comment.anchor.quote,
+    (comment) =>
+      !wasResolved(comment) &&
+      !comment.anchor.element &&
+      !pickedMark(comment) &&
+      comment.anchor.quote,
   )
   const ranges = rangesFromAnchors(
     root,
@@ -627,10 +639,12 @@ export const HOVER_DWELL_MS = 50
  */
 export function ElementPicker({
   root,
+  hint = 'Click an element to comment on it. Escape cancels.',
   onPick,
   onCancel,
 }: {
   root: Element
+  hint?: string
   onPick: (element: Element) => void
   onCancel: () => void
 }) {
@@ -702,7 +716,7 @@ export function ElementPicker({
   const rect = shown?.getBoundingClientRect()
   return (
     <>
-      <div className="cb-hint">Click an element to comment on it. Escape cancels.</div>
+      <div className="cb-hint">{hint}</div>
       {shown && rect && (
         <div
           className="cb-hover"

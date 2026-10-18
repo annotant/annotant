@@ -156,6 +156,70 @@ test('the picked element turns in progress once its comment is saved', async () 
 
   await waitFor(() => expect(marks()).toHaveLength(1))
   expect(screen.queryByTestId('cb-target')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Open the comment on <h1>' })).toBeTruthy()
+})
+
+const PICKED = { ...TITLE, route: '/' }
+
+/** A comment whose own message holds the title, as Point at element writes it. */
+function holding(fields: Parameters<typeof comment>[0]) {
+  const made = comment(fields)
+  const [first] = made.messages
+  if (first) made.messages[0] = { ...first, elements: [PICKED] }
+  return made
+}
+
+test('an element picked in a message is marked until the thread is resolved', async () => {
+  layout()
+  document.body.replaceChildren()
+  fakeServer([
+    holding({ id: 'c1', events: reopened.slice(0, 2) }),
+    holding({ id: 'c2', state: 'resolved' }),
+  ])
+  renderWidget()
+
+  await waitFor(() => expect(marks()).toHaveLength(1))
+  expect(pins()).toHaveLength(1)
+})
+
+test('an element picked in a reply after the thread was resolved takes the mark', async () => {
+  stubHighlights()
+  layout()
+  document.body.replaceChildren()
+  const reply = {
+    author: 'reader' as const,
+    body: 'This one now',
+    at: '2026-01-01T10:00:03.000Z',
+  }
+  fakeServer([
+    // On a text: the element picked since takes its place.
+    comment({
+      id: 'c1',
+      quote: 'Playground',
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:00:02.000Z' },
+        { ...reply, elements: [PICKED] },
+      ],
+      events: [...reopened],
+    }),
+    // Reopened with words alone: nothing to mark.
+    comment({
+      id: 'c2',
+      element: TITLE,
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:00:02.000Z' },
+        reply,
+      ],
+      events: [...reopened],
+    }),
+  ])
+  renderWidget()
+
+  await waitFor(() => expect(marks()).toHaveLength(1))
+  expect(lines()).toHaveLength(0)
+  expect(pins().map((pin) => pin.getAttribute('aria-label'))).toEqual([
+    'Open the comment on <h1>',
+  ])
 })
 
 /**
