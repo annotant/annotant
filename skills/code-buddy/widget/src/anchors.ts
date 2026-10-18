@@ -571,11 +571,17 @@ export function recordedBy(root: Element, rect: ReviewBox): Element[] {
   return [...covers, ...crosses]
 }
 
+/** An element's text as the page shows it: a card's label and title apart, not run together. */
+export const shownText = (element: Element): string =>
+  normaliseQuote(
+    element instanceof HTMLElement ? element.innerText : (element.textContent ?? ''),
+  )
+
 function nodeOf(root: Element, element: Element): ReviewNode {
   return {
     selector: selectorFor(root, element),
     tag: element.tagName.toLowerCase(),
-    text: normaliseQuote(element.textContent ?? '').slice(0, 80),
+    text: shownText(element).slice(0, 80),
   }
 }
 
@@ -583,11 +589,18 @@ function nodeOf(root: Element, element: Element): ReviewNode {
  * Describes a rectangle drawn over the page (`rect`, in viewport pixels):
  * where it is on the page, from its corner; the element it lies in, to find it
  * again on another layout; and the elements it covers or cuts through, to find
- * it in the code.
+ * it in the code, those of `reach` when given, a wider box around it.
  */
-export function anchorFromArea(root: Element, rect: ReviewBox): ReviewAnchor {
+export function anchorFromArea(
+  root: Element,
+  rect: ReviewBox,
+  reach: ReviewBox = rect,
+): ReviewAnchor {
   const holder = holderFor(root, rect)
-  const { covers, crosses, truncated } = elementsIn(holder, rect)
+  const { covers, crosses, truncated } = elementsIn(
+    reach === rect ? holder : holderFor(root, reach),
+    reach,
+  )
   const box = boxOf(holder)
   const size = { width: Math.round(box.width), height: Math.round(box.height) }
   // In the holder's content: a holder that scrolls itself moves what it holds.
@@ -634,6 +647,58 @@ export interface DrawnPoint {
 
 /** Room around a drawing's lines in its box: a stroke on the edge stays whole. */
 const DRAWING_MARGIN = 8
+
+/**
+ * Room around a drawing's box in what Claude gets, on each side: a quarter of
+ * its size, and this much at least, so what an arrow points at, past its tip,
+ * is in.
+ */
+const DRAWING_REACH = 0.25
+const MIN_DRAWING_REACH = 120
+
+/** `rect` with a drawing's room around it. */
+function reachOf(rect: ReviewBox): ReviewBox {
+  const x = Math.max(MIN_DRAWING_REACH, rect.width * DRAWING_REACH)
+  const y = Math.max(MIN_DRAWING_REACH, rect.height * DRAWING_REACH)
+  return {
+    left: rect.left - x,
+    top: rect.top - y,
+    width: rect.width + 2 * x,
+    height: rect.height + 2 * y,
+  }
+}
+
+function lengthOf(line: DrawnPoint[]): number {
+  let length = 0
+  let last: DrawnPoint | undefined
+  for (const point of line) {
+    if (last) length += Math.hypot(point.x - last.x, point.y - last.y)
+    last = point
+  }
+  return length
+}
+
+/**
+ * The element of the page under the end of a drawing, the last point of its
+ * longest line, where an arrow's head usually is; none on the widget only.
+ */
+function pointedAt(root: Element, lines: DrawnPoint[][]): Element | undefined {
+  const longest = lines.reduce<DrawnPoint[] | undefined>(
+    (best, line) => (!best || lengthOf(line) > lengthOf(best) ? line : best),
+    undefined,
+  )
+  const end = longest?.at(-1)
+  if (!end) return undefined
+  return document
+    .elementsFromPoint(end.x, end.y)
+    .find(
+      (element) =>
+        element !== root &&
+        root.contains(element) &&
+        !element.closest(WIDGET) &&
+        !element.matches(UNREAD),
+    )
+}
 
 /**
  * The box of lines drawn over the page, in viewport pixels, with a margin;
@@ -683,27 +748,45 @@ function keptLines(lines: DrawnPoint[][]): DrawnPoint[][] {
 /**
  * Describes lines drawn freehand over the page (in viewport pixels) as an
  * area, the box of the lines it keeps (`rect`, in viewport pixels), which
- * records what they lie in and cover as a rectangle does, with the lines from
- * its corner.
+ * records what they lie in as a rectangle does, with the lines from its
+ * corner. What they cover and cross is that of `reach`, a wider box, and the
+ * element under their end (`target`) is what they point at.
  */
 export function anchorFromDrawing(
   root: Element,
   lines: DrawnPoint[][],
-): { anchor: ReviewAnchor; rect: ReviewBox; strokes: ReviewStroke[] } | undefined {
+):
+  | {
+      anchor: ReviewAnchor
+      rect: ReviewBox
+      reach: ReviewBox
+      strokes: ReviewStroke[]
+      target?: Element
+    }
+  | undefined {
   const kept = keptLines(lines)
   const rect = drawingBox(kept)
   if (!rect) return undefined
-  const anchor = anchorFromArea(root, rect)
+  const reach = reachOf(rect)
+  const anchor = anchorFromArea(root, rect, reach)
+  const target = pointedAt(root, kept)
   const strokes = kept.map((line) =>
     line.map(({ x, y }): [number, number] => [
       Math.round(x - rect.left),
       Math.round(y - rect.top),
     ]),
   )
-  return {
-    anchor: anchor.area ? { ...anchor, area: { ...anchor.area, strokes } } : anchor,
-    rect,
+  const area = anchor.area && {
+    ...anchor.area,
     strokes,
+    ...(target ? { pointsAt: nodeOf(root, target) } : {}),
+  }
+  return {
+    anchor: area ? { ...anchor, area } : anchor,
+    rect,
+    reach,
+    strokes,
+    ...(target ? { target } : {}),
   }
 }
 

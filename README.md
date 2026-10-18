@@ -142,11 +142,13 @@ directory, else from the repository root.
   Enter) ends the drawing. A page-level comment can get one too, with _Draw on
   the page_. The drawing stays on the page while you write, and is placed as
   an area is: in the element its lines lie in, stretching with its width.
-  Claude receives the lines and what they cover as for an area, and a picture
-  of them over the outlines of those elements.
+  Claude receives the lines, the elements around them (a margin past their
+  box, so what an arrow points at is in) and the one under the end of the
+  longest line, and a picture of the lines over the outlines of those
+  elements, each with the first words of its text.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
-  around an element or an area or behind a text, marks a comment Claude has
-  yet to resolve; once its thread is first resolved, the mark goes away.
+  around an element or an area, on a drawing's lines or behind a text, marks
+  a comment Claude has yet to resolve; once its thread is first resolved, the mark goes away.
 - **Paste or drop an image** (a screenshot, a mockup) in the message box of a
   comment or a reply: it goes with the message, or alone, and Claude opens
   it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.

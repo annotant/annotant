@@ -359,6 +359,7 @@ test('keeps the lines drawn freehand in an area, in its box, and says how many',
             height: 100,
             covers: [],
             crosses: [],
+            pointsAt: { selector: 'h3', tag: 'h3', text: 'How a subscription works' },
             strokes: [
               [
                 [8.4, 8],
@@ -379,6 +380,11 @@ test('keeps the lines drawn freehand in an area, in its box, and says how many',
   // The last 40 strokes, each point rounded and in the area's box.
   assert.equal(strokes.length, 40)
   assert.deepEqual(strokes[0], [[1, 1]])
+  assert.deepEqual(created.anchor.area.pointsAt, {
+    selector: 'h3',
+    tag: 'h3',
+    text: 'How a subscription works',
+  })
 
   const drawing = await createArea({
     width: 200,
@@ -420,14 +426,21 @@ test('keeps the lines drawn freehand in an area, in its box, and says how many',
     (await createArea({ width: 40, height: 40, pictured: true })).pictured,
     undefined,
   )
-  // No line at all is no drawing.
-  assert.equal(
-    (await createArea({ width: 40, height: 40, strokes: [[], 'x'] })).strokes,
-    undefined,
-  )
+  // No line at all is no drawing, and points at nothing.
+  const none = await createArea({
+    width: 40,
+    height: 40,
+    strokes: [[], 'x'],
+    pointsAt: { selector: 'h3', tag: 'h3', text: 'Title' },
+  })
+  assert.equal(none.strokes, undefined)
+  assert.equal(none.pointsAt, undefined)
 
   const event = await nextLine(`NEW ${created.id} `, printed)
-  assert.match(event, / area=200x100@10,300 strokes=40 covers=\[\] crosses=\[\] body=/)
+  assert.match(
+    event,
+    / area=200x100@10,300 strokes=40 points-at="<h3> How a subscription works" covers=\[\] crosses=\[\] body=/,
+  )
 })
 
 test("takes the reader's choice among the options Claude asked with", async () => {

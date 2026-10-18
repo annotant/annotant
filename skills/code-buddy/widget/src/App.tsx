@@ -86,7 +86,7 @@ import {
   toast,
 } from './ui'
 import { activityOf, isOngoing, stepKey } from './activity'
-import { PANEL_IN_MS, PANEL_OUT_MS } from './styles'
+import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION } from './styles'
 import buddy from './assets/buddy.webp'
 import buddyThinking from './assets/buddy-thinking.webp'
 
@@ -96,7 +96,6 @@ const PANEL_WIDTH = 380
 const MIN_PANEL_WIDTH = 320
 const MAX_PANEL_RATIO = 0.8
 
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 // How close to its end, in pixels, a conversation counts as read to the end.
 const NEAR_END = 40
 // How long a smooth scroll to the end may take: the button stays away meanwhile.
@@ -486,8 +485,15 @@ function scopeLabel(comment: { route: string; url?: string }): string {
     : `Whole page · ${pagePath(comment.url) || comment.route}`
 }
 
-/** What a drawn area covers, in a few words: the elements inside it, else those it cuts through. */
+/**
+ * What a drawn area covers, in a few words: the element a drawing points at,
+ * else the elements inside it, else those it cuts through.
+ */
 function areaContents(area: ReviewArea): string {
+  if (area.pointsAt) {
+    const { tag, text } = area.pointsAt
+    return `points at <${tag}>${text ? ` ${text}` : ''}`
+  }
   const nodes = area.covers.length ? area.covers : area.crosses
   const shown = nodes.slice(0, 3).map((node) => `<${node.tag}>`)
   const hidden = nodes.length - shown.length
@@ -882,13 +888,14 @@ export default function App({ root }: { root: Element }) {
       startDraft(anchorFromArea(root, rect), keptBody, keptImages, keptElements),
     [root, startDraft, keptBody, keptImages, keptElements],
   )
-  // Drawn freehand, the area is the lines' box, and Claude gets their picture too.
+  // Drawn freehand, the area is the lines' box, and Claude gets their picture too,
+  // wider: what an arrow points at is in it.
   const drawSketch = useCallback(
     (lines: DrawnPoint[][]) => {
       const drawn = anchorFromDrawing(root, lines)
       if (!drawn) return
-      const { anchor, rect, strokes } = drawn
-      const sketch = drawingImage(rect, strokes, recordedBy(root, rect))
+      const { anchor, rect, reach, strokes, target: pointed } = drawn
+      const sketch = drawingImage(reach, rect, strokes, recordedBy(root, reach), pointed)
       startDraft(
         { ...anchor, ...(sketch ? { sketch } : {}) },
         keptBody,

@@ -25,9 +25,21 @@ function layout() {
       return DOMRect.fromRect({ x, y, width, height })
     })
   const scroll = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
+  // Nor does it hit anything: under a point are the boxes holding it, the innermost first.
+  Object.defineProperty(document, 'elementsFromPoint', {
+    configurable: true,
+    value: (x: number, y: number) =>
+      [...document.querySelectorAll('[data-box]')]
+        .filter((element) => {
+          const { left, top, right, bottom } = element.getBoundingClientRect()
+          return x >= left && x <= right && y >= top && y <= bottom
+        })
+        .toReversed(),
+  })
   onTestFinished(() => {
     box.mockRestore()
     scroll.mockRestore()
+    Reflect.deleteProperty(document, 'elementsFromPoint')
   })
 }
 
@@ -81,11 +93,12 @@ test('a drawing is the box of its lines, with what it lies in, and its lines fro
   // The lines' box, 8px of room on each side.
   expect([area?.left, area?.top, area?.width, area?.height]).toEqual([92, 242, 36, 126])
   expect(area?.within?.selector).toBe('section')
-  expect(area?.crosses.map((node) => node.selector)).toEqual([
-    'section > div:nth-of-type(1)',
-    'section > div:nth-of-type(2)',
-    'section > div:nth-of-type(2) > p',
-  ])
+  // The end of the longest line is on card B's text.
+  expect(area?.pointsAt).toEqual({
+    selector: 'section > div:nth-of-type(2) > p',
+    tag: 'p',
+    text: 'Card B',
+  })
   expect(area?.strokes).toEqual([
     [
       [8, 8],
@@ -94,6 +107,74 @@ test('a drawing is the box of its lines, with what it lies in, and its lines fro
     [[28, 58]],
   ])
   expect(anchorFromDrawing(root, [[], []])).toBeUndefined()
+})
+
+test('what a drawing records reaches past its lines, to what an arrow stops short of', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  // An arrow down from card A, its tip in the gap above card B.
+  const drawn = anchorFromDrawing(root, [
+    [
+      { x: 100, y: 250 },
+      { x: 100, y: 330 },
+    ],
+  ])
+
+  // The comment's box stays the lines', what Claude gets is 120px wider each way.
+  expect(drawn?.rect).toEqual({ left: 92, top: 242, width: 16, height: 96 })
+  expect(drawn?.reach).toEqual({ left: -28, top: 122, width: 256, height: 336 })
+  expect(drawn?.anchor.area?.crosses.map((node) => node.selector)).toEqual([
+    'section',
+    'section > div:nth-of-type(1) > p',
+    'section > div:nth-of-type(2) > p',
+  ])
+  expect(drawn?.anchor.area?.pointsAt?.selector).toBe('section')
+  // A wide drawing gets a quarter of its width on each side.
+  expect(
+    anchorFromDrawing(root, [
+      [
+        { x: 100, y: 200 },
+        { x: 900, y: 200 },
+      ],
+    ])?.reach,
+  ).toEqual({ left: -112, top: 72, width: 1224, height: 256 })
+})
+
+test("a drawing records its elements' text as the page shows it, blocks apart", () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">
+    <article data-box="0,0,400,200"><span>Colombia</span><h3>Huila</h3></article>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  const area = anchorFromDrawing(root, [[{ x: 100, y: 100 }]])?.anchor.area
+
+  expect(area?.pointsAt?.text).toBe('Colombia Huila')
+})
+
+test('a drawing points at what is under the end of its longest line, drawn first or not', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  // A long arrow down to card B, then a short stroke on card A.
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 100, y: 250 },
+      { x: 100, y: 360 },
+    ],
+    [
+      { x: 50, y: 150 },
+      { x: 60, y: 150 },
+    ],
+  ])?.anchor.area
+
+  expect(area?.pointsAt?.text).toBe('Card B')
 })
 
 test('a long line keeps at most 400 points, its ends among them', () => {
@@ -151,7 +232,7 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   expect(screen.queryByTestId('cb-sketch')).toBeNull()
   expect(screen.getByTestId('cb-area-chip').textContent).toBe(
-    '2 linesacross <div> <div> <p>',
+    '2 linespoints at <p> Card B',
   )
   const drawn = await screen.findByTestId('cb-area-target')
   expect(drawn.querySelectorAll('polyline')).toHaveLength(2)
@@ -168,24 +249,36 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
   const [, init] =
     server.fetch.mock.calls.find(([, call]) => call?.method === 'POST') ?? []
   expect(typeof init?.body === 'string' && init.body.includes('"images"')).toBe(false)
-  // Saved, the lines are drawn in the rainbow frame of a comment in progress.
+  // Saved, the lines are drawn, in the rainbow of a comment in progress.
   const mark = await screen.findByTestId('cb-area-mark')
   expect(mark.querySelectorAll('polyline')).toHaveLength(2)
 })
 
 test("the drawing's picture goes with the comment, for Claude", async () => {
+  const labels: string[] = []
   const context = new Proxy(
     {},
-    { get: (_, name) => (name === 'canvas' ? undefined : () => undefined) },
+    {
+      get: (_, name) =>
+        name === 'canvas'
+          ? undefined
+          : name === 'fillText'
+            ? (text: string) => labels.push(text)
+            : () => undefined,
+    },
   )
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
     // A canvas that draws nothing: what counts here is the picture it gives.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     context as CanvasRenderingContext2D,
   )
-  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(
-    'data:image/png;base64,iVBORw0KGgo=',
-  )
+  const sizes: [number, number][] = []
+  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function (
+    this: HTMLCanvasElement,
+  ) {
+    sizes.push([this.width, this.height])
+    return 'data:image/png;base64,iVBORw0KGgo='
+  })
   onTestFinished(() => {
     vi.restoreAllMocks()
   })
@@ -211,6 +304,10 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
   const sent = JSON.parse(body) as NewReviewComment
   expect(sent.images).toEqual([{ type: 'image/png', data: 'iVBORw0KGgo=' }])
   expect(sent.anchor.area?.pictured).toBe(true)
+  // The picture is wider than the lines' box, 36 × 126: 120px more on each side.
+  expect(sizes).toEqual([[276, 366]])
+  // The elements around the arrow, with their text: card A, which it leaves, is in.
+  expect(labels).toEqual(['<section> Card A Card B', '<p> Card A', '<p> Card B'])
 })
 
 test('Enter on a focused tool is its own, and an undo while drawing takes that line back', async () => {

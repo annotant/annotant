@@ -3,6 +3,17 @@ import figtreeItalic from './assets/fonts/figtree-latin-italic.woff2'
 
 /** Width of one rainbow behind a commented text, before its colours start over. */
 export const RAINBOW_PERIOD = 720
+/** The rainbow of a comment in progress, around it or on a drawing's lines, its first colour last again. */
+export const RAINBOW = [
+  '#ff5f9e',
+  '#ffb340',
+  '#ffe14d',
+  '#3ddc97',
+  '#3fa7ff',
+  '#a66bff',
+  '#ff5f9e',
+]
+export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 
 /** How long the panel takes to come in, or to widen and narrow. */
 export const PANEL_IN_MS = 200
@@ -285,12 +296,13 @@ code { font-family: var(--cb-mono); }
 .cb-draft-scope { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 
 /* In progress: the comment is open, until Claude resolves its thread. A rainbow
-   turns around it (--code-buddy-angle is registered in PAGE_CSS: a shadow root cannot). */
+   turns around it (--code-buddy-angle is registered in PAGE_CSS: a shadow root cannot),
+   or on a drawing's lines (.cb-mark--drawing). */
 .cb-clip { position: fixed; overflow: hidden; pointer-events: none; }
 .cb-mark { position: absolute; background: rgba(166, 107, 255, .06); }
 .cb-mark::before {
   content: ''; position: absolute; inset: 0; padding: 2px; border-radius: inherit;
-  background: conic-gradient(from var(--code-buddy-angle, 0deg), #ff5f9e, #ffb340, #ffe14d, #3ddc97, #3fa7ff, #a66bff, #ff5f9e);
+  background: conic-gradient(from var(--code-buddy-angle, 0deg), ${RAINBOW.join(', ')});
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   animation: cb-unicorn 3s linear infinite;
@@ -310,6 +322,9 @@ code { font-family: var(--cb-mono); }
 /* A drawn area: square corners; its outline is dashed, where an element's is solid. */
 .cb-outline--area, .cb-mark--area { border-radius: 2px; }
 .cb-outline--area { border-style: dashed; }
+/* A drawing's lines carry the rainbow (overlays.tsx): its box is not framed. */
+.cb-mark--drawing { background: none; }
+.cb-mark--drawing::before { content: none; }
 /* Drawing: the page under a veil, but for the area being drawn and what it covers. */
 .cb-draw { position: fixed; inset: 0; cursor: crosshair; }
 .cb-draw-box { position: fixed; border: 2px solid var(--cb-accent); border-radius: 2px; background: rgba(var(--cb-accent-rgb), .06); box-shadow: 0 0 0 100vmax rgba(16, 36, 74, .28); }
@@ -321,7 +336,9 @@ code { font-family: var(--cb-mono); }
 .cb-sketch { background: rgba(16, 36, 74, .12); touch-action: none; }
 .cb-sketch-lines { position: fixed; inset: 0; width: 100%; height: 100%; }
 .cb-strokes { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.cb-sketch-lines polyline, .cb-strokes polyline { fill: none; stroke: var(--cb-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+/* The lines inherit their colour: a drawing in progress puts its rainbow in its place. */
+.cb-sketch-lines, .cb-strokes { stroke: var(--cb-ink); }
+.cb-sketch-lines polyline, .cb-strokes polyline { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .cb-sketch-tools { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; cursor: default; }
 .cb-sketch-tools span { margin-right: 6px; }
 .cb-sketch-tools button { padding: 4px 10px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
@@ -355,7 +372,7 @@ export const PAGE_CSS = `
 .code-buddy-layer[data-dark] .code-buddy-quote-mark { opacity: .3; }
 .code-buddy-quote-mark > div {
   position: absolute; width: calc(100vw + ${RAINBOW_PERIOD * 2}px); height: 100vh;
-  background: repeating-linear-gradient(90deg, #ff5f9e 0, #ffb340 ${RAINBOW_PERIOD / 6}px, #ffe14d ${RAINBOW_PERIOD / 3}px, #3ddc97 ${RAINBOW_PERIOD / 2}px, #3fa7ff ${(RAINBOW_PERIOD * 2) / 3}px, #a66bff ${(RAINBOW_PERIOD * 5) / 6}px, #ff5f9e ${RAINBOW_PERIOD}px);
+  background: repeating-linear-gradient(90deg, ${RAINBOW.map((color, at) => `${color} ${(RAINBOW_PERIOD * at) / (RAINBOW.length - 1)}px`).join(', ')});
   animation: code-buddy-flow 6s linear infinite;
 }
 @keyframes code-buddy-flow { to { transform: translateX(${RAINBOW_PERIOD}px); } }

@@ -378,6 +378,7 @@ function sanitiseArea(area) {
   const truncated =
     area.truncated === true || covers.length > MAX_COVERS || crosses.length > MAX_CROSSES
   const strokes = sanitiseStrokes(area.strokes, box)
+  const pointsAt = strokes && sanitiseAreaNode(area.pointsAt)
   return {
     ...box,
     viewport: {
@@ -399,6 +400,7 @@ function sanitiseArea(area) {
     crosses: sanitiseNodes(crosses, MAX_CROSSES),
     ...(truncated ? { truncated: true } : {}),
     ...(strokes ? { strokes } : {}),
+    ...(pointsAt ? { pointsAt } : {}),
     ...(strokes && area.pictured === true ? { pictured: true } : {}),
   }
 }
@@ -756,18 +758,19 @@ const describePicked = (elements, route) =>
 
 /**
  * Where the area is and what it holds, on the hooks' line: its size and corner
- * on the page, how many lines were drawn in it freehand, the element it lies
- * in, those it covers or crosses, and `truncated` when it held more than these
+ * on the page, how many lines were drawn in it freehand and the element they
+ * point at, the element it lies in, those it covers or crosses, and `truncated` when it held more than these
  * lists keep.
  * @param {Area} area
  */
 function describeArea(area) {
   const strokes = area.strokes ? ` strokes=${area.strokes.length}` : ''
   const within = area.within ? ` within=${quoted(nodeLabel(area.within))}` : ''
+  const pointsAt = area.pointsAt ? ` points-at=${quoted(nodeLabel(area.pointsAt))}` : ''
   /** @param {AreaNode[]} list */
   const nodes = (list) => JSON.stringify(list.map(nodeLabel))
   const truncated = area.truncated ? ' truncated' : ''
-  return `area=${area.width}x${area.height}@${area.left},${area.top}${strokes}${within} covers=${nodes(area.covers)} crosses=${nodes(area.crosses)}${truncated}`
+  return `area=${area.width}x${area.height}@${area.left},${area.top}${strokes}${pointsAt}${within} covers=${nodes(area.covers)} crosses=${nodes(area.crosses)}${truncated}`
 }
 
 function describe(comment) {
