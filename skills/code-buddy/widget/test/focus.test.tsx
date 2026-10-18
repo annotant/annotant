@@ -84,13 +84,20 @@ test("Escape in a new comment's message box is the box's, not the panel's", asyn
   expect(panel().hasAttribute('data-closing')).toBe(false)
   expect(screen.getByRole('heading', { name: 'New comment' })).toBeTruthy()
 
-  // Empty, it leaves the draft for the list: the panel stays open.
+  // Empty, it leaves the draft for the list: the panel stays open, the focus in it.
   fireEvent.change(box, { target: { value: '' } })
   fireEvent.keyDown(box, { key: 'Escape' })
   await waitFor(() =>
     expect(screen.queryByRole('heading', { name: 'New comment' })).toBeNull(),
   )
   expect(panel().hasAttribute('data-closing')).toBe(false)
+  expect(document.activeElement).toBe(
+    screen.getByRole('heading', { name: 'All comments' }),
+  )
+
+  // So the next Escape closes the panel.
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+  expect(panel().hasAttribute('data-closing')).toBe(true)
 })
 
 test('Escape while picking an element for the message cancels the picker only', () => {

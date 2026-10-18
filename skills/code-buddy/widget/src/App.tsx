@@ -591,6 +591,7 @@ export default function App({ root }: { root: Element }) {
   const opener = useRef<HTMLElement>(undefined)
   const refocus = useRef(false)
   const dock = useRef<HTMLDivElement>(null)
+  const panel = useRef<HTMLElement>(null)
   const title = useRef<HTMLHeadingElement>(null)
   const [toTitle, setToTitle] = useState(0)
 
@@ -1207,6 +1208,9 @@ export default function App({ root }: { root: Element }) {
   const [openedByKeys, setOpenedByKeys] = useState(false)
 
   const backToList = () => {
+    // The button or the message box it came from goes: the focus stays in the panel.
+    if (panel.current?.contains(focusedElement() ?? null))
+      setToTitle((times) => times + 1)
     setThreadId(undefined)
     setDraft(undefined)
     if (view === 'page' && comments.length === 0) {
@@ -1682,6 +1686,7 @@ export default function App({ root }: { root: Element }) {
 
       {(open || leaving) && (
         <section
+          ref={panel}
           className={`cb-panel cb-live ${docked ? 'cb-panel--docked' : ''}`}
           style={{ width }}
           data-closing={!open || undefined}
