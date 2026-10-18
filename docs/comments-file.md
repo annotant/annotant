@@ -69,6 +69,7 @@ untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
 | `anchor.prefix`, `anchor.suffix` | string, optional | With a quote: the page's text just before and after it, up to 32 characters, whitespace collapsed, a line break where a block ends. |
 | `anchor.occurrences` | integer ≥ 1, optional | With a quote: how many copies of it the page had. |
 | `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links (`href`, `src`, `srcset`, `data-*`…). |
+| `anchor.area` | object, optional | A rectangle drawn over the page, or the box of a drawing: its box, the `viewport`, the element it lies `within`, the elements it `covers` (10) and `crosses` (6), `truncated`. A drawing adds `strokes`: up to 40 lines, the last ones drawn, of up to 400 `[x, y]` points each, rounded, from the area's corner and inside its box. |
 | `state` | State | See [States](#states-and-moves). |
 | `createdAt` | ISO date | Lists sort by it. |
 | `messages` | Message[] | The whole thread, the reader's comment first. |

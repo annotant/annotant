@@ -3,7 +3,7 @@ name: code-buddy
 description:
   Code Buddy turns feedback on a running frontend app into code changes.
   The user comments directly on the dev app in the browser (select text, point
-  at an element, draw an area, or write about the page or the whole app); one
+  at an element, draw an area or freehand, or write about the page or the whole app); one
   background agent per comment makes the change and answers in the same thread.
   "/code-buddy [dir]" or "/code-buddy:code-buddy [dir]" starts watching the
   app (the widget only exists while it runs; "/code-buddy stop" ends it);

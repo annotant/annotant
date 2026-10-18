@@ -34,6 +34,8 @@ export const WIDGET_CSS = `
   --cb-green: #177a4c;
   --cb-green-bg: #e6f6ee;
   --cb-red: #b83232;
+  /* The lines the reader draws over the page, as drawing.ts paints them for Claude. */
+  --cb-ink: #e5306b;
   --cb-red-bg: #fdecec;
   --cb-yellow: #f0ad2e;
   --cb-amber-bg: #fdf3e1;
@@ -315,6 +317,16 @@ code { font-family: var(--cb-mono); }
 .cb-draw-covered { position: fixed; pointer-events: none; border: 1px dashed rgba(var(--cb-accent-rgb), .7); border-radius: 2px; }
 /* While the reader draws, the panel steps back: the page is what they look at, and draw over. */
 .cb-panel[data-drawing] { opacity: .35; pointer-events: none; }
+/* Drawing freehand: the lines over the page, the tools above them. */
+.cb-sketch { background: rgba(16, 36, 74, .12); touch-action: none; }
+.cb-sketch-lines { position: fixed; inset: 0; width: 100%; height: 100%; }
+.cb-strokes { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.cb-sketch-lines polyline, .cb-strokes polyline { fill: none; stroke: var(--cb-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.cb-sketch-tools { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; cursor: default; }
+.cb-sketch-tools span { margin-right: 6px; }
+.cb-sketch-tools button { padding: 4px 10px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.cb-sketch-tools button:disabled { opacity: .5; cursor: default; }
+.cb-sketch-tools .cb-sketch-done { border-color: var(--cb-accent); background: var(--cb-accent); }
 .cb-hint { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; pointer-events: none; }
 
 .cb-toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); }

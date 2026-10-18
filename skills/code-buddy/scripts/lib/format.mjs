@@ -72,7 +72,8 @@ export const MAX_PICKED = 1
  * @property {string} [suffix] The page's text just after the quote.
  * @property {number} [occurrences] How many copies of the quote the page had.
  * @property {Element} [element] Set when the reader pointed at an element.
- * @property {Area} [area] Set when the reader drew a rectangle over the page.
+ * @property {Area} [area] Set when the reader drew a rectangle, or freehand,
+ *   over the page.
  */
 
 /**
@@ -91,7 +92,14 @@ export const MAX_PICKED = 1
  */
 
 /**
- * A rectangle the reader drew, from the page's corner, in CSS pixels, never
+ * A line the reader drew freehand: its points, `[x, y]` from its area's
+ * corner, in CSS pixels, inside the area's box; 400 at most.
+ * @typedef {[number, number][]} Stroke
+ */
+
+/**
+ * A rectangle the reader drew, or the box of lines drawn freehand
+ * (`strokes`, 40 at most), from the page's corner, in CSS pixels, never
  * empty. `covers` keeps at most 10 elements and `crosses` 6; `truncated` says
  * the area held more.
  * @typedef {Box & {
@@ -100,6 +108,7 @@ export const MAX_PICKED = 1
  *   covers: AreaNode[],
  *   crosses: AreaNode[],
  *   truncated?: true,
+ *   strokes?: Stroke[],
  * }} Area
  */
 

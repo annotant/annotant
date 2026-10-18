@@ -4,6 +4,9 @@ import {
   type ReviewBox,
   type ReviewElement,
   type ReviewNode,
+  type ReviewStroke,
+  MAX_STROKE_POINTS,
+  MAX_STROKES,
   normaliseQuote,
 } from './domain'
 
@@ -561,6 +564,12 @@ export function coveredBy(root: Element, rect: ReviewBox): Element[] {
   return elementsIn(holderFor(root, rect), rect).covers
 }
 
+/** The elements an area drawn over `rect` records: those it covers, then those it cuts through. */
+export function recordedBy(root: Element, rect: ReviewBox): Element[] {
+  const { covers, crosses } = elementsIn(holderFor(root, rect), rect)
+  return [...covers, ...crosses]
+}
+
 function nodeOf(root: Element, element: Element): ReviewNode {
   return {
     selector: selectorFor(root, element),
@@ -614,6 +623,70 @@ export function anchorFromArea(root: Element, rect: ReviewBox): ReviewAnchor {
     section: sectionOf(root, rangeAround(covers[0] ?? holder)),
     area,
   }
+}
+
+/** A point of a line drawn over the page, in viewport pixels. */
+export interface DrawnPoint {
+  x: number
+  y: number
+}
+
+/** Room around a drawing's lines in its box: a stroke on the edge stays whole. */
+const DRAWING_MARGIN = 8
+
+/**
+ * The box of lines drawn over the page, in viewport pixels, with a margin;
+ * none for lines with no point.
+ */
+export function drawingBox(lines: DrawnPoint[][]): ReviewBox | undefined {
+  const points = lines.flat()
+  if (!points.length) return undefined
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  const left = Math.min(...xs) - DRAWING_MARGIN
+  const top = Math.min(...ys) - DRAWING_MARGIN
+  return {
+    left,
+    top,
+    width: Math.max(...xs) + DRAWING_MARGIN - left,
+    height: Math.max(...ys) + DRAWING_MARGIN - top,
+  }
+}
+
+/** `points` with one every `step` at most, its last kept: a long line stays under the cap. */
+function thinned(points: ReviewStroke): ReviewStroke {
+  if (points.length <= MAX_STROKE_POINTS) return points
+  const step = (points.length - 1) / (MAX_STROKE_POINTS - 1)
+  return Array.from(
+    { length: MAX_STROKE_POINTS },
+    (_, index) => points[Math.round(index * step)] ?? [0, 0],
+  )
+}
+
+/**
+ * Describes lines drawn freehand over the page (in viewport pixels) as an
+ * area, their box, which records what they lie in and cover as a rectangle
+ * does, with the lines from its corner.
+ */
+export function anchorFromDrawing(
+  root: Element,
+  lines: DrawnPoint[][],
+): ReviewAnchor | undefined {
+  const rect = drawingBox(lines)
+  if (!rect) return undefined
+  const anchor = anchorFromArea(root, rect)
+  const strokes = lines
+    .filter((line) => line.length)
+    .slice(-MAX_STROKES)
+    .map((line) =>
+      thinned(
+        line.map(({ x, y }): [number, number] => [
+          Math.round(x - rect.left),
+          Math.round(y - rect.top),
+        ]),
+      ),
+    )
+  return anchor.area ? { ...anchor, area: { ...anchor.area, strokes } } : anchor
 }
 
 /** The element the area was drawn in, when it is on the page. */

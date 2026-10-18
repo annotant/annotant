@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   Fragment,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useRef,
@@ -11,6 +12,7 @@ import { createPortal } from 'react-dom'
 import {
   boxOf,
   coveredBy,
+  type DrawnPoint,
   elementFromAnchor,
   framedArea,
   holderOf,
@@ -306,8 +308,34 @@ export function ElementMarks({
   )
 }
 
+/**
+ * The lines drawn freehand in an area, over its whole box: they stretch with
+ * it, as its width follows the element it lies in.
+ */
+function Strokes({ area }: { area: ReviewArea }) {
+  if (!area.strokes?.length) return null
+  return (
+    <svg
+      className="cb-strokes"
+      data-testid="cb-strokes"
+      viewBox={`0 0 ${area.width} ${area.height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      {area.strokes.map((stroke, place) => (
+        <polyline
+          // oxlint-disable-next-line react/no-array-index-key -- the strokes never change once drawn
+          key={place}
+          points={(stroke.length > 1 ? stroke : [...stroke, ...stroke]).join(' ')}
+        />
+      ))}
+    </svg>
+  )
+}
+
 interface AreaMark {
   comment: ReviewComment
+  area: ReviewArea
   /** The area's box. */
   frame: Box
   /** The part of it that shows, out of the scrolling boxes that hide the rest. */
@@ -331,7 +359,7 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
   return found.flatMap(({ comment, area, holder, clippers }) => {
     const frame = framedArea(area, holder)
     const shown = frame && within(frame, clipOf(clippers))
-    return shown ? [{ comment, frame, shown }] : []
+    return shown ? [{ comment, area, frame, shown }] : []
   })
 }
 
@@ -352,7 +380,7 @@ export function AreaMarks({
 
   return (
     <>
-      {marks.map(({ comment, frame, shown }) => (
+      {marks.map(({ comment, area, frame, shown }) => (
         <Fragment key={comment.id}>
           <div className="cb-clip" style={shown}>
             <div
@@ -364,13 +392,15 @@ export function AreaMarks({
                 width: frame.width,
                 height: frame.height,
               }}
-            />
+            >
+              <Strokes area={area} />
+            </div>
           </div>
           <button
             type="button"
             className="cb-quote-pin cb-live"
             style={{ top: shown.top, left: shown.left }}
-            aria-label="Open the comment on the drawn area"
+            aria-label={`Open the comment on the ${area.strokes ? 'drawing' : 'drawn area'}`}
             title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
           >
@@ -649,11 +679,9 @@ export function AreaOutline({ root, area }: { root: Element; area: ReviewArea })
   const box = useOnScreen(measure)
   if (!box) return null
   return (
-    <div
-      className="cb-outline cb-outline--area"
-      data-testid="cb-area-target"
-      style={box}
-    />
+    <div className="cb-outline cb-outline--area" data-testid="cb-area-target" style={box}>
+      <Strokes area={area} />
+    </div>
   )
 }
 
@@ -909,6 +937,136 @@ export function AreaDrawer({
           </span>
         </div>
       )}
+    </div>
+  )
+}
+
+/** A line being drawn: its points on the page, not in the viewport, as the page may scroll. */
+type Line = DrawnPoint[]
+
+/** Under this distance from the last point, in pixels, a move adds none: a line stays light. */
+const MIN_STEP = 2
+
+/** Where the pointer is on the page. */
+const pointAt = (event: { clientX: number; clientY: number }) => ({
+  x: event.clientX + window.scrollX,
+  y: event.clientY + window.scrollY,
+})
+
+/** A line on the page, as SVG points in the viewport. */
+const onScreen = (line: Line) =>
+  line.map(({ x, y }) => `${x - window.scrollX},${y - window.scrollY}`).join(' ')
+
+/**
+ * The reader draws freehand over the page, with a mouse, a pen or a finger:
+ * arrows, circles, a sketch. Undo takes the last line back, Clear all of
+ * them; Done (or Enter) ends the drawing, Escape cancels it.
+ */
+export function SketchDrawer({
+  onDraw,
+  onCancel,
+}: {
+  /** The lines, in viewport pixels. */
+  onDraw: (lines: DrawnPoint[][]) => void
+  onCancel: () => void
+}) {
+  const [lines, setLines] = useState<Line[]>([])
+  const [, setScrolled] = useState(0)
+  // The line under the pointer, and the pointer drawing it.
+  const drawing = useRef<{ pointer: number; line: Line }>(undefined)
+
+  const done = useCallback(() => {
+    const drawn = lines.filter((line) => line.length)
+    if (!drawn.length) return
+    onDraw(
+      drawn.map((line) =>
+        line.map(({ x, y }) => ({ x: x - window.scrollX, y: y - window.scrollY })),
+      ),
+    )
+  }, [lines, onDraw])
+  const undo = () => setLines((current) => current.slice(0, -1))
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel()
+      else if (event.key === 'Enter') done()
+      else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        setLines((current) => current.slice(0, -1))
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel, done])
+
+  // The lines stay on the page: they move with its scroll.
+  useEffect(() => {
+    const onScroll = () => setScrolled((count) => count + 1)
+    document.addEventListener('scroll', onScroll, true)
+    return () => document.removeEventListener('scroll', onScroll, true)
+  }, [])
+
+  const start = (event: ReactPointerEvent) => {
+    if (event.button !== 0 || drawing.current) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    const line = [pointAt(event)]
+    drawing.current = { pointer: event.pointerId, line }
+    setLines((current) => [...current, line])
+  }
+  const move = (event: ReactPointerEvent) => {
+    const current = drawing.current
+    if (current?.pointer !== event.pointerId) return
+    const point = pointAt(event)
+    const last = current.line.at(-1)
+    if (last && Math.hypot(point.x - last.x, point.y - last.y) < MIN_STEP) return
+    const line = [...current.line, point]
+    drawing.current = { ...current, line }
+    setLines((all) => [...all.slice(0, -1), line])
+  }
+  const end = (event: ReactPointerEvent) => {
+    if (drawing.current?.pointer === event.pointerId) drawing.current = undefined
+  }
+
+  const empty = !lines.length
+  return (
+    <div
+      className="cb-draw cb-sketch cb-live"
+      data-testid="cb-sketch"
+      onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    >
+      <svg className="cb-sketch-lines" aria-hidden="true">
+        {lines.map((line, place) => (
+          <polyline
+            // oxlint-disable-next-line react/no-array-index-key -- lines are only added or taken back last
+            key={place}
+            points={onScreen(line.length > 1 ? line : [...line, ...line])}
+          />
+        ))}
+      </svg>
+      <div
+        className="cb-sketch-tools"
+        // A press on the tools draws nothing.
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <span>
+          {empty
+            ? 'Draw over the page: an arrow, a circle, a sketch. Escape cancels.'
+            : `${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`}
+        </span>
+        <button type="button" disabled={empty} onClick={undo}>
+          Undo
+        </button>
+        <button type="button" disabled={empty} onClick={() => setLines([])}>
+          Clear
+        </button>
+        <button type="button" className="cb-sketch-done" disabled={empty} onClick={done}>
+          Done
+        </button>
+      </div>
     </div>
   )
 }

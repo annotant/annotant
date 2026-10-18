@@ -313,8 +313,48 @@ const sanitiseNodes = (list, max) =>
     return sanitised ? [sanitised] : []
   })
 
+/** The most strokes a drawing keeps, and points a stroke keeps, as the widget caps them. */
+const MAX_STROKES = 40
+const MAX_STROKE_POINTS = 400
+
 /**
- * A rectangle the reader drew over the page; one with no surface is none.
+ * A point's coordinate in its area's box, from 0 to its side.
+ * @param {unknown} value
+ * @param {number} side
+ */
+const coordinate = (value, side) => Math.min(pixels(value), side)
+
+/**
+ * The lines drawn freehand in an area: each point `[x, y]` rounded and kept
+ * in the area's box; a stroke with no point is dropped, and none at all is
+ * no drawing.
+ * @param {unknown} strokes
+ * @param {Box} box
+ * @returns {import('./lib/format.mjs').Stroke[] | undefined}
+ */
+function sanitiseStrokes(strokes, box) {
+  if (!Array.isArray(strokes)) return undefined
+  const kept = strokes.slice(-MAX_STROKES).flatMap((stroke) => {
+    const points = (Array.isArray(stroke) ? stroke : [])
+      .slice(0, MAX_STROKE_POINTS)
+      .flatMap((point) =>
+        Array.isArray(point)
+          ? [
+              /** @type {[number, number]} */ ([
+                coordinate(point[0], box.width),
+                coordinate(point[1], box.height),
+              ]),
+            ]
+          : [],
+      )
+    return points.length ? [points] : []
+  })
+  return kept.length ? kept : undefined
+}
+
+/**
+ * A rectangle the reader drew over the page, or the box of lines they drew
+ * freehand; one with no surface is none.
  * Its holder (`within`) is kept only with where the area lies in it and a
  * size to scale it by.
  * @param {any} area
@@ -331,6 +371,7 @@ function sanitiseArea(area) {
   const crosses = Array.isArray(area.crosses) ? area.crosses : []
   const truncated =
     area.truncated === true || covers.length > MAX_COVERS || crosses.length > MAX_CROSSES
+  const strokes = sanitiseStrokes(area.strokes, box)
   return {
     ...box,
     viewport: {
@@ -351,6 +392,7 @@ function sanitiseArea(area) {
     covers: sanitiseNodes(covers, MAX_COVERS),
     crosses: sanitiseNodes(crosses, MAX_CROSSES),
     ...(truncated ? { truncated: true } : {}),
+    ...(strokes ? { strokes } : {}),
   }
 }
 
@@ -707,16 +749,18 @@ const describePicked = (elements, route) =>
 
 /**
  * Where the area is and what it holds, on the hooks' line: its size and corner
- * on the page, the element it lies in, those it covers or crosses, and
- * `truncated` when it held more than these lists keep.
+ * on the page, how many lines were drawn in it freehand, the element it lies
+ * in, those it covers or crosses, and `truncated` when it held more than these
+ * lists keep.
  * @param {Area} area
  */
 function describeArea(area) {
+  const strokes = area.strokes ? ` strokes=${area.strokes.length}` : ''
   const within = area.within ? ` within=${quoted(nodeLabel(area.within))}` : ''
   /** @param {AreaNode[]} list */
   const nodes = (list) => JSON.stringify(list.map(nodeLabel))
   const truncated = area.truncated ? ' truncated' : ''
-  return `area=${area.width}x${area.height}@${area.left},${area.top}${within} covers=${nodes(area.covers)} crosses=${nodes(area.crosses)}${truncated}`
+  return `area=${area.width}x${area.height}@${area.left},${area.top}${strokes}${within} covers=${nodes(area.covers)} crosses=${nodes(area.crosses)}${truncated}`
 }
 
 function describe(comment) {

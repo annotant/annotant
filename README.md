@@ -135,6 +135,15 @@ directory, else from the repository root.
   area_. Claude receives its box, the window it was drawn in, the element it
   lies in and the elements it covers or cuts through. The area is found again
   in that element, on another window size or after the layout changes.
+- **Draw** freehand over the page when the feedback is easier to draw than to
+  write: an arrow from a block to where it should go, a circle around a
+  detail, a line along an alignment that is off. Draw with the mouse, a pen or
+  a finger; _Undo_ takes the last line back, _Clear_ all of them, _Done_ (or
+  Enter) ends the drawing. A page-level comment can get one too, with _Draw on
+  the page_. The drawing stays on the page while you write, and is placed as
+  an area is: in the element its lines lie in, stretching with its width.
+  Claude receives the lines and what they cover as for an area, and a picture
+  of them over the outlines of those elements.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or an area or behind a text, marks a comment Claude has
   yet to resolve; once its thread is first resolved, the mark goes away.
