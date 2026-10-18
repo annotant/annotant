@@ -12,10 +12,9 @@ import {
 import {
   anchorFromArea,
   anchorFromElement,
-  anchorFromSelection,
   areaReady,
   elementFromAnchor,
-  rangeFromAnchor,
+  quoteFromSelection,
   scrollToArea,
   startRect,
 } from './anchors'
@@ -618,37 +617,53 @@ export default function App({ root }: { root: Element }) {
           ...(occurrences ? { occurrences } : {}),
         }
       : undefined
-    const paint = () => paintHighlights(root, drafted)
-    paint()
+    // Once per frame: a page that streams its content changes many times a frame.
+    let frame = 0
+    const paint = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => paintHighlights(root, drafted))
+    }
+    paintHighlights(root, drafted)
     const observer = new MutationObserver(paint)
     observer.observe(root, { childList: true, subtree: true, characterData: true })
     return () => {
+      cancelAnimationFrame(frame)
       observer.disconnect()
       clearHighlights()
     }
   }, [root, draftQuote, occurrence, prefix, suffix, occurrences])
 
   useEffect(() => {
-    const onSelectionChange = () => {
+    const select = () => {
       const selection = window.getSelection()
       if (!selection) return
-      const anchor = anchorFromSelection(root, selection)
-      if (!anchor) {
+      const quoted = quoteFromSelection(root, selection)
+      if (!quoted) {
         setSelectionButton(undefined)
         return
       }
-      pendingAnchor.current = anchor
+      pendingAnchor.current = quoted.anchor
       // The quote's first character: a drag may start past the end of the line above.
-      const rect = startRect(rangeFromAnchor(root, anchor) ?? selection.getRangeAt(0))
+      const rect = startRect(quoted.range ?? selection.getRangeAt(0))
       setSelectionButton({ top: rect.top - 40, left: rect.left })
+    }
+    // Once per frame: a drag changes the selection many times a frame.
+    let frame = 0
+    const onSelectionChange = () => {
+      frame ||= requestAnimationFrame(() => {
+        frame = 0
+        select()
+      })
     }
     const onScroll = () => setSelectionButton(undefined)
     document.addEventListener('selectionchange', onSelectionChange)
     document.addEventListener('scroll', onScroll, true)
     return () => {
+      cancelAnimationFrame(frame)
       document.removeEventListener('selectionchange', onSelectionChange)
       document.removeEventListener('scroll', onScroll, true)
     }
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- read in the frame's callback, which the rule does not follow
   }, [root])
 
   // Floating: the panel floats over the page, which is left untouched. Docked: the page is squeezed,
