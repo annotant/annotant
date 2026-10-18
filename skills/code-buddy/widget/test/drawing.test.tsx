@@ -76,7 +76,7 @@ test('a drawing is the box of its lines, with what it lies in, and its lines fro
       { x: 100, y: 360 },
     ],
     [{ x: 120.4, y: 300 }],
-  ])?.area
+  ])?.anchor.area
 
   // The lines' box, 8px of room on each side.
   expect([area?.left, area?.top, area?.width, area?.height]).toEqual([92, 242, 36, 126])
@@ -103,16 +103,38 @@ test('a long line keeps at most 400 points, its ends among them', () => {
   if (!root) throw new Error('no root')
   const points = Array.from({ length: 1000 }, (_, x) => ({ x, y: 200 }))
 
-  const [stroke = []] = anchorFromDrawing(root, [points])?.area?.strokes ?? []
+  const [stroke = []] = anchorFromDrawing(root, [points])?.strokes ?? []
 
   expect(stroke).toHaveLength(400)
   expect(stroke[0]).toEqual([8, 8])
   expect(stroke.at(-1)).toEqual([1007, 8])
 })
 
+test('a drawing keeps its latest lines, and is the box of those only', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+  // A line far up the page, then 40 short ones over card B.
+  const lines = [
+    [{ x: 500, y: 10 }],
+    ...Array.from({ length: 40 }, (_, at) => [{ x: 30 + at, y: 360 }]),
+  ]
+
+  const drawn = anchorFromDrawing(root, lines)
+
+  expect(drawn?.strokes).toHaveLength(40)
+  expect(drawn?.rect).toEqual({ left: 22, top: 352, width: 55, height: 16 })
+  // Long lines: 4000 points in all at most, the earliest lines left out.
+  const long = Array.from({ length: 12 }, (_, at) =>
+    Array.from({ length: 400 }, (__, x) => ({ x, y: 400 + at })),
+  )
+  expect(anchorFromDrawing(root, long)?.strokes).toHaveLength(10)
+})
+
 test('lines drawn on the page are commented on, and stay drawn while the comment is written', async () => {
   const comments: ReviewComment[] = []
-  renderCards(comments)
+  const server = renderCards(comments)
 
   fireEvent.click(await screen.findByRole('button', { name: 'Draw' }))
   expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Done' }).disabled).toBe(
@@ -141,6 +163,11 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
   const area: Partial<ReviewArea> | undefined = comments[0]?.anchor.area
   expect(area).toMatchObject({ left: 82, top: 242, width: 36, height: 126 })
   expect(area?.strokes).toHaveLength(2)
+  // No canvas here: no picture, and the area says so.
+  expect(area?.pictured).toBeUndefined()
+  const [, init] =
+    server.fetch.mock.calls.find(([, call]) => call?.method === 'POST') ?? []
+  expect(typeof init?.body === 'string' && init.body.includes('"images"')).toBe(false)
   // Saved, the lines are drawn in the rainbow frame of a comment in progress.
   const mark = await screen.findByTestId('cb-area-mark')
   expect(mark.querySelectorAll('polyline')).toHaveLength(2)
@@ -183,6 +210,28 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const sent = JSON.parse(body) as NewReviewComment
   expect(sent.images).toEqual([{ type: 'image/png', data: 'iVBORw0KGgo=' }])
+  expect(sent.anchor.area?.pictured).toBe(true)
+})
+
+test('Enter on a focused tool is its own, and an undo while drawing takes that line back', async () => {
+  renderCards()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw' }))
+  arrow()
+  const undo = screen.getByRole('button', { name: 'Undo' })
+  fireEvent.keyDown(undo, { key: 'Enter' })
+  expect(screen.getByTestId('cb-sketch')).toBeTruthy()
+
+  // Ctrl+Z halfway through a line: the next moves draw nothing over the others.
+  const layer = screen.getByTestId('cb-sketch')
+  fireEvent.pointerDown(layer, { button: 0, pointerId: 1, clientX: 500, clientY: 500 })
+  fireEvent.keyDown(document, { key: 'z', ctrlKey: true })
+  fireEvent.pointerMove(layer, { pointerId: 1, clientX: 600, clientY: 600 })
+  fireEvent.pointerUp(layer, { pointerId: 1 })
+  const kept = [...layer.querySelectorAll('polyline')].map((one) =>
+    one.getAttribute('points'),
+  )
+  expect(kept).toEqual(['100,250 100,300 100,360', '90,350 100,360 110,350'])
 })
 
 test('Clear takes every line back, and Escape leaves the drawing', async () => {

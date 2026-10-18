@@ -59,9 +59,13 @@ interface ReviewHolder extends ReviewNode {
 /** A line drawn freehand: its points, `[x, y]` from the area's corner, in CSS pixels. */
 export type ReviewStroke = [number, number][]
 
-/** The most strokes a drawing keeps, and points a stroke keeps, as the server caps them. */
+/**
+ * The most strokes a drawing keeps, points a stroke keeps, and points in all,
+ * as the server caps them: a drawing stays well under what a request holds.
+ */
 export const MAX_STROKES = 40
 export const MAX_STROKE_POINTS = 400
+export const MAX_DRAWING_POINTS = 4000
 
 /** A rectangle the reader drew over the page, or the box of a drawing; never empty. */
 export interface ReviewArea extends ReviewBox {
@@ -79,6 +83,8 @@ export interface ReviewArea extends ReviewBox {
   truncated?: true
   /** Set when the reader drew freehand: the lines, the area being their box. */
   strokes?: ReviewStroke[]
+  /** With `strokes`: the last image of the comment's first message is their picture. */
+  pictured?: true
 }
 
 export interface ReviewAnchor {

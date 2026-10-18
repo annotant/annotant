@@ -984,20 +984,28 @@ export function SketchDrawer({
       ),
     )
   }, [lines, onDraw])
-  const undo = () => setLines((current) => current.slice(0, -1))
+  // The line being drawn, if any, ends with the one it takes back.
+  const undo = useCallback(() => {
+    drawing.current = undefined
+    setLines((current) => current.slice(0, -1))
+  }, [])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel()
-      else if (event.key === 'Enter') done()
-      else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+      else if (event.key === 'Enter') {
+        // A focused tool takes its own Enter: Undo's must not end the drawing too.
+        if (event.composedPath()[0] instanceof HTMLButtonElement) return
         event.preventDefault()
-        setLines((current) => current.slice(0, -1))
+        done()
+      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        undo()
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel, done])
+  }, [onCancel, done, undo])
 
   // The lines stay on the page: they move with its scroll.
   useEffect(() => {
@@ -1060,7 +1068,14 @@ export function SketchDrawer({
         <button type="button" disabled={empty} onClick={undo}>
           Undo
         </button>
-        <button type="button" disabled={empty} onClick={() => setLines([])}>
+        <button
+          type="button"
+          disabled={empty}
+          onClick={() => {
+            drawing.current = undefined
+            setLines([])
+          }}
+        >
           Clear
         </button>
         <button type="button" className="cb-sketch-done" disabled={empty} onClick={done}>

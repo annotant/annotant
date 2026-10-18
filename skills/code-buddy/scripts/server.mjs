@@ -313,9 +313,13 @@ const sanitiseNodes = (list, max) =>
     return sanitised ? [sanitised] : []
   })
 
-/** The most strokes a drawing keeps, and points a stroke keeps, as the widget caps them. */
+/**
+ * The most strokes a drawing keeps, points a stroke keeps, and points in all,
+ * as the widget caps them: a drawing stays well under MAX_TEXT.
+ */
 const MAX_STROKES = 40
 const MAX_STROKE_POINTS = 400
+const MAX_DRAWING_POINTS = 4000
 
 /**
  * A point's coordinate in its area's box, from 0 to its side.
@@ -334,9 +338,10 @@ const coordinate = (value, side) => Math.min(pixels(value), side)
  */
 function sanitiseStrokes(strokes, box) {
   if (!Array.isArray(strokes)) return undefined
+  let room = MAX_DRAWING_POINTS
   const kept = strokes.slice(-MAX_STROKES).flatMap((stroke) => {
     const points = (Array.isArray(stroke) ? stroke : [])
-      .slice(0, MAX_STROKE_POINTS)
+      .slice(0, Math.min(MAX_STROKE_POINTS, room))
       .flatMap((point) =>
         Array.isArray(point)
           ? [
@@ -347,6 +352,7 @@ function sanitiseStrokes(strokes, box) {
             ]
           : [],
       )
+    room -= points.length
     return points.length ? [points] : []
   })
   return kept.length ? kept : undefined
@@ -393,6 +399,7 @@ function sanitiseArea(area) {
     crosses: sanitiseNodes(crosses, MAX_CROSSES),
     ...(truncated ? { truncated: true } : {}),
     ...(strokes ? { strokes } : {}),
+    ...(strokes && area.pictured === true ? { pictured: true } : {}),
   }
 }
 

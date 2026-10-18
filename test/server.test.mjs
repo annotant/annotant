@@ -405,6 +405,21 @@ test('keeps the lines drawn freehand in an area, in its box, and says how many',
   ])
   // A long line keeps its first 400 points.
   assert.equal(drawing.strokes[2].length, 400)
+  // 4000 points in all at most, and `pictured` only with lines.
+  const long = await createArea({
+    width: 400,
+    height: 100,
+    pictured: true,
+    strokes: Array.from({ length: 12 }, () =>
+      Array.from({ length: 400 }, (_, x) => [x, 50]),
+    ),
+  })
+  assert.equal(long.strokes.flat().length, 4000)
+  assert.equal(long.pictured, true)
+  assert.equal(
+    (await createArea({ width: 40, height: 40, pictured: true })).pictured,
+    undefined,
+  )
   // No line at all is no drawing.
   assert.equal(
     (await createArea({ width: 40, height: 40, strokes: [[], 'x'] })).strokes,

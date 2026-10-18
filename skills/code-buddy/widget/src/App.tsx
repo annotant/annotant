@@ -15,7 +15,6 @@ import {
   anchorFromElement,
   areaReady,
   type DrawnPoint,
-  drawingBox,
   elementFromAnchor,
   quoteFromSelection,
   recordedBy,
@@ -886,10 +885,10 @@ export default function App({ root }: { root: Element }) {
   // Drawn freehand, the area is the lines' box, and Claude gets their picture too.
   const drawSketch = useCallback(
     (lines: DrawnPoint[][]) => {
-      const anchor = anchorFromDrawing(root, lines)
-      const rect = drawingBox(lines)
-      if (!anchor?.area?.strokes || !rect) return
-      const sketch = drawingImage(rect, anchor.area.strokes, recordedBy(root, rect))
+      const drawn = anchorFromDrawing(root, lines)
+      if (!drawn) return
+      const { anchor, rect, strokes } = drawn
+      const sketch = drawingImage(rect, strokes, recordedBy(root, rect))
       startDraft(
         { ...anchor, ...(sketch ? { sketch } : {}) },
         keptBody,
@@ -962,14 +961,16 @@ export default function App({ root }: { root: Element }) {
       url,
       ...anchor
     } = draft
-    // The drawing's picture goes last, while the message has room for it.
-    const images =
-      sketch && (attached?.length ?? 0) < MAX_IMAGES
-        ? [...(attached ?? []), sketch]
-        : attached
+    // The drawing's picture goes last, while the message has room for it, and
+    // the area says so: the agent never takes one of the reader's for it.
+    const pictured = !!sketch && (attached?.length ?? 0) < MAX_IMAGES
+    const images = pictured ? [...(attached ?? []), sketch] : attached
     await run(async () => {
       const comment = await createComment({
-        anchor,
+        anchor:
+          pictured && anchor.area
+            ? { ...anchor, area: { ...anchor.area, pictured: true } }
+            : anchor,
         body,
         route: app ? APP_ROUTE : startedOn,
         url,
