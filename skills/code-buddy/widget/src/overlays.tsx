@@ -158,7 +158,7 @@ const sameBox = (a?: Box, b?: Box) =>
  * again when the page changes (nodes, text, attributes such as the padding a
  * docked panel adds), `measure` alone on scroll, on resize and when `root` or
  * an element `anchors` gives changes size (a docked panel squeezing the page,
- * an image or a font loading), once per frame.
+ * an image loading) and when a font loads, once per frame.
  */
 function useTracked<Found, Measured>(
   root: Element,
@@ -171,20 +171,24 @@ function useTracked<Found, Measured>(
   useEffect(() => {
     let found: { value: Found } | undefined
     let frame = 0
-    // Layout moves what no mutation tells: an animation, an image, a font.
-    const resized = new ResizeObserver(() => update())
+    // The anchors observed: one observed again would be measured again for nothing.
+    let observed = new Set<Element>()
     const update = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         if (!found) {
           found = { value: find(root, comments) }
-          resized.disconnect()
-          resized.observe(root)
-          for (const anchor of anchors(found.value)) if (anchor) resized.observe(anchor)
+          const next = new Set(anchors(found.value).filter((anchor) => !!anchor))
+          for (const anchor of observed) if (!next.has(anchor)) resized.unobserve(anchor)
+          for (const anchor of next) if (!observed.has(anchor)) resized.observe(anchor)
+          observed = next
         }
         setMeasured(measure(found.value))
       })
     }
+    // Layout moves what no mutation tells: an animation, an image loading.
+    const resized = new ResizeObserver(update)
+    resized.observe(root)
     const changed = () => {
       found = undefined
       update()
@@ -201,12 +205,15 @@ function useTracked<Found, Measured>(
     observer.observe(document.documentElement, { attributes: true })
     window.addEventListener('resize', update)
     document.addEventListener('scroll', update, true)
+    // A font moves text within boxes that keep their size.
+    document.fonts?.addEventListener('loadingdone', update)
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
       resized.disconnect()
       window.removeEventListener('resize', update)
       document.removeEventListener('scroll', update, true)
+      document.fonts?.removeEventListener('loadingdone', update)
     }
   }, [root, comments, find, measure, anchors])
   return measured
