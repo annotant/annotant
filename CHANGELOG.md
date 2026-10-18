@@ -173,6 +173,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- A panel width saved in a wider window came back as is after a reload: the
+  docked panel and the page's margin overflowed the window. The panel now
+  fits a narrower window, and gets its width back once the window is wide
+  again. (#70)
 - Screen readers never announced the widget's toasts ("Request failed",
   "Comment saved"). They now appear in live regions that are always present:
   information is polite, and errors interrupt as alerts. (#67)

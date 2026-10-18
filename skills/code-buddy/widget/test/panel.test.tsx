@@ -4,11 +4,11 @@ import type { ReviewComment } from '../src/domain'
 import { comment, fakeEvents, fakeServer, openPanel } from './server'
 import { renderWidget } from './widget'
 
-function renderOpenPanel() {
+function renderOpenPanel(ui: { docked?: boolean; width?: number } = {}) {
   fakeServer([])
   sessionStorage.setItem(
     'code-buddy:ui',
-    JSON.stringify({ open: true, docked: false, width: 380, view: 'page' }),
+    JSON.stringify({ open: true, docked: false, width: 380, view: 'page', ...ui }),
   )
   // An idle animation: happy-dom's own reject an unhandled promise once cancelled, as browsers' do not.
   const animate = vi
@@ -85,6 +85,30 @@ test('the page makes room at once when motion is reduced', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
   expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
   expect(animate).not.toHaveBeenCalled()
+})
+
+test('a width restored from a wider window fits this one', () => {
+  renderOpenPanel({ docked: true, width: window.innerWidth + 200 })
+
+  expect(document.documentElement.style.paddingRight).toBe(
+    `${Math.round(window.innerWidth * 0.8)}px`,
+  )
+})
+
+test('the panel narrows with the window, and widens back with it', () => {
+  const wide = window.innerWidth
+  onTestFinished(() => {
+    window.innerWidth = wide
+  })
+  renderOpenPanel({ docked: true, width: Math.round(wide * 0.8) })
+
+  window.innerWidth = 900
+  fireEvent(window, new Event('resize'))
+  expect(document.documentElement.style.paddingRight).toBe('720px')
+
+  window.innerWidth = wide
+  fireEvent(window, new Event('resize'))
+  expect(document.documentElement.style.paddingRight).toBe(`${Math.round(wide * 0.8)}px`)
 })
 
 /** Inline styles the host page set itself, taken off again after the test. */
