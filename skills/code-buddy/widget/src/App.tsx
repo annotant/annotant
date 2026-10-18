@@ -486,8 +486,13 @@ function scopeLabel(comment: { route: string; url?: string }): string {
     : `Whole page · ${pagePath(comment.url) || comment.route}`
 }
 
-/** What a drawn area covers, in a few words: the elements inside it, else those it cuts through. */
+/**
+ * What a drawn area covers, in a few words: the element a drawing points at,
+ * else the elements inside it, else those it cuts through.
+ */
 function areaContents(area: ReviewArea): string {
+  if (area.pointsAt)
+    return `points at ${`<${area.pointsAt.tag}> ${area.pointsAt.text}`.trim()}`
   const nodes = area.covers.length ? area.covers : area.crosses
   const shown = nodes.slice(0, 3).map((node) => `<${node.tag}>`)
   const hidden = nodes.length - shown.length
@@ -882,13 +887,14 @@ export default function App({ root }: { root: Element }) {
       startDraft(anchorFromArea(root, rect), keptBody, keptImages, keptElements),
     [root, startDraft, keptBody, keptImages, keptElements],
   )
-  // Drawn freehand, the area is the lines' box, and Claude gets their picture too.
+  // Drawn freehand, the area is the lines' box, and Claude gets their picture too,
+  // wider: what an arrow points at is in it.
   const drawSketch = useCallback(
     (lines: DrawnPoint[][]) => {
       const drawn = anchorFromDrawing(root, lines)
       if (!drawn) return
-      const { anchor, rect, strokes } = drawn
-      const sketch = drawingImage(rect, strokes, recordedBy(root, rect))
+      const { anchor, rect, reach, strokes, target: pointed } = drawn
+      const sketch = drawingImage(reach, rect, strokes, recordedBy(root, reach), pointed)
       startDraft(
         { ...anchor, ...(sketch ? { sketch } : {}) },
         keptBody,

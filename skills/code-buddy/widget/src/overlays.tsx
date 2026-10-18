@@ -308,20 +308,68 @@ export function ElementMarks({
   )
 }
 
+/** The rainbow of a comment in progress, styles.ts's .cb-mark::before. */
+const RAINBOW = [
+  '#ff5f9e',
+  '#ffb340',
+  '#ffe14d',
+  '#3ddc97',
+  '#3fa7ff',
+  '#a66bff',
+  '#ff5f9e',
+]
+
 /**
  * The lines drawn freehand in an area, over its whole box: they stretch with
- * it, as its width follows the element it lies in.
+ * it, as its width follows the element it lies in. With `rainbow`, the id of
+ * its gradient, they carry the rainbow of a comment in progress, turning.
  */
-function Strokes({ area }: { area: ReviewArea }) {
+function Strokes({ area, rainbow }: { area: ReviewArea; rainbow?: string }) {
   if (!area.strokes?.length) return null
+  const { width, height } = area
+  // Its ends a diagonal apart, the gradient covers the box as it turns.
+  const half = Math.hypot(width, height) / 2
+  const turning = !matchMedia('(prefers-reduced-motion: reduce)').matches
   return (
     <svg
       className="cb-strokes"
       data-testid="cb-strokes"
-      viewBox={`0 0 ${area.width} ${area.height}`}
+      viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
       aria-hidden="true"
+      style={rainbow ? { stroke: `url(#${rainbow})` } : undefined}
     >
+      {rainbow && (
+        <defs>
+          <linearGradient
+            id={rainbow}
+            gradientUnits="userSpaceOnUse"
+            x1={width / 2 - half}
+            y1={height / 2}
+            x2={width / 2 + half}
+            y2={height / 2}
+          >
+            {RAINBOW.map((color, at) => (
+              <stop
+                // oxlint-disable-next-line react/no-array-index-key -- the first colour comes back last
+                key={at}
+                offset={at / (RAINBOW.length - 1)}
+                stopColor={color}
+              />
+            ))}
+            {turning && (
+              <animateTransform
+                attributeName="gradientTransform"
+                type="rotate"
+                from={`0 ${width / 2} ${height / 2}`}
+                to={`360 ${width / 2} ${height / 2}`}
+                dur="3s"
+                repeatCount="indefinite"
+              />
+            )}
+          </linearGradient>
+        </defs>
+      )}
       {area.strokes.map((stroke, place) => (
         <polyline
           // oxlint-disable-next-line react/no-array-index-key -- the strokes never change once drawn
@@ -366,6 +414,7 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
 /**
  * Frames around the areas comments were drawn on, as around an element,
  * until their thread is first resolved; a bubble on each opens its thread.
+ * A drawing has no frame: its lines carry the rainbow.
  */
 export function AreaMarks({
   root,
@@ -384,7 +433,7 @@ export function AreaMarks({
         <Fragment key={comment.id}>
           <div className="cb-clip" style={shown}>
             <div
-              className="cb-mark cb-mark--area"
+              className={`cb-mark cb-mark--area${area.strokes ? ' cb-mark--drawing' : ''}`}
               data-testid="cb-area-mark"
               style={{
                 top: frame.top - shown.top,
@@ -393,7 +442,7 @@ export function AreaMarks({
                 height: frame.height,
               }}
             >
-              <Strokes area={area} />
+              <Strokes area={area} rainbow={`cb-rainbow-${comment.id}`} />
             </div>
           </div>
           <button

@@ -310,6 +310,9 @@ code { font-family: var(--cb-mono); }
 /* A drawn area: square corners; its outline is dashed, where an element's is solid. */
 .cb-outline--area, .cb-mark--area { border-radius: 2px; }
 .cb-outline--area { border-style: dashed; }
+/* A drawing's lines carry the rainbow (overlays.tsx): its box is not framed. */
+.cb-mark--drawing { background: none; }
+.cb-mark--drawing::before { content: none; }
 /* Drawing: the page under a veil, but for the area being drawn and what it covers. */
 .cb-draw { position: fixed; inset: 0; cursor: crosshair; }
 .cb-draw-box { position: fixed; border: 2px solid var(--cb-accent); border-radius: 2px; background: rgba(var(--cb-accent-rgb), .06); box-shadow: 0 0 0 100vmax rgba(16, 36, 74, .28); }
@@ -321,7 +324,9 @@ code { font-family: var(--cb-mono); }
 .cb-sketch { background: rgba(16, 36, 74, .12); touch-action: none; }
 .cb-sketch-lines { position: fixed; inset: 0; width: 100%; height: 100%; }
 .cb-strokes { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.cb-sketch-lines polyline, .cb-strokes polyline { fill: none; stroke: var(--cb-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+/* The lines inherit their colour: a drawing in progress puts its rainbow in its place. */
+.cb-sketch-lines, .cb-strokes { stroke: var(--cb-ink); }
+.cb-sketch-lines polyline, .cb-strokes polyline { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .cb-sketch-tools { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; cursor: default; }
 .cb-sketch-tools span { margin-right: 6px; }
 .cb-sketch-tools button { padding: 4px 10px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }

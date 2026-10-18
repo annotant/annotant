@@ -99,10 +99,11 @@ export const MAX_PICKED = 1
 
 /**
  * A rectangle the reader drew, or the box of lines drawn freehand
- * (`strokes`, 40 at most, 4000 points in all; `pictured` when the last
+ * (`strokes`, 40 at most, 4000 points in all; `pointsAt` the element under
+ * the end of the longest, where an arrow points; `pictured` when the last
  * image of the comment's first message is their picture), from the page's corner, in CSS pixels, never
- * empty. `covers` keeps at most 10 elements and `crosses` 6; `truncated` says
- * the area held more.
+ * empty. `covers` keeps at most 10 elements and `crosses` 6, a drawing's
+ * those of a wider box around its lines; `truncated` says the area held more.
  * @typedef {Box & {
  *   viewport: Size & { scrollX: number, scrollY: number },
  *   within?: Holder,
@@ -110,6 +111,7 @@ export const MAX_PICKED = 1
  *   crosses: AreaNode[],
  *   truncated?: true,
  *   strokes?: Stroke[],
+ *   pointsAt?: AreaNode,
  *   pictured?: true,
  * }} Area
  */

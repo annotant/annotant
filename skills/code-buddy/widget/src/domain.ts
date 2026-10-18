@@ -72,7 +72,10 @@ export interface ReviewArea extends ReviewBox {
   /** The viewport's size and scroll when it was drawn; `top` and `left` are from the page's corner. */
   viewport: ReviewSize & { scrollX: number; scrollY: number }
   within?: ReviewHolder
-  /** Elements wholly inside the area, the outermost ones only: 10 at most. */
+  /**
+   * Elements wholly inside the area, the outermost ones only: 10 at most. A
+   * drawing's, and its `crosses`, are those of a wider box around its lines.
+   */
   covers: ReviewNode[]
   /**
    * Elements the area cuts through: its holder's children, and the innermost
@@ -83,6 +86,8 @@ export interface ReviewArea extends ReviewBox {
   truncated?: true
   /** Set when the reader drew freehand: the lines, the area being their box. */
   strokes?: ReviewStroke[]
+  /** With `strokes`: the element under the end of the longest line, where an arrow points. */
+  pointsAt?: ReviewNode
   /** With `strokes`: the last image of the comment's first message is their picture. */
   pictured?: true
 }
