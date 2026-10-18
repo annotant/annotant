@@ -135,3 +135,25 @@ test('a stream the browser gave up on is opened again', async () => {
   expect(events.streams).toHaveLength(2)
   expect(events.streams[1]?.closed).toBe(false)
 })
+
+test('a change that leaves the page’s comments as they were does not read the page again', async () => {
+  // happy-dom lays nothing out: the quote gets a box for its bubble to show.
+  const measure = vi
+    .spyOn(Range.prototype, 'getBoundingClientRect')
+    .mockImplementation(() => DOMRect.fromRect({ x: 120, y: 100, width: 0, height: 20 }))
+  onTestFinished(() => measure.mockRestore())
+  const events = fakeEvents()
+  const server = fakeServer([comment({ quote: 'Playground' })])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Open the comment on “Playground”' })
+  const walks = vi.spyOn(document, 'createTreeWalker')
+  onTestFinished(() => walks.mockRestore())
+  const before = listed(server.fetch)
+
+  // A step of a comment on another page: the server says something changed.
+  events.send('changed')
+  await waitFor(() => expect(listed(server.fetch)).toBeGreaterThan(before))
+  // The reload lands, then a frame for the marks to follow it.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(walks).not.toHaveBeenCalled()
+})

@@ -126,7 +126,12 @@ function useCommentList(url: string | undefined, { merge = true } = {}) {
     const asked = merges.current
     try {
       const list = await request<ReviewComment[]>(url)
-      if (asked === merges.current) setComments(list)
+      // The same list keeps its reference: a change of a comment elsewhere
+      // would read the whole page again for its marks.
+      if (asked === merges.current)
+        setComments((current) =>
+          JSON.stringify(current) === JSON.stringify(list) ? current : list,
+        )
       setReachable(true)
     } catch {
       setReachable(false)
