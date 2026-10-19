@@ -108,3 +108,37 @@ test('a comment opened from the list scrolls to its text at once when motion is 
 
   expect(scroll).toHaveBeenCalledWith({ behavior: 'auto', block: 'center' })
 })
+
+const radio = (name: string) => screen.getByRole('radio', { name })
+
+test('the status filter is one named Tab stop that arrow keys move through', async () => {
+  fakeServer([comment()])
+  openPanel('all')
+  renderWidget()
+
+  await screen.findByRole('radiogroup', { name: 'Filter by status' })
+  // Only the checked radio, Open by default, is in the Tab order.
+  expect(radio('All').tabIndex).toBe(-1)
+  expect(radio('Open').tabIndex).toBe(0)
+  expect(radio('Resolved').tabIndex).toBe(-1)
+
+  radio('Open').focus()
+  fireEvent.keyDown(radio('Open'), { key: 'ArrowRight' })
+  expect(radio('Resolved').getAttribute('aria-checked')).toBe('true')
+  expect(document.activeElement).toBe(radio('Resolved'))
+  expect(radio('Resolved').tabIndex).toBe(0)
+  expect(radio('Open').tabIndex).toBe(-1)
+
+  // The last radio wraps around to the first, and back.
+  fireEvent.keyDown(radio('Resolved'), { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(radio('All'))
+  fireEvent.keyDown(radio('All'), { key: 'ArrowLeft' })
+  expect(document.activeElement).toBe(radio('Resolved'))
+  fireEvent.keyDown(radio('Resolved'), { key: 'ArrowUp' })
+  expect(document.activeElement).toBe(radio('Open'))
+  fireEvent.keyDown(radio('Open'), { key: 'Home' })
+  expect(document.activeElement).toBe(radio('All'))
+  fireEvent.keyDown(radio('All'), { key: 'End' })
+  expect(document.activeElement).toBe(radio('Resolved'))
+  expect(radio('Resolved').getAttribute('aria-checked')).toBe('true')
+})
