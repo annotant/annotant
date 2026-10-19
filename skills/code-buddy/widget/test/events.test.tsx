@@ -195,3 +195,33 @@ test('a change the reader makes to a comment of another page does not read this 
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
   expect(walks).not.toHaveBeenCalled()
 })
+
+test('a new step is announced alone, not with the one sliding away', async () => {
+  const events = fakeEvents()
+  const comments = [
+    comment({
+      state: 'working',
+      progress: [{ at: 1, kind: 'read', label: 'src/App.tsx', state: 'running' }],
+    }),
+  ]
+  fakeServer(comments)
+  openThread('c1')
+  renderWidget()
+  await screen.findByTestId('cb-progress')
+
+  comments[0] = {
+    ...comments[0]!,
+    progress: [{ at: 2, kind: 'read', label: 'src/main.tsx', state: 'running' }],
+  }
+  events.send('changed')
+  await waitFor(() =>
+    expect(screen.getByTestId('cb-progress').textContent).toContain(
+      'Reading src/main.tsx',
+    ),
+  )
+  const progress = screen.getByTestId('cb-progress')
+  const live = [progress, ...progress.querySelectorAll('*')].filter((node) =>
+    node.hasAttribute('aria-live'),
+  )
+  expect(live.map((region) => region.textContent)).toEqual(['Reading src/main.tsx'])
+})
