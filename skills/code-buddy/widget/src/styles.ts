@@ -14,6 +14,9 @@ export const RAINBOW = [
   '#ff5f9e',
 ]
 export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+/** How the widget scrolls the page: smoothly, unless motion is reduced. */
+export const scrollBehavior = (): ScrollBehavior =>
+  matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth'
 
 /** How long the panel takes to come in, or to widen and narrow. */
 export const PANEL_IN_MS = 200
@@ -278,7 +281,7 @@ code { font-family: var(--cb-mono); }
 @keyframes cb-dot-3 { 0% { opacity: 0; } 66.6% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .cb-current-line--out { display: none; }
-  .cb-current-line--in, .cb-dots i, .cb-step-icon { animation: none; }
+  .cb-current-line--in, .cb-dots i, .cb-step-icon, .cb-spinner { animation: none; }
   /* The panel fades, and changes width at once. */
   .cb-panel { animation-name: cb-fade-in; transition: none; }
   .cb-panel[data-closing] { animation-name: cb-fade-out; }

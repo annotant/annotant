@@ -72,3 +72,39 @@ test('the element chip is a button that centers the page on its element', async 
 
   expect(scroll.mock.contexts).toContain(document.querySelector('main h1'))
 })
+
+test('the element chip centers its element at once when motion is reduced', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(prefers-reduced-motion: reduce)',
+  }))
+  document.body.replaceChildren()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  fakeServer([comment({ element: TITLE })])
+  openThread('c1')
+  renderWidget()
+
+  press(await screen.findByRole('button', { name: /<h1>\s*Playground/ }))
+
+  expect(scroll).toHaveBeenCalledWith({ behavior: 'auto', block: 'center' })
+})
+
+test('a comment opened from the list scrolls to its text at once when motion is reduced', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(prefers-reduced-motion: reduce)',
+  }))
+  document.body.replaceChildren()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  fakeServer([comment({ quote: 'Playground' })])
+  openPanel('page')
+  renderWidget()
+
+  fireEvent.click(await screen.findByTestId('cb-summary'))
+
+  expect(scroll).toHaveBeenCalledWith({ behavior: 'auto', block: 'center' })
+})
