@@ -322,8 +322,15 @@ export function isAsking(comment: Lifecycle) {
   return comment.state === 'asking'
 }
 
-/** A comment whose run the reader stopped, until they send it again. */
+/**
+ * A comment whose run stopped, until the reader sends it again: they stopped
+ * it, or its agent ended without finishing.
+ */
 export const paused = (comment: Lifecycle) => comment.state === 'stopped'
+
+/** Stopped by its agent: it ended its turn neither answering nor asking. */
+export const gaveUp = (comment: Pick<ReviewComment, 'state' | 'events'>) =>
+  paused(comment) && comment.events.at(-1)?.by === 'agent'
 
 /** Claude answered a follow-up: the reader follows up again or resolves it. */
 export const answered = (comment: Lifecycle) => comment.state === 'answered'

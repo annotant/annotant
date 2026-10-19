@@ -301,6 +301,27 @@ test('a comment stopped before it started says so', async () => {
   )
 })
 
+test('a comment its agent left unfinished says so, and sends again', async () => {
+  fakeServer([
+    comment({
+      state: 'stopped',
+      events: [
+        { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+        { at: '2026-01-01T10:01:00.000Z', state: 'working', by: 'agent', run: 'r1' },
+        { at: '2026-01-01T10:02:00.000Z', state: 'stopped', by: 'agent', run: 'r1' },
+      ],
+      cancellation: { at: '2026-01-01T10:02:00.000Z', changed: [], steps: 3, run: 'r1' },
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  expect((await screen.findByTestId('cb-cancelled')).textContent).toBe(
+    'Claude stopped without finishing. It had looked around (3 steps) but changed no file.',
+  )
+  expect(screen.getByRole('button', { name: 'Send again' })).toBeTruthy()
+})
+
 test("a move the comment can no longer make shows the server's words", async () => {
   const server = fakeServer([comment({ state: 'working' })]).fetch
   const comments = server.getMockImplementation()

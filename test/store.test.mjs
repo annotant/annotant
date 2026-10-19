@@ -220,6 +220,38 @@ test('a cancellation lists the files written and counts tools, not narration', a
   })
 })
 
+test('a run its agent left working stops, for the reader to send it again', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await comments.claim(comment.id, { agent: 'a1' })
+  await appendProgress(project, comment.id, {
+    at: 1,
+    id: 'a',
+    kind: 'edit',
+    label: 'src/a.ts',
+    state: 'done',
+  })
+  // Another agent's end leaves it alone.
+  assert.equal(await comments.abandon(comment.id, 'a2'), undefined)
+  const stopped = await comments.abandon(comment.id, 'a1')
+  assert.ok(stopped)
+  assert.equal(stopped.state, 'stopped')
+  assert.deepEqual(stopped.cancellation?.changed, ['src/a.ts'])
+  assert.deepEqual(lastOf(stopped.events), {
+    at: lastOf(stopped.events).at,
+    state: 'stopped',
+    by: 'agent',
+    run: 'r1',
+  })
+  assert.deepEqual(await store.readProgress(project, comment.id), [])
+  // Once only, and never a comment the agent answered.
+  assert.equal(await comments.abandon(comment.id, 'a1'), undefined)
+  const again = await update(comments, comment.id, { cancelled: false })
+  assert.equal(again.state, 'open')
+  await comments.claim(comment.id, { agent: 'a3' })
+  await comments.answer(comment.id, 'Done.')
+  assert.equal(await comments.abandon(comment.id, 'a3'), undefined)
+})
+
 test('with a dev widget, the debug history keeps every run, and goes with the comment', async (t) => {
   const { project, comment } = await setUp(t)
   const comments = store.createStore(project, { history: true })
