@@ -205,6 +205,10 @@ released to the `stable` branch.
   the message box and the element picker have had theirs, and the panel is
   named Code Buddy. A message box with text keeps Escape for itself; an empty
   one goes back to the list. (#68)
+- The status filter of All comments had no name for screen readers, and each
+  of its radios was a Tab stop the arrow keys did nothing in. It is now named
+  Filter by status, one Tab stop, and the arrow keys, Home and End move
+  through it. (#79)
 - Options ticked under a multiple-choice question, but not sent, stayed
   ticked once the thread left the question another way (resolved, stopped):
   Claude's next question in the thread showed an option of the same label

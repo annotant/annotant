@@ -1654,6 +1654,7 @@ export default function App({ root }: { root: Element }) {
   const allCommentsView = () => (
     <>
       <Toggle
+        label="Filter by status"
         value={statusFilter}
         onChange={setStatusFilter}
         options={[
