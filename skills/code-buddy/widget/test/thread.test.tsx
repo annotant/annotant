@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeEvents, fakeServer, openThread } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, shownStep } from './widget'
 
 test('a claimed comment shows what Claude is doing, and can be cancelled', async () => {
   const server = fakeServer([
@@ -13,8 +13,8 @@ test('a claimed comment shows what Claude is doing, and can be cancelled', async
   openThread('c1')
   renderWidget()
 
-  const progress = await screen.findByTestId('cb-progress')
-  expect(progress.textContent).toContain('Reading src/App.tsx')
+  await screen.findByTestId('cb-progress')
+  expect(shownStep()).toContain('Reading src/App.tsx')
   // No reply while it works: the next move is Claude's.
   expect(screen.queryByRole('textbox')).toBeNull()
 
@@ -395,7 +395,7 @@ test('a thread names the model Claude works on, and why it was picked', async ()
   expect(model.getAttribute('title')).toBe(
     'Claude works on claude-haiku-5-5: the comment was sorted trivial',
   )
-  expect(screen.getByTestId('cb-progress').textContent).toContain('Started on haiku')
+  expect(shownStep()).toContain('Started on haiku')
 })
 
 test('a thread with no label names the model alone', async () => {
@@ -450,4 +450,22 @@ test('a thread whose latest run recorded no model names none', async () => {
   renderWidget()
   await screen.findByTestId('cb-progress')
   expect(screen.queryByTestId('cb-model')).toBeNull()
+})
+
+test('a failed step reads its error aloud, which the line keeps in its title', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      progress: [
+        { at: 1, kind: 'bash', label: 'npm test', state: 'failed', error: 'Exit 1' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const progress = await screen.findByTestId('cb-progress')
+  expect(progress.querySelector('[aria-live]')?.textContent).toBe(
+    'npm test failed: Exit 1',
+  )
 })

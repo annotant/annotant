@@ -257,8 +257,9 @@ code { font-family: var(--cb-mono); }
 .cb-message-time { font-size: 11px; color: var(--cb-muted); font-variant-numeric: tabular-nums; }
 .cb-working { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cb-accent); }
 .cb-working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* One line, the latest step: the previous one leaves right, the new one enters left. */
+/* Read by screen readers only. */
 .cb-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* One line, the latest step: the previous one leaves right, the new one enters left. */
 .cb-current { position: relative; overflow: hidden; padding: 8px 10px; border-radius: var(--cb-radius); background: var(--cb-accent-weak); color: var(--cb-accent-strong); font-size: 13px; font-weight: 600; }
 .cb-current:has(.cb-current-line--failed) { background: var(--cb-red-bg); }
 .cb-current-line { display: flex; align-items: center; gap: 8px; white-space: nowrap; }

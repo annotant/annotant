@@ -2,7 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { updateComment } from '../src/api'
-import { renderWidget } from './widget'
+import { renderWidget, shownStep } from './widget'
 
 const listed = (fetch: ReturnType<typeof fakeServer>['fetch']) =>
   fetch.mock.calls.filter(([url, init]) => !init?.method && url.includes('/api/comments'))
@@ -19,9 +19,8 @@ test('a comment shows its new step as soon as the server says it changed', async
   fakeServer(comments)
   openThread('c1')
   renderWidget()
-  expect((await screen.findByTestId('cb-progress')).textContent).toContain(
-    'Reading src/App.tsx',
-  )
+  await screen.findByTestId('cb-progress')
+  expect(shownStep()).toContain('Reading src/App.tsx')
   expect(events.streams[0]?.url).toMatch(/\/api\/events$/)
 
   comments[0] = {
@@ -29,11 +28,7 @@ test('a comment shows its new step as soon as the server says it changed', async
     progress: [{ at: 2, kind: 'read', label: 'src/main.tsx', state: 'running' }],
   }
   events.send('changed')
-  await waitFor(() =>
-    expect(screen.getByTestId('cb-progress').textContent).toContain(
-      'Reading src/main.tsx',
-    ),
-  )
+  await waitFor(() => expect(shownStep()).toContain('Reading src/main.tsx'))
 })
 
 test('the widget asks for nothing while nothing changes', async () => {

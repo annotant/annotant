@@ -206,9 +206,10 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
 
   return (
     <div className="cb-current" data-testid="cb-progress">
-      {/* Read alone: the lines below hold the step sliding away too. */}
+      {/* Read alone: the lines below hold the step sliding away too, and
+          hide the error in their title. */}
       <span className="cb-visually-hidden" aria-live="polite">
-        {activityOf(step)}
+        {step?.error ? `${activityOf(step)}: ${step.error}` : activityOf(step)}
       </span>
       {leaving && (
         <StepLine
