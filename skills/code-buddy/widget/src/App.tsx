@@ -161,6 +161,7 @@ function StepLine({
     <div
       className={`${className}${failed ? ' cb-current-line--failed' : ''}`}
       title={step?.error}
+      aria-hidden="true"
     >
       <span className="cb-step-icon">
         <Icon name={step ? (STEP_ICONS[step.kind] ?? 'wrench') : 'lightning'} />
@@ -204,7 +205,12 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
   })
 
   return (
-    <div className="cb-current" data-testid="cb-progress" aria-live="polite">
+    <div className="cb-current" data-testid="cb-progress">
+      {/* Read alone: the lines below hold the step sliding away too, and
+          hide the error in their title. */}
+      <span className="cb-visually-hidden" aria-live="polite">
+        {step?.error ? `${activityOf(step)}: ${step.error}` : activityOf(step)}
+      </span>
       {leaving && (
         <StepLine
           key={`out-${stepKey(leaving)}`}

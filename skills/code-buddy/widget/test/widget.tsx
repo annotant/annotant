@@ -17,6 +17,12 @@ export function renderWidget() {
   }
 }
 
+/** The step the thread draws, without the one sliding away or the text read aloud. */
+export const shownStep = () =>
+  document.querySelector(
+    '[data-testid="cb-progress"] .cb-current-line:not(.cb-current-line--out)',
+  )?.textContent
+
 /** happy-dom has no CSS Custom Highlight API: a registry to read back. */
 export function stubHighlights() {
   const highlights = new Map<string, Set<Range>>()
