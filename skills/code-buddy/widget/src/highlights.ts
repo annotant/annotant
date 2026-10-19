@@ -1,5 +1,6 @@
 import type { ReviewAnchor } from './domain'
 import { elementFromAnchor, rangeFromAnchor, scrollToArea } from './anchors'
+import { scrollBehavior } from './styles'
 
 /**
  * The text the comment being written is about, until it is saved. Saved, it
@@ -33,5 +34,5 @@ export function scrollToComment(root: Element, anchor: ReviewAnchor): void {
           (heading) => heading.textContent?.trim() === anchor.section,
         )
       : undefined)
-  target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  target?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
 }

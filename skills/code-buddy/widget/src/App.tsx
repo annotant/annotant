@@ -85,7 +85,7 @@ import {
   toast,
 } from './ui'
 import { activityOf, isOngoing, stepKey } from './activity'
-import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION } from './styles'
+import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
 import buddy from './assets/buddy.webp'
 import buddyThinking from './assets/buddy-thinking.webp'
 
@@ -104,7 +104,6 @@ const clampWidth = (value: number) =>
   Math.round(
     Math.min(Math.max(value, MIN_PANEL_WIDTH), window.innerWidth * MAX_PANEL_RATIO),
   )
-const CENTER: ScrollIntoViewOptions = { behavior: 'smooth', block: 'center' }
 const PENDING_CENTER_MS = 5000
 const FLASH_MS = 1500
 const UI_KEY = 'code-buddy:ui'
@@ -805,7 +804,7 @@ export default function App({ root }: { root: Element }) {
 
   const spotlight = useCallback(
     (element: Element, id?: string) => {
-      element.scrollIntoView(CENTER)
+      element.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
       if (id) setActiveId(id)
       flashOn(element)
     },

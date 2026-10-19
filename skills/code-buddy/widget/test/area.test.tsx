@@ -533,3 +533,17 @@ test("the area's chip works from the keyboard: focused it shows the area, presse
     behavior: 'smooth',
   })
 })
+
+test("the area's chip centres it at once when motion is reduced", async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(prefers-reduced-motion: reduce)',
+  }))
+  openPanel('page', 'c1')
+  renderCards([comment({ area: DRAWN, state: 'resolved' })])
+
+  fireEvent.click(await screen.findByRole('button', { name: /500 × 60/ }))
+  expect(window.scrollBy).toHaveBeenCalledWith({
+    top: 300 + 30 - window.innerHeight / 2,
+    behavior: 'auto',
+  })
+})

@@ -10,6 +10,7 @@ import {
   MAX_STROKES,
   normaliseQuote,
 } from './domain'
+import { scrollBehavior } from './styles'
 
 const HEADINGS = 'h1, h2, h3'
 /** The page's text kept on each side of a quote, to tell its copies apart; as the server's. */
@@ -904,5 +905,5 @@ export function scrollToArea(root: Element, area: ReviewArea): void {
     rect.height > window.innerHeight - 2 * margin
       ? rect.top - margin
       : rect.top + rect.height / 2 - window.innerHeight / 2
-  window.scrollBy({ top, behavior: 'smooth' })
+  window.scrollBy({ top, behavior: scrollBehavior() })
 }
