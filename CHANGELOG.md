@@ -193,6 +193,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **A comment its agent leaves unfinished no longer shows an agent at work
+  for good.** An agent that ends its turn without answering or asking stops
+  its comment: the thread says "Claude stopped without finishing", with what
+  it had changed, and the reader sends it again. (#171)
 - An element chip that opened a page the app then redirected (a trailing
   slash, a basename, a locale) left its jump pending: a later visit to that
   page scrolled to the element and flashed it, out of nowhere. The jump is now
