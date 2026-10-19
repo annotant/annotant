@@ -828,6 +828,11 @@ export default function App({ root }: { root: Element }) {
 
   useEffect(() => () => clearTimeout(flashTimer.current), [])
 
+  // The jump is for the page that loads right after the chip's click: whether this
+  // is its page or the app sent the reader elsewhere, it must not wait for a later visit.
+  useEffect(() => writeSession(CENTER_KEY, undefined), [])
+  if (pendingCenter && route !== pendingCenter.path) setPendingCenter(undefined)
+
   useEffect(() => {
     if (!pendingCenter || route !== pendingCenter.path) return undefined
     const deadline = Date.now() + PENDING_CENTER_MS
@@ -844,7 +849,6 @@ export default function App({ root }: { root: Element }) {
       }
       if (area) spotlightArea(area, id)
       else if (element) spotlight(element, id)
-      writeSession(CENTER_KEY, undefined)
       setPendingCenter(undefined)
     }
     attempt()
