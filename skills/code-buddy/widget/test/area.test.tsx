@@ -516,6 +516,23 @@ test('an area opened from another page waits for its element to be laid out', as
   expect(sessionStorage.getItem('code-buddy:center')).toBeNull()
 })
 
+test('a jump to a page the app sent elsewhere does not fire on a later visit to that page', async () => {
+  const anchor = { section: '', quote: '', occurrence: 0, area: DRAWN }
+  // The chip opened /cards, which the app redirected to /.
+  sessionStorage.setItem(
+    'code-buddy:center',
+    JSON.stringify({ anchor, path: '/cards', id: 'c1' }),
+  )
+  renderCards([comment({ area: DRAWN })])
+  await waitFor(() => expect(sessionStorage.getItem('code-buddy:center')).toBeNull())
+
+  history.pushState(null, '', '/cards')
+  onTestFinished(() => history.pushState(null, '', '/'))
+  // Longer than the route takes to be noticed.
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  expect(window.scrollBy).not.toHaveBeenCalled()
+})
+
 test("the area's chip works from the keyboard: focused it shows the area, pressed it centres it", async () => {
   openPanel('page', 'c1')
   renderCards([comment({ area: DRAWN, state: 'resolved' })])

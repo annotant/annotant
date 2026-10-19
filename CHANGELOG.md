@@ -193,6 +193,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- An element chip that opened a page the app then redirected (a trailing
+  slash, a basename, a locale) left its jump pending: a later visit to that
+  page scrolled to the element and flashed it, out of nowhere. The jump is now
+  only for the page that loads right after the click. (#71)
 - The panel left the keyboard's focus where it was: a thread opened from a
   bubble kept it on the page, and closing the panel dropped it on the page's
   body. Escape did not close it, and screen readers had no name for it.
