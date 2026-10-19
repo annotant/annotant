@@ -410,7 +410,9 @@ export function Toggle<T extends string>({
   label: string
 }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = RADIO_STEPS[event.key]
+    // Alt+Left and the like are the browser's, not the group's.
+    const step =
+      !event.altKey && !event.ctrlKey && !event.metaKey && RADIO_STEPS[event.key]
     if (!step) return
     event.preventDefault()
     const current = options.findIndex((option) => option.value === value)

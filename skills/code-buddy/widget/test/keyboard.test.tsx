@@ -129,6 +129,10 @@ test('the status filter is one named Tab stop that arrow keys move through', asy
   expect(radio('Resolved').tabIndex).toBe(0)
   expect(radio('Open').tabIndex).toBe(-1)
 
+  // A shortcut of the browser's is left alone.
+  fireEvent.keyDown(radio('Resolved'), { key: 'ArrowLeft', altKey: true })
+  expect(radio('Resolved').getAttribute('aria-checked')).toBe('true')
+
   // The last radio wraps around to the first, and back.
   fireEvent.keyDown(radio('Resolved'), { key: 'ArrowDown' })
   expect(document.activeElement).toBe(radio('All'))
