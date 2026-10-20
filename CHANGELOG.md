@@ -93,7 +93,8 @@ released to the `stable` branch.
   `,` comments on the selected text (or the page), `.` points at an element,
   `Enter` opens or closes the panel, `↓`/`↑` go through the page's comments.
   While pointing, the arrow keys move the outline and Enter picks. `?` in the
-  panel lists them; the buttons' tooltips name them. The page's own fields
+  panel lists them; the buttons' tooltips name them, as the reader's keyboard
+  types them where the browser says (`;` for `,` on AZERTY, in Chromium). The page's own fields
   keep their keys, and a message box its arrows. (#47)
 - **`/code-buddy status`.** For each project watched, the server's state and
   address or why it stopped, the agents at work (comment, agent, model, for

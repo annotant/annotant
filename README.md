@@ -176,7 +176,8 @@ directory, else from the repository root.
   to the next and previous comment on the page (not from a message box, where
   they select text). While pointing, out of a text box, the arrow keys move
   the outline to the parent, the first child or a sibling, and `Enter` picks
-  it. `?` in the panel lists them.
+  it. `?` in the panel lists them, named as your keyboard types them in
+  Chromium (`;` for `,` on AZERTY).
 
 ## Troubleshooting
 

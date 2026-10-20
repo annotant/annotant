@@ -92,6 +92,7 @@ import {
   type Shortcut,
   ariaShortcut,
   fieldOf,
+  readKeyboard,
   shortcutLabel,
   shortcutOf,
 } from './shortcuts'
@@ -639,6 +640,12 @@ export default function App({ root }: { root: Element }) {
   const openPanel = useCallback(() => {
     if (!layout.current.open) opener.current = focusedElement()
     setOpen(true)
+  }, [])
+
+  // Once the browser says what the keys type, the shortcuts' labels name them so.
+  const [, setKeyboardRead] = useState(false)
+  useEffect(() => {
+    void readKeyboard().then(setKeyboardRead)
   }, [])
 
   const page = useComments(route)

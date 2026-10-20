@@ -1,8 +1,10 @@
 /**
  * The widget's keyboard shortcuts: ⌘⇧ on macOS, Ctrl+Shift elsewhere, then a
  * key matched on `event.code`, where it is on the keyboard, so they work
- * whatever the layout. Letters with ⌘⇧ or Ctrl+Shift are nearly all taken by
- * the browsers (⌘⇧C, Ctrl+Shift+K, Ctrl+Shift+E…): these keys are not.
+ * whatever the layout; their labels say what that key types on the reader's
+ * keyboard where the browser tells it (`;` for `,` on AZERTY). Letters with ⌘⇧
+ * or Ctrl+Shift are nearly all taken by the browsers (⌘⇧C, Ctrl+Shift+K,
+ * Ctrl+Shift+E…): these keys are not.
  */
 export const SHORTCUTS = {
   comment: {
@@ -65,15 +67,48 @@ export function onMac(navigator: Platform) {
 /** Detected once: the platform does not change under the page. */
 export const MAC = onMac(globalThis.navigator)
 
+/** What each key types on a keyboard, by its `code`. */
+interface KeyboardLayout {
+  get(code: string): string | undefined
+}
+
+/** The Keyboard Map API, in Chromium only. */
+interface WithKeyboard {
+  keyboard?: { getLayoutMap?: () => Promise<KeyboardLayout> }
+}
+
+/** The reader's keyboard, once read: unknown, the labels are a US keyboard's. */
+let typed: KeyboardLayout | undefined
+
+/**
+ * Reads what the keys type on the reader's keyboard, for the labels; whether it
+ * could. The browser may not tell (Firefox, Safari), or not to a frame.
+ */
+export async function readKeyboard(
+  navigator: Partial<Navigator> & WithKeyboard = globalThis.navigator,
+) {
+  try {
+    typed = await navigator.keyboard?.getLayoutMap?.()
+  } catch {
+    // Not allowed here: a US keyboard's labels, as without the API.
+    typed = undefined
+  }
+  return !!typed
+}
+
+/** The key of `shortcut`, as it types on the reader's keyboard, if known. */
+const typedKey = (shortcut: Shortcut) => typed?.get(SHORTCUTS[shortcut].code)
+
 /** How `shortcut` reads: `⌘⇧,` on macOS, `Ctrl+Shift+,` elsewhere. */
 export function shortcutLabel(shortcut: Shortcut, mac = MAC) {
   const keys: { label: string; mac?: string } = SHORTCUTS[shortcut]
-  return mac ? `⌘⇧${keys.mac ?? keys.label}` : `Ctrl+Shift+${keys.label}`
+  const label = typedKey(shortcut)?.toUpperCase() ?? keys.label
+  return mac ? `⌘⇧${keys.mac ?? label}` : `Ctrl+Shift+${label}`
 }
 
 /** `shortcut` for `aria-keyshortcuts`. */
 export function ariaShortcut(shortcut: Shortcut, mac = MAC) {
-  return `${mac ? 'Meta' : 'Control'}+Shift+${SHORTCUTS[shortcut].key}`
+  return `${mac ? 'Meta' : 'Control'}+Shift+${typedKey(shortcut) ?? SHORTCUTS[shortcut].key}`
 }
 
 /** The shortcut `event` presses, if any: the platform's modifier and Shift, nothing else. */

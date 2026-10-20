@@ -1,7 +1,14 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import App from '../src/App'
-import { MAC, ariaShortcut, onMac, shortcutLabel, shortcutOf } from '../src/shortcuts'
+import {
+  MAC,
+  ariaShortcut,
+  onMac,
+  readKeyboard,
+  shortcutLabel,
+  shortcutOf,
+} from '../src/shortcuts'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
@@ -44,6 +51,57 @@ test("the shortcuts read with the platform's modifier", () => {
   expect(shortcutLabel('panel', true)).toBe('⌘⇧↩')
   expect(shortcutLabel('panel', false)).toBe('Ctrl+Shift+Enter')
   expect(shortcutLabel('next', false)).toBe('Ctrl+Shift+↓')
+})
+
+/** A French AZERTY keyboard, as the Keyboard Map API tells it. */
+const AZERTY = new Map([
+  ['Comma', ';'],
+  ['Period', ':'],
+  ['KeyM', ','],
+])
+
+/** The browser's answer in a frame not allowed the keyboard's map. */
+const refused = async () => {
+  throw new DOMException('Not allowed in a frame', 'SecurityError')
+}
+
+test("the labels name what the keys type on the reader's keyboard, when the browser says", async () => {
+  onTestFinished(() => void readKeyboard({}))
+
+  expect(await readKeyboard({ keyboard: { getLayoutMap: async () => AZERTY } })).toBe(
+    true,
+  )
+  expect(shortcutLabel('comment', true)).toBe('⌘⇧;')
+  expect(shortcutLabel('pick', false)).toBe('Ctrl+Shift+:')
+  expect(shortcutLabel('panel', true)).toBe('⌘⇧↩')
+  expect(ariaShortcut('comment', true)).toBe('Meta+Shift+;')
+  expect(ariaShortcut('next', false)).toBe('Control+Shift+ArrowDown')
+
+  // Without the API, or not allowed it, a US keyboard's.
+  expect(await readKeyboard({})).toBe(false)
+  expect(shortcutLabel('comment', true)).toBe('⌘⇧,')
+  await readKeyboard({ keyboard: { getLayoutMap: async () => AZERTY } })
+  expect(await readKeyboard({ keyboard: { getLayoutMap: refused } })).toBe(false)
+  expect(ariaShortcut('pick', true)).toBe('Meta+Shift+.')
+})
+
+test("the buttons name the keys as the reader's keyboard types them", async () => {
+  Object.defineProperty(navigator, 'keyboard', {
+    configurable: true,
+    value: { getLayoutMap: async () => AZERTY },
+  })
+  onTestFinished(() => {
+    Reflect.deleteProperty(navigator, 'keyboard')
+    void readKeyboard({})
+  })
+  fakeServer([])
+  renderWidget()
+
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Comment' }).title).toBe(
+      `Comment on the page (${MAC ? '⌘⇧;' : 'Ctrl+Shift+;'})`,
+    ),
+  )
 })
 
 test("a shortcut takes the platform's modifier and Shift, and nothing else", () => {
