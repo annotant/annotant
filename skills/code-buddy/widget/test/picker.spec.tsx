@@ -267,3 +267,36 @@ test("the picker's keys leave a field and the browser's shortcuts alone", () => 
   expect(onPick).not.toHaveBeenCalled()
   expect(outline()?.textContent).toBe('td')
 })
+
+test('the arrow keys skip the widget and what draws nothing', () => {
+  const { root } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  root.insertAdjacentHTML(
+    'afterbegin',
+    '<script></script><code-buddy-widget data-code-buddy></code-buddy-widget>',
+  )
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+
+  pressKey('ArrowDown')
+  pressKey('ArrowLeft')
+  pressKey('Enter')
+
+  expect(onPick).toHaveBeenCalledWith(root.querySelector('table'))
+})
+
+test('Enter on a button is the button’s, not a pick', () => {
+  const { root, first, hover } = page()
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+  const cancel = document.createElement('button')
+  document.body.append(cancel)
+  onTestFinished(() => cancel.remove())
+
+  expect(fireEvent.keyDown(cancel, { key: 'Enter' })).toBe(true)
+  expect(onPick).not.toHaveBeenCalled()
+})

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { MAC, onMac, shortcutLabel, shortcutOf } from '../src/shortcuts'
-import { comment, fakeServer, openPanel } from './server'
+import { MAC, ariaShortcut, onMac, shortcutLabel, shortcutOf } from '../src/shortcuts'
+import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
 /** The platform's modifier and Shift, as a shortcut needs them. */
@@ -228,4 +228,74 @@ test('the buttons say their shortcut', async () => {
   expect(screen.getByRole('button', { name: 'Comment' }).title).toBe(
     `Comment on the page (${shortcutLabel('comment')})`,
   )
+})
+
+test('in the message box, the shortcut picks an element for the message', async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+
+  expect(press('Period', box)).toBe(false)
+
+  await waitFor(() =>
+    expect(hint()).toBe('Click an element to add it to your message. Escape cancels.'),
+  )
+  expect(
+    screen.getByRole('button', { name: 'Stop picking' }).getAttribute('aria-pressed'),
+  ).toBe('true')
+})
+
+test('? typed in the message box is a character, not the list', async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+
+  expect(fireEvent.keyDown(box, { key: '?' })).toBe(true)
+
+  expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull()
+})
+
+test('a shortcut held down acts once', async () => {
+  fakeServer([])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+
+  press('Period')
+  fireEvent.keyDown(document.body, { code: 'Period', repeat: true, ...MOD })
+
+  await waitFor(() => expect(hint()).toContain('Click an element to comment on it'))
+})
+
+test('from a new comment, the next comment is the newest', async () => {
+  fakeServer([
+    comment({ id: 'c1', body: 'Older', createdAt: '2026-01-01T10:00:00.000Z' }),
+    comment({ id: 'c2', body: 'Newer', createdAt: '2026-01-02T10:00:00.000Z' }),
+  ])
+  openThread('c1')
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+  await screen.findByRole('textbox', { name: 'What should change?' })
+
+  press('ArrowDown')
+
+  await waitFor(() => expect(opened()).toBe('Newer'))
+})
+
+test('with no comment on the page, the shortcut says so', async () => {
+  fakeServer([])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+
+  press('ArrowDown')
+
+  expect(await screen.findByText('No comments on this page')).toBeTruthy()
+})
+
+test('aria-keyshortcuts names the keys the ARIA way', () => {
+  expect(ariaShortcut('pick', true)).toBe('Meta+Shift+.')
+  expect(ariaShortcut('next', false)).toBe('Control+Shift+ArrowDown')
 })

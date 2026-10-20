@@ -1789,7 +1789,7 @@ export default function App({ root }: { root: Element }) {
       {picksFor && (
         <ElementPicker
           root={root}
-          hint="Click an element to add it to your message, or move with the arrow keys and press Enter. Escape cancels."
+          hint="Click an element to add it to your message. Escape cancels."
           onPick={attachElement}
           onCancel={cancelAttach}
         />

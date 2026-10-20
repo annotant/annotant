@@ -173,8 +173,8 @@ directory, else from the repository root.
   focus is but in a field of your app: `,` comments on the selected text (or
   on the page), `.` points at an element (in a message box, picks one for
   it), `Enter` opens or closes the panel, `↓` and `↑` go to the next and
-  previous comment on the page. While pointing, the arrow keys move the
-  outline to the parent, the first child or a sibling, and `Enter` picks it.
+  previous comment on the page. While pointing, out of a message box, the
+  arrow keys move the outline to the parent, the first child or a sibling, and `Enter` picks it.
   `?` in the panel lists them.
 
 ## Troubleshooting

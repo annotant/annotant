@@ -31,7 +31,19 @@ export const SHORTCUTS = {
     label: '↑',
     does: 'Previous comment on this page',
   },
-} as const
+} as const satisfies Record<
+  string,
+  {
+    /** Where the key is on the keyboard. */
+    code: string
+    /** The key, as `aria-keyshortcuts` names it. */
+    key: string
+    label: string
+    /** Its label on macOS, when it differs. */
+    mac?: string
+    does: string
+  }
+>
 
 export type Shortcut = keyof typeof SHORTCUTS
 
