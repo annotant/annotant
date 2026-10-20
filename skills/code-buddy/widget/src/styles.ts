@@ -136,6 +136,8 @@ code { font-family: var(--cb-mono); }
   transition-property: width, top, right, bottom, border-radius;
   transition-duration: ${PANEL_IN_MS}ms; transition-timing-function: ease-out;
 }
+/* Spike for #100: the whole window, which has nothing else. */
+.cb-panel--popout { inset: 0; width: auto; border-radius: 0; box-shadow: none; animation: none; }
 .cb-panel--docked { top: 0; right: 0; bottom: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--cb-border); }
 /* Kept on screen until it has left: the page underneath gets the pointer back at once. */
 .cb-panel[data-closing] { animation: cb-panel-out ${PANEL_OUT_MS}ms ease-in forwards; pointer-events: none; }

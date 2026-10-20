@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   anchorFromArea,
   anchorFromDrawing,
@@ -59,6 +60,7 @@ import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
 import { setInlineStyle } from './inline'
+import { type Popout, canPopOut, popOut } from './popout'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
 import {
   AreaDrawer,
@@ -618,11 +620,15 @@ export default function App({ root }: { root: Element }) {
   const panel = useRef<HTMLElement>(null)
   const title = useRef<HTMLHeadingElement>(null)
   const [toTitle, setToTitle] = useState(0)
+  // Spike for #100: the panel in a window of its own.
+  const [popout, setPopout] = useState<Popout>()
 
   const openPanel = useCallback(() => {
     if (!layout.current.open) opener.current = focusedElement()
     setOpen(true)
-  }, [])
+    // The window comes to the front, so the message box takes the keys.
+    popout?.window.focus()
+  }, [popout])
 
   const page = useComments(route)
   const comments = page.comments
@@ -718,7 +724,9 @@ export default function App({ root }: { root: Element }) {
     paddingAnimation.current?.cancel()
     restorePadding.current?.()
     restorePadding.current =
-      open && docked ? setInlineStyle(html, 'padding-right', `${width}px`) : undefined
+      open && docked && !popout
+        ? setInlineStyle(html, 'padding-right', `${width}px`)
+        : undefined
     const moved = open !== layout.current.open || docked !== layout.current.docked
     layout.current = { open, docked }
     if (!moved || matchMedia(REDUCED_MOTION).matches) return
@@ -727,7 +735,7 @@ export default function App({ root }: { root: Element }) {
       duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
       easing: open ? 'ease-out' : 'ease-in',
     })
-  }, [open, docked, width])
+  }, [open, docked, width, popout])
 
   useEffect(
     () => () => {
@@ -745,6 +753,7 @@ export default function App({ root }: { root: Element }) {
   }, [leaving])
 
   const close = () => {
+    popout?.window.close()
     setOpen(false)
     setAttachingTo(undefined)
     setLeaving(true)
@@ -1682,6 +1691,313 @@ export default function App({ root }: { root: Element }) {
     </>
   )
 
+  const panelView = (
+    <section
+      ref={panel}
+      className={`cb-panel cb-live ${popout ? 'cb-panel--popout' : docked ? 'cb-panel--docked' : ''}`}
+      style={popout ? undefined : { width }}
+      data-closing={!open || undefined}
+      data-drawing={drawing || undefined}
+      // While the reader draws, the message box must not take Escape or Enter.
+      inert={!open || !!drawing}
+      aria-label="Code Buddy"
+      data-testid="code-buddy-panel"
+      onKeyDown={(event) => {
+        // After the message box's Escape, and the picker's: its own listener, on
+        // the document, hears it once this one has.
+        if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+        if (event.defaultPrevented || picksFor || popout) return
+        close()
+      }}
+    >
+      {!popout && (
+        <div
+          className="cb-resize"
+          data-dragging={dragging || undefined}
+          title="Drag to resize"
+          onMouseDown={startResize}
+        />
+      )}
+      <header className="cb-header">
+        <div className="cb-title">
+          {(thread || drafting) && (
+            <IconButton
+              icon="arrow-left"
+              label="Back to the list"
+              autoFocus={openedByKeys}
+              onClick={backToList}
+            />
+          )}
+          <h2 ref={title} tabIndex={-1}>
+            {drafting
+              ? 'New comment'
+              : thread
+                ? 'Comment'
+                : view === 'all'
+                  ? 'All comments'
+                  : 'Comments'}
+          </h2>
+        </div>
+        <div className="cb-header-actions">
+          {CODE_BUDDY_DEBUG && <DebugToggle />}
+          {view !== 'all' && (
+            <IconButton
+              icon="chats"
+              label="All comments"
+              onClick={() => {
+                setView('all')
+                setStatusFilter('open')
+                setThreadId(undefined)
+                setDraft(undefined)
+              }}
+            />
+          )}
+          <IconButton
+            icon="plus"
+            label="New comment"
+            disabled={drafting}
+            onClick={() => startDraft(PAGE_LEVEL)}
+          />
+          {canPopOut() && !popout && (
+            <IconButton
+              icon="external"
+              label="Open in a window"
+              onClick={() =>
+                void run(async () => {
+                  setPopout(await popOut(width, () => setPopout(undefined)))
+                })
+              }
+            />
+          )}
+          {!popout && (
+            <IconButton
+              icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
+              label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
+              onClick={toggleDocked}
+            />
+          )}
+          <IconButton icon="x" label="Close" onClick={close} />
+        </div>
+      </header>
+      <div className="cb-body" ref={setScroller}>
+        <Boundary
+          // Somewhere else in the panel, it draws again.
+          key={`${view} ${threadId ?? ''} ${drafting}`}
+          fallback={
+            <div className="cb-empty" data-testid="code-buddy-error">
+              <span className="cb-idle">This could not be shown.</span>
+            </div>
+          }
+        >
+          {() => (
+            <>
+              {view === 'all' &&
+                (thread ? guarded(thread, () => renderItem(thread)) : allCommentsView())}
+              {drafting && (
+                <div className="cb-form">
+                  {draft.section && <span className="cb-section">{draft.section}</span>}
+                  {draft.quote && (
+                    <blockquote className="cb-quote">{draft.quote}</blockquote>
+                  )}
+                  {draft.area && (
+                    <div className="cb-area-draft">
+                      {areaChip(draft)}
+                      <IconButton
+                        icon="x"
+                        label={
+                          draft.area.strokes ? 'Remove the drawing' : 'Remove the area'
+                        }
+                        onClick={() => {
+                          const { area: _, sketch: __, ...rest } = draft
+                          setTargetArea(undefined)
+                          setDraft({ ...rest, ...PAGE_LEVEL })
+                        }}
+                      />
+                    </div>
+                  )}
+                  {!draft.quote && !draft.area && (
+                    <div className="cb-draft-scope">
+                      <Checkbox
+                        checked={!draft.app}
+                        onChange={(checked) => setDraft({ ...draft, app: !checked })}
+                      >
+                        Linked to the current page ({pagePath(draft.url)})
+                      </Checkbox>
+                      <Button
+                        small
+                        variant="tertiary"
+                        icon="frame"
+                        onClick={() => startDrawing('area')}
+                      >
+                        Draw an area
+                      </Button>
+                      <Button
+                        small
+                        variant="tertiary"
+                        icon="pencil"
+                        onClick={() => startDrawing('sketch')}
+                      >
+                        Draw on the page
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {view === 'page' &&
+                !drafting &&
+                thread &&
+                guarded(thread, () => renderItem(thread))}
+              {view === 'page' &&
+                !drafting &&
+                !thread &&
+                comments
+                  .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+                  .map((comment) =>
+                    guarded(comment, () => renderSummary(comment, false)),
+                  )}
+            </>
+          )}
+        </Boundary>
+        {/* The end of the body: the message box follows the content, and
+            sticks to the panel's bottom once the content overflows. */}
+        <div className="cb-body-end">
+          {below && openedId && (
+            <button
+              type="button"
+              className="cb-scroll-down"
+              aria-label="Scroll to the latest message"
+              title="Scroll to the latest message"
+              onClick={toLatest}
+            >
+              <Icon name="chevron-down" />
+            </button>
+          )}
+          {drafting && (
+            <Composer
+              key={draft.key}
+              autoFocus
+              value={draft.body}
+              images={draft.images ?? []}
+              elements={pickedChips(draft.elements ?? [], (place) =>
+                setDraft(
+                  (current) =>
+                    current && {
+                      ...current,
+                      elements: removing(current.elements, place),
+                    },
+                ),
+              )}
+              picking={!!picksFor}
+              onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
+              placeholder="What should change?"
+              sendLabel="Save"
+              disabled={busy}
+              onChange={(body) => setDraft((current) => current && { ...current, body })}
+              onAttach={(added) =>
+                setDraft(
+                  (current) =>
+                    current && { ...current, images: adding(current.images, added) },
+                )
+              }
+              onDetach={(index) =>
+                setDraft(
+                  (current) =>
+                    current && {
+                      ...current,
+                      images: removing(current.images, index),
+                    },
+                )
+              }
+              onSubmit={() => void save()}
+              onEscape={() => !written(draft) && backToList()}
+            />
+          )}
+          {replying && (
+            <Composer
+              key={replying.id}
+              value={reply}
+              images={replyImages}
+              elements={pickedChips(replyElements, (place) =>
+                setFollowUp(
+                  (current) =>
+                    current && {
+                      ...current,
+                      elements: removing(current.elements, place),
+                    },
+                ),
+              )}
+              picking={!!picksFor}
+              onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
+              placeholder={
+                offered
+                  ? 'Or answer in your own words…'
+                  : isAsking(replying)
+                    ? 'Answer Claude…'
+                    : 'Follow up, clarify, ask for a change…'
+              }
+              disabled={busy}
+              onChange={(value) =>
+                setFollowUp((current) => ({
+                  ...(current?.id === replying.id ? current : {}),
+                  id: replying.id,
+                  body: value,
+                }))
+              }
+              onAttach={(added) =>
+                setFollowUp((current) => {
+                  const own = current?.id === replying.id ? current : undefined
+                  return {
+                    ...own,
+                    id: replying.id,
+                    body: own?.body ?? '',
+                    images: adding(own?.images, added),
+                  }
+                })
+              }
+              onDetach={(index) =>
+                setFollowUp(
+                  (current) =>
+                    current && {
+                      ...current,
+                      images: removing(current.images, index),
+                    },
+                )
+              }
+              // Options already ticked go with the text.
+              onSubmit={() =>
+                sendReply(replying, asked && offered ? ticked(replying, asked) : [])
+              }
+              // Like a new comment's: never at the cost of what the reader wrote.
+              onEscape={() =>
+                !reply && !replyImages.length && !replyElements.length && backToList()
+              }
+            />
+          )}
+          {composing && !overflowing && (
+            <div className="cb-composer-foot" ref={hintRow}>
+              {drafting ? cancelDraft : <span />}
+              {sendHint}
+            </div>
+          )}
+        </div>
+      </div>
+      <footer className="cb-panel-foot">
+        <span className="cb-composer-brand">
+          <img src={working ? buddyThinking : buddy} alt="" draggable={false} />
+          <a href={REPOSITORY} target="_blank" rel="noopener noreferrer">
+            Code Buddy v{CODE_BUDDY_VERSION}
+          </a>
+        </span>
+        {composing && overflowing && (
+          <span className="cb-panel-foot-hint">
+            {drafting && cancelDraft}
+            {sendHint}
+          </span>
+        )}
+      </footer>
+    </section>
+  )
+
   return (
     <div
       className="cb"
@@ -1727,7 +2043,7 @@ export default function App({ root }: { root: Element }) {
         <AreaDrawer root={root} onDraw={drawArea} onCancel={cancelDraw} />
       )}
       {drawing === 'sketch' && <SketchDrawer onDraw={drawSketch} onCancel={cancelDraw} />}
-      {!open && (
+      {(!open || popout) && (
         <div ref={dock} className="cb-dock cb-live">
           <Button variant="secondary" icon="chat" onClick={() => startDraft(PAGE_LEVEL)}>
             Comment
@@ -1762,305 +2078,10 @@ export default function App({ root }: { root: Element }) {
         </div>
       )}
 
-      {(open || leaving) && (
-        <section
-          ref={panel}
-          className={`cb-panel cb-live ${docked ? 'cb-panel--docked' : ''}`}
-          style={{ width }}
-          data-closing={!open || undefined}
-          data-drawing={drawing || undefined}
-          // While the reader draws, the message box must not take Escape or Enter.
-          inert={!open || !!drawing}
-          aria-label="Code Buddy"
-          data-testid="code-buddy-panel"
-          onKeyDown={(event) => {
-            // After the message box's Escape, and the picker's: its own listener, on
-            // the document, hears it once this one has.
-            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
-            if (event.defaultPrevented || picksFor) return
-            close()
-          }}
-        >
-          <div
-            className="cb-resize"
-            data-dragging={dragging || undefined}
-            title="Drag to resize"
-            onMouseDown={startResize}
-          />
-          <header className="cb-header">
-            <div className="cb-title">
-              {(thread || drafting) && (
-                <IconButton
-                  icon="arrow-left"
-                  label="Back to the list"
-                  autoFocus={openedByKeys}
-                  onClick={backToList}
-                />
-              )}
-              <h2 ref={title} tabIndex={-1}>
-                {drafting
-                  ? 'New comment'
-                  : thread
-                    ? 'Comment'
-                    : view === 'all'
-                      ? 'All comments'
-                      : 'Comments'}
-              </h2>
-            </div>
-            <div className="cb-header-actions">
-              {CODE_BUDDY_DEBUG && <DebugToggle />}
-              {view !== 'all' && (
-                <IconButton
-                  icon="chats"
-                  label="All comments"
-                  onClick={() => {
-                    setView('all')
-                    setStatusFilter('open')
-                    setThreadId(undefined)
-                    setDraft(undefined)
-                  }}
-                />
-              )}
-              <IconButton
-                icon="plus"
-                label="New comment"
-                disabled={drafting}
-                onClick={() => startDraft(PAGE_LEVEL)}
-              />
-              <IconButton
-                icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
-                label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
-                onClick={toggleDocked}
-              />
-              <IconButton icon="x" label="Close" onClick={close} />
-            </div>
-          </header>
-          <div className="cb-body" ref={setScroller}>
-            <Boundary
-              // Somewhere else in the panel, it draws again.
-              key={`${view} ${threadId ?? ''} ${drafting}`}
-              fallback={
-                <div className="cb-empty" data-testid="code-buddy-error">
-                  <span className="cb-idle">This could not be shown.</span>
-                </div>
-              }
-            >
-              {() => (
-                <>
-                  {view === 'all' &&
-                    (thread
-                      ? guarded(thread, () => renderItem(thread))
-                      : allCommentsView())}
-                  {drafting && (
-                    <div className="cb-form">
-                      {draft.section && (
-                        <span className="cb-section">{draft.section}</span>
-                      )}
-                      {draft.quote && (
-                        <blockquote className="cb-quote">{draft.quote}</blockquote>
-                      )}
-                      {draft.area && (
-                        <div className="cb-area-draft">
-                          {areaChip(draft)}
-                          <IconButton
-                            icon="x"
-                            label={
-                              draft.area.strokes
-                                ? 'Remove the drawing'
-                                : 'Remove the area'
-                            }
-                            onClick={() => {
-                              const { area: _, sketch: __, ...rest } = draft
-                              setTargetArea(undefined)
-                              setDraft({ ...rest, ...PAGE_LEVEL })
-                            }}
-                          />
-                        </div>
-                      )}
-                      {!draft.quote && !draft.area && (
-                        <div className="cb-draft-scope">
-                          <Checkbox
-                            checked={!draft.app}
-                            onChange={(checked) => setDraft({ ...draft, app: !checked })}
-                          >
-                            Linked to the current page ({pagePath(draft.url)})
-                          </Checkbox>
-                          <Button
-                            small
-                            variant="tertiary"
-                            icon="frame"
-                            onClick={() => startDrawing('area')}
-                          >
-                            Draw an area
-                          </Button>
-                          <Button
-                            small
-                            variant="tertiary"
-                            icon="pencil"
-                            onClick={() => startDrawing('sketch')}
-                          >
-                            Draw on the page
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {view === 'page' &&
-                    !drafting &&
-                    thread &&
-                    guarded(thread, () => renderItem(thread))}
-                  {view === 'page' &&
-                    !drafting &&
-                    !thread &&
-                    comments
-                      .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-                      .map((comment) =>
-                        guarded(comment, () => renderSummary(comment, false)),
-                      )}
-                </>
-              )}
-            </Boundary>
-            {/* The end of the body: the message box follows the content, and
-                sticks to the panel's bottom once the content overflows. */}
-            <div className="cb-body-end">
-              {below && openedId && (
-                <button
-                  type="button"
-                  className="cb-scroll-down"
-                  aria-label="Scroll to the latest message"
-                  title="Scroll to the latest message"
-                  onClick={toLatest}
-                >
-                  <Icon name="chevron-down" />
-                </button>
-              )}
-              {drafting && (
-                <Composer
-                  key={draft.key}
-                  autoFocus
-                  value={draft.body}
-                  images={draft.images ?? []}
-                  elements={pickedChips(draft.elements ?? [], (place) =>
-                    setDraft(
-                      (current) =>
-                        current && {
-                          ...current,
-                          elements: removing(current.elements, place),
-                        },
-                    ),
-                  )}
-                  picking={!!picksFor}
-                  onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
-                  placeholder="What should change?"
-                  sendLabel="Save"
-                  disabled={busy}
-                  onChange={(body) =>
-                    setDraft((current) => current && { ...current, body })
-                  }
-                  onAttach={(added) =>
-                    setDraft(
-                      (current) =>
-                        current && { ...current, images: adding(current.images, added) },
-                    )
-                  }
-                  onDetach={(index) =>
-                    setDraft(
-                      (current) =>
-                        current && {
-                          ...current,
-                          images: removing(current.images, index),
-                        },
-                    )
-                  }
-                  onSubmit={() => void save()}
-                  onEscape={() => !written(draft) && backToList()}
-                />
-              )}
-              {replying && (
-                <Composer
-                  key={replying.id}
-                  value={reply}
-                  images={replyImages}
-                  elements={pickedChips(replyElements, (place) =>
-                    setFollowUp(
-                      (current) =>
-                        current && {
-                          ...current,
-                          elements: removing(current.elements, place),
-                        },
-                    ),
-                  )}
-                  picking={!!picksFor}
-                  onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
-                  placeholder={
-                    offered
-                      ? 'Or answer in your own words…'
-                      : isAsking(replying)
-                        ? 'Answer Claude…'
-                        : 'Follow up, clarify, ask for a change…'
-                  }
-                  disabled={busy}
-                  onChange={(value) =>
-                    setFollowUp((current) => ({
-                      ...(current?.id === replying.id ? current : {}),
-                      id: replying.id,
-                      body: value,
-                    }))
-                  }
-                  onAttach={(added) =>
-                    setFollowUp((current) => {
-                      const own = current?.id === replying.id ? current : undefined
-                      return {
-                        ...own,
-                        id: replying.id,
-                        body: own?.body ?? '',
-                        images: adding(own?.images, added),
-                      }
-                    })
-                  }
-                  onDetach={(index) =>
-                    setFollowUp(
-                      (current) =>
-                        current && {
-                          ...current,
-                          images: removing(current.images, index),
-                        },
-                    )
-                  }
-                  // Options already ticked go with the text.
-                  onSubmit={() =>
-                    sendReply(replying, asked && offered ? ticked(replying, asked) : [])
-                  }
-                  // Like a new comment's: never at the cost of what the reader wrote.
-                  onEscape={() =>
-                    !reply && !replyImages.length && !replyElements.length && backToList()
-                  }
-                />
-              )}
-              {composing && !overflowing && (
-                <div className="cb-composer-foot" ref={hintRow}>
-                  {drafting ? cancelDraft : <span />}
-                  {sendHint}
-                </div>
-              )}
-            </div>
-          </div>
-          <footer className="cb-panel-foot">
-            <span className="cb-composer-brand">
-              <img src={working ? buddyThinking : buddy} alt="" draggable={false} />
-              <a href={REPOSITORY} target="_blank" rel="noopener noreferrer">
-                Code Buddy v{CODE_BUDDY_VERSION}
-              </a>
-            </span>
-            {composing && overflowing && (
-              <span className="cb-panel-foot-hint">
-                {drafting && cancelDraft}
-                {sendHint}
-              </span>
-            )}
-          </footer>
-        </section>
-      )}
+      {(open || leaving) &&
+        (popout
+          ? createPortal(<div className="cb">{panelView}</div>, popout.container)
+          : panelView)}
       {CODE_BUDDY_DEBUG && (
         <DebugPanel
           held={[...comments, ...(created ? [created] : [])]}
