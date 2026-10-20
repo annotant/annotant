@@ -38,7 +38,7 @@ export const SHORTCUTS = {
   {
     /** Where the key is on the keyboard. */
     code: string
-    /** The key on a US keyboard, as `aria-keyshortcuts` names it: what it types on the reader's, when known. */
+    /** The key on a US keyboard, as `aria-keyshortcuts` names it (`ariaShortcut` puts the reader's, when known). */
     key: string
     label: string
     /** Its label on macOS, when it differs. */
@@ -86,10 +86,10 @@ export async function readKeyboard(
 ) {
   try {
     return await navigator.keyboard?.getLayoutMap?.()
-  } catch (error) {
-    // Refused here (a frame): as without the API. Anything else is a bug, to see.
-    if (error instanceof DOMException) return undefined
-    throw error
+  } catch {
+    // Refused here (a frame), or a stand-in of the page's failing: as without the API.
+    // A label is not worth an error in the host's page.
+    return undefined
   }
 }
 

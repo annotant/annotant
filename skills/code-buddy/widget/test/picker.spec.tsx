@@ -145,7 +145,7 @@ test.each(['pointerDown', 'mouseDown', 'pointerUp', 'mouseUp', 'click'] as const
     render(<ElementPicker root={root} onPick={() => {}} onCancel={() => {}} />)
     act(() => hover(first))
 
-    const event = createEvent[name](first, { clientX: 20, clientY: 30 })
+    const event = createEvent[name](first, { clientX: 20, clientY: 30, detail: 1 })
     fireEvent(first, event)
 
     expect(reached).not.toHaveBeenCalled()
@@ -166,7 +166,7 @@ test('only the click picks the element', () => {
   fireEvent.mouseUp(first)
   expect(onPick).not.toHaveBeenCalled()
 
-  fireEvent.click(first)
+  fireEvent.click(first, { detail: 1 })
   expect(onPick).toHaveBeenCalledExactlyOnceWith(first)
 })
 
@@ -370,30 +370,33 @@ test('once the pointer moves the outline, a button has its Enter back', () => {
   expect(onPick).not.toHaveBeenCalled()
 })
 
-test('the click Enter makes of a button is the button’s, not a pick', () => {
+test('the click Enter makes of a button is the button’s, not a pick, even with the key kept', () => {
   const { root, first, hover } = page()
   const onPick = vi.fn()
   render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
   const button = document.createElement('button')
   const pressed = vi.fn()
   button.addEventListener('click', pressed)
+  // The page's menu keeps its keys to itself.
+  button.addEventListener('keydown', (event) => event.stopPropagation())
   document.body.append(button)
   onTestFinished(() => button.remove())
   // A click from the keyboard is at 0, 0: over the page's first element.
   act(() => hover(first))
 
   fireEvent.keyDown(button, { key: 'Enter' })
+  // No press of the pointer: `detail` 0.
   fireEvent.click(button)
 
   expect(pressed).toHaveBeenCalled()
   expect(onPick).not.toHaveBeenCalled()
   // The pointer's next click picks again.
   fireEvent.pointerDown(first)
-  fireEvent.click(first)
+  fireEvent.click(first, { detail: 1 })
   expect(onPick).toHaveBeenCalledWith(first)
 })
 
-test('a focused link keeps its Enter', () => {
+test('a focused link keeps its Enter, as anything focused does', () => {
   const { root, first, hover } = page()
   const onPick = vi.fn()
   render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
@@ -403,8 +406,18 @@ test('a focused link keeps its Enter', () => {
   document.body.append(link)
   onTestFinished(() => link.remove())
 
+  const tab = document.createElement('div')
+  tab.setAttribute('role', 'tab')
+  tab.tabIndex = 0
+  document.body.append(tab)
+  onTestFinished(() => tab.remove())
+
   expect(fireEvent.keyDown(link, { key: 'Enter' })).toBe(true)
+  expect(fireEvent.keyDown(tab, { key: 'Enter' })).toBe(true)
   expect(onPick).not.toHaveBeenCalled()
+  // Nothing focused, Enter picks.
+  expect(fireEvent.keyDown(document.body, { key: 'Enter' })).toBe(false)
+  expect(onPick).toHaveBeenCalledWith(first)
 })
 
 test('the arrow keys go through a wrapper drawing no box, to its children', () => {

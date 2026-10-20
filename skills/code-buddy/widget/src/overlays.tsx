@@ -767,9 +767,6 @@ function stepFrom(root: Element, from: Element | undefined, key: string) {
   return siblings[siblings.indexOf(from) + (key === 'ArrowRight' ? 1 : -1)]
 }
 
-/** What Enter acts on, when it has the focus. */
-const CONTROLS = 'button, a[href], summary, [role="button"], [role="link"]'
-
 const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
 /**
@@ -805,11 +802,9 @@ export function ElementPicker({
     // The element outlined, for Enter and the arrow keys: none off an element.
     let outlined: Element | undefined
     // Moved there with the arrow keys since the focus or the pointer last moved:
-    // Enter picks it, even with the focus on a control (the picker's own button,
-    // clicked to start it).
+    // Enter picks it, even with the focus on a button (the picker's own, clicked to
+    // start it).
     let byKeys = false
-    // Enter or Space pressed last, not the pointer: a click now comes from them.
-    let keyed = false
     const target = (event: MouseEvent) => {
       const element = document.elementFromPoint(event.clientX, event.clientY)
       return element &&
@@ -835,13 +830,10 @@ export function ElementPicker({
     // The page gets no press on the element being picked, nor its default
     // (focus, a menu opening on pointerdown, a drag): the click only picks.
     const onPress = (event: MouseEvent) => {
-      // The click the browser makes of Enter or Space on a control is the control's:
-      // at 0, 0, it is on no element of its own.
-      if (event.type === 'click' && keyed) {
-        keyed = false
-        return
-      }
-      if (event.type !== 'click') keyed = false
+      // A click with no press of the pointer (`detail` 0) is the one the browser makes of
+      // Enter or Space on a control, and the control's: its point, 0, 0, would pick the
+      // page's top-left element.
+      if (event.type === 'click' && event.detail === 0) return
       const element = target(event)
       if (!element) return
       event.preventDefault()
@@ -850,15 +842,14 @@ export function ElementPicker({
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') return onCancel()
-      keyed = event.key === 'Enter' || event.key === ' '
       // Fields keep their keys, and the browser its shortcuts.
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (event.defaultPrevented || fieldOf(event)) return
       if (event.key === 'Enter') {
-        // A control keeps its Enter, the dock's Cancel among them, unless the arrows
-        // moved the outline since the focus came to it.
+        // What has the focus keeps its Enter, the dock's Cancel among them, unless the
+        // arrows moved the outline since the focus came to it.
         const [focused] = event.composedPath()
-        if (!byKeys && focused instanceof Element && focused.matches(CONTROLS)) return
+        if (!byKeys && focused instanceof Element && focused !== document.body) return
         const element = outlined
         if (!element?.isConnected) return
         event.preventDefault()
