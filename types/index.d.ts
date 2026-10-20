@@ -18,7 +18,7 @@ export type CommentsFile = {
       images?: string[]
       elements?: { tag?: string; text?: string }[]
     }[]
-    events?: { by: string }[]
+    events?: { by: string; agent?: string }[]
   }[]
 }
 

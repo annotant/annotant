@@ -43,6 +43,7 @@ import {
   type ReviewProgress,
   type Status,
   answered,
+  gaveUp,
   gist,
   isActive,
   isAsking,
@@ -1500,7 +1501,11 @@ export default function App({ root }: { root: Element }) {
         ))}
       {paused(comment) && (
         <div className="cb-stopped" data-testid="cb-cancelled">
-          <strong>Claude was stopped.</strong>{' '}
+          <strong>
+            {gaveUp(comment)
+              ? 'Claude stopped without finishing.'
+              : 'Claude was stopped.'}
+          </strong>{' '}
           {comment.cancellation?.changed.length ? (
             <>
               It had already changed{' '}

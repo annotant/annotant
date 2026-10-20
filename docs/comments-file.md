@@ -135,7 +135,7 @@ copy.
 { "at": "2026-10-10T15:52:19.733Z", "changed": ["src/data.ts"], "steps": 2, "run": "r6" }
 ```
 
-`at` is the time of its `stopped` event. `changed` lists the files the stopped
+`at` is the time of its `stopped` event, the reader's or the agent's. `changed` lists the files the stopped
 run had written, relative to the repository: a failed write is not counted,
 and one cut short by the stop is. `steps` counts its tool calls, not its
 thinking or messages.
@@ -148,7 +148,7 @@ thinking or messages.
 | `working` | An agent claimed it: a run is in progress. |
 | `asking` | Claude asked the reader a question. |
 | `answered` | Claude answered a follow-up on a thread resolved before: the reader follows up again or resolves it. |
-| `stopped` | The reader stopped the run. |
+| `stopped` | The reader stopped the run, or its agent ended its turn without finishing. |
 | `resolved` | Done. |
 
 ```mermaid
@@ -159,7 +159,7 @@ stateDiagram-v2
     working --> asking: ask.mjs
     working --> resolved: resolve.mjs, first time
     working --> answered: resolve.mjs, once resolved before
-    working --> stopped: the reader stops
+    working --> stopped: the reader stops, or the agent ends without finishing
     open --> stopped: the reader stops
     asking --> open: the reader answers
     answered --> open: the reader follows up
@@ -178,6 +178,7 @@ stateDiagram-v2
 | `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
+| `working → stopped` | `hook.mjs ended`, run by the hooks once the comment's agent ended its turn without answering or asking, on a run it claimed or that names no agent | agent | The `cancellation`, with the `run`. |
 | `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` | reader | A `reader` message, with `sentAt`. |
 | `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images or elements alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |

@@ -195,6 +195,33 @@ test('an agent that stops holds nothing; one whose comment ended neither', async
   assert.equal(await w.tool(2, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
 })
 
+test('a comment its agent left working when its turn ended stops', async (t) => {
+  const w = await world(t, 3)
+  await w.claim(0)
+  await w.claim(1)
+  await w.comments.answer(w.id(1), 'Done.')
+  await w.comments.claim(w.id(2), { agent: 'a3' })
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  const ended = (index, agent = 'a1') =>
+    run(
+      process.execPath,
+      [HOOK, 'ended', '--comment', w.id(index), '--project', w.root, '--agent', agent],
+      { input: '', env: { CODE_BUDDY_STATE_DIR: stateDir } },
+    )
+  assert.equal((await ended(0)).stdout.trim(), 'STOPPED')
+  // An answered comment, or one stopped already, stays as it is.
+  assert.equal((await ended(1)).stdout, '')
+  assert.equal((await ended(0)).stdout, '')
+  // Another agent's end leaves a run it did not claim.
+  assert.equal((await ended(2, 'a1')).stdout, '')
+  const [stopped, answered, claimed] = await w.comments.readAll()
+  assert.equal(claimed.state, 'working')
+  assert.equal(stopped.state, 'stopped')
+  assert.equal(stopped.events.at(-1)?.by, 'agent')
+  assert.deepEqual(stopped.cancellation?.changed, ['src/App.tsx'])
+  assert.equal(answered.state, 'resolved')
+})
+
 test('tells an agent whose comment the reader cancelled to stop, or that waits on them', async (t) => {
   const w = await world(t)
   await w.claim(0)

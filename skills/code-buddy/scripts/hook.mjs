@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// hook.mjs <pre|post|stop|note> --comment <id> --project <dir> [--lock-root <dir>]
+// hook.mjs <pre|post|stop|note|ended> --comment <id> --project <dir> [--lock-root <dir>] [--agent <id>]
 // The hooks of one comment's agent: Claude Code runs them around each of its
 // tools with the event as JSON on stdin. Claude Code runs no plugin mod hook
 // for an agent a plugin starts, so the plugin's hooks module registers each
@@ -13,6 +13,9 @@
 // stop: the agent stopped; it holds nothing.
 // note: the hooks module's steps (what the agent thinks and says), as JSON
 //      lines on stdin.
+// ended: the hooks module, once the agent's turn ended: a comment it left
+//      working, neither answered nor asked about, stops, so the reader can
+//      send it again. Prints `STOPPED` when it did.
 //
 // `--lock-root`: the git repository the project is in, which the hooks module
 // found; agents may edit outside the project (`editable` such as `../api`).
@@ -23,7 +26,7 @@ import path from 'node:path'
 import { withFileLock } from './lib/filelock.mjs'
 import { currentRun, parseFile } from './lib/format.mjs'
 import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
-import { isActive, progressPath } from './lib/store.mjs'
+import { createStore, isActive, progressPath } from './lib/store.mjs'
 
 /** @typedef {import('./lib/format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./lib/format.mjs').Step} Step */
@@ -442,6 +445,17 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       await log(`agent stopped: released ${released.length} lock(s)`)
     },
 
+    /** Whether the comment, left working by the agent, stopped. */
+    async ended() {
+      const stopped = await createStore(project).abandon(comment, agent)
+      if (!stopped) return false
+      const released = await releaseAll()
+      await log(
+        `turn ended with the comment working: stopped it, released ${released.length} lock(s)`,
+      )
+      return true
+    },
+
     /** @param {Step[]} steps */
     note: record,
   }
@@ -467,14 +481,15 @@ async function main() {
   const root = flag('--project')
   if (!mode || !comment || !root) {
     console.error(
-      'usage: hook.mjs <pre|post|stop|note> --comment <id> --project <dir> [--lock-root <dir>]',
+      'usage: hook.mjs <pre|post|stop|note|ended> --comment <id> --project <dir> [--lock-root <dir>] [--agent <id>]',
     )
     process.exit(2)
   }
   let text = ''
   for await (const chunk of process.stdin) text += chunk
   /** @type {HookInput} */
-  const event = mode === 'note' || !text.trim() ? {} : JSON.parse(text)
+  const event =
+    mode === 'note' || mode === 'ended' || !text.trim() ? {} : JSON.parse(text)
   const hooks = hooksFor({
     comment,
     root,
@@ -495,7 +510,14 @@ async function main() {
       )
   } else if (mode === 'post') await hooks.post(event)
   else if (mode === 'stop') await hooks.stop()
-  else if (mode === 'note')
+  else if (mode === 'ended') {
+    // The hooks module logs why it could not stop the comment.
+    const stopped = await hooks.ended().catch((error) => {
+      console.error(String(error))
+      return false
+    })
+    if (stopped) console.log('STOPPED')
+  } else if (mode === 'note')
     await hooks.note(
       text
         .split('\n')
