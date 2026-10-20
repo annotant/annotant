@@ -276,7 +276,13 @@ test('the arrow keys skip the widget and what draws nothing', () => {
   onTestFinished(() => scroll.mockRestore())
   root.insertAdjacentHTML(
     'afterbegin',
-    '<script></script><code-buddy-widget data-code-buddy></code-buddy-widget>',
+    '<script></script><code-buddy-widget data-code-buddy></code-buddy-widget><div hidden></div>',
+  )
+  // happy-dom lays nothing out: the hidden element has no box, as in a browser.
+  const hidden = root.querySelector('[hidden]')
+  if (!hidden) throw new Error('no hidden element')
+  vi.spyOn(hidden, 'getClientRects').mockReturnValue(
+    Object.assign([], { item: () => null }),
   )
   const onPick = vi.fn()
   render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
@@ -316,4 +322,30 @@ test('the arrow keys move the outline with the focus on a button', () => {
   act(() => void fireEvent.keyDown(button, { key: 'ArrowRight' }))
 
   expect(outline()?.style.transform).toBe('translate(110px, 20px)')
+})
+
+test('Enter picks the element the arrows moved to, even with the focus on a button', () => {
+  const { root, first, second, hover } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+  // The picker's own button, clicked to start it, keeps the focus.
+  const button = document.createElement('button')
+  document.body.append(button)
+  onTestFinished(() => button.remove())
+
+  act(() => void fireEvent.keyDown(button, { key: 'ArrowRight' }))
+  // Once the focus moves, the button it reaches keeps its Enter again.
+  fireEvent.focusIn(button)
+  expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(true)
+  expect(onPick).not.toHaveBeenCalled()
+  act(() => void fireEvent.keyDown(button, { key: 'ArrowLeft' }))
+  act(() => void fireEvent.keyDown(button, { key: 'ArrowRight' }))
+
+  expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(false)
+  expect(onPick).toHaveBeenCalledWith(second)
 })

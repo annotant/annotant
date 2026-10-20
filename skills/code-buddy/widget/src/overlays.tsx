@@ -733,8 +733,12 @@ export const HOVER_DWELL_MS = 50
 /** What the picker's arrow keys skip, besides the widget: elements that draw nothing. */
 const UNPICKABLE = 'script, style, template, noscript, link, meta'
 
+/** Whether `element` has a box (`hidden`, `display: none`: none), or boxes its children do. */
+const hasBox = (element: Element) =>
+  element.getClientRects().length > 0 || getComputedStyle(element).display === 'contents'
+
 const pickable = (element: Element | null | undefined) =>
-  element && !element.matches(UNPICKABLE) && !element.closest(WIDGET)
+  element && !element.matches(UNPICKABLE) && !element.closest(WIDGET) && hasBox(element)
     ? element
     : undefined
 
@@ -786,6 +790,9 @@ export function ElementPicker({
     let dwell = 0
     // The element outlined, for Enter and the arrow keys: none off an element.
     let outlined: Element | undefined
+    // Moved there with the arrow keys since the focus last moved: Enter picks it,
+    // even with the focus on a button (the picker's own, clicked to start it).
+    let byKeys = false
     const target = (event: MouseEvent) => {
       const element = document.elementFromPoint(event.clientX, event.clientY)
       return element &&
@@ -802,6 +809,7 @@ export function ElementPicker({
       clearTimeout(dwell)
       dwell = window.setTimeout(() => {
         outlined = element
+        byKeys = false
         if (element) setHovered(element)
         setOver(!!element)
         setScrolled(false)
@@ -818,12 +826,13 @@ export function ElementPicker({
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') return onCancel()
-      // The reader's message box keeps its keys, and the browser its shortcuts.
+      // Fields keep their keys, and the browser its shortcuts.
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (event.defaultPrevented || fieldOf(event)) return
       if (event.key === 'Enter') {
-        // A button keeps its Enter: the dock's Cancel among them.
-        if (event.composedPath()[0] instanceof HTMLButtonElement) return
+        // A button keeps its Enter, the dock's Cancel among them, unless the arrows moved
+        // the outline since the focus came to it.
+        if (!byKeys && event.composedPath()[0] instanceof HTMLButtonElement) return
         const element = outlined
         if (!element?.isConnected) return
         event.preventDefault()
@@ -837,10 +846,14 @@ export function ElementPicker({
       clearTimeout(dwell)
       next = undefined
       outlined = element
+      byKeys = true
       element.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() })
       setHovered(element)
       setOver(true)
       setScrolled(false)
+    }
+    const onFocus = () => {
+      byKeys = false
     }
     const onScroll = () => {
       setScrolled(true)
@@ -849,6 +862,7 @@ export function ElementPicker({
     document.addEventListener('mousemove', onMove)
     for (const type of PRESSES) window.addEventListener(type, onPress, true)
     document.addEventListener('keydown', onKey)
+    document.addEventListener('focusin', onFocus)
     document.addEventListener('scroll', onScroll, true)
     const restoreCursor = setInlineStyle(document.documentElement, 'cursor', 'crosshair')
     return () => {
@@ -856,6 +870,7 @@ export function ElementPicker({
       document.removeEventListener('mousemove', onMove)
       for (const type of PRESSES) window.removeEventListener(type, onPress, true)
       document.removeEventListener('keydown', onKey)
+      document.removeEventListener('focusin', onFocus)
       document.removeEventListener('scroll', onScroll, true)
       restoreCursor()
     }

@@ -119,6 +119,11 @@ const FLASH_MS = 1500
 const UI_KEY = 'code-buddy:ui'
 const CENTER_KEY = 'code-buddy:center'
 
+/** Where the shortcuts moving through the page's comments go, in the panel's order. */
+const STEPS = { next: 1, previous: -1 } as const satisfies Partial<
+  Record<Shortcut, number>
+>
+
 type View = 'page' | 'all'
 type StatusFilter = 'all' | 'open' | 'resolved'
 
@@ -1107,23 +1112,28 @@ export default function App({ root }: { root: Element }) {
   /** What each keyboard shortcut does, with the state of this render. */
   const onShortcut = useRef<(shortcut: Shortcut) => void>(undefined)
   useLayoutEffect(() => {
+    // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
+    const showDraft = () => {
+      setDrawing(false)
+      setView('page')
+      setThreadId(undefined)
+      openPanel()
+    }
     onShortcut.current = (shortcut) => {
       if (shortcut === 'comment') {
         if (selectionButton && pendingAnchor.current) {
           startDraft(pendingAnchor.current)
           return
         }
-        // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
         if (draft && written(draft)) {
-          setView('page')
-          setThreadId(undefined)
-          openPanel()
+          showDraft()
           return
         }
         startDraft(PAGE_LEVEL)
       } else if (shortcut === 'pick') {
         // While the reader writes, the element goes into their message, as with its button.
         if (open && writingIn) {
+          setDrawing(false)
           setAttachingTo(picksFor ? undefined : writingIn)
           return
         }
@@ -1137,6 +1147,16 @@ export default function App({ root }: { root: Element }) {
         openPanel()
         setToTitle((times) => times + 1)
       } else {
+        if (draft && written(draft)) {
+          showDraft()
+          return
+        }
+        // Not loaded yet, or not there to load: no list to move through.
+        if (!page.loaded) return
+        if (!page.reachable) {
+          toast('No Claude session is watching. Run /code-buddy:code-buddy.', true)
+          return
+        }
         // In the panel's order, newest first, around from one end to the other.
         const listed = comments.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
         if (!listed.length) {
@@ -1147,7 +1167,7 @@ export default function App({ root }: { root: Element }) {
           view === 'page' && !drafting
             ? listed.findIndex(({ id }) => id === threadId)
             : -1
-        const step = shortcut === 'next' ? 1 : -1
+        const step = STEPS[shortcut]
         const index =
           at < 0
             ? step > 0
@@ -1869,6 +1889,14 @@ export default function App({ root }: { root: Element }) {
           inert={!open || !!drawing}
           aria-label="Code Buddy"
           data-testid="code-buddy-panel"
+          onKeyDownCapture={(event) => {
+            // The list of shortcuts goes first, before the message box's Escape. The
+            // picker's comes before both: its own listener, on the document, hears it after.
+            if (event.key !== 'Escape' || !showKeys || picksFor || picking) return
+            event.preventDefault()
+            event.stopPropagation()
+            setShowKeys(false)
+          }}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing || event.defaultPrevented) return
             if (event.key === '?' && !fieldOf(event.nativeEvent)) {
@@ -1876,12 +1904,9 @@ export default function App({ root }: { root: Element }) {
               setShowKeys((shown) => !shown)
               return
             }
-            // After the message box's Escape, and the picker's: its own listener, on
-            // the document, hears it once this one has.
-            if (event.key !== 'Escape' || picksFor) return
-            // The list of shortcuts first, then the panel.
-            if (showKeys) setShowKeys(false)
-            else close()
+            // After the message box's Escape, and the picker's (see above).
+            if (event.key !== 'Escape' || picksFor || picking) return
+            close()
           }}
         >
           <div
@@ -1963,15 +1988,20 @@ export default function App({ root }: { root: Element }) {
                   <dt>
                     <kbd>↑ ↓ ← →</kbd>
                   </dt>
-                  <dd>Pointing at an element: to its parent, first child or siblings</dd>
+                  <dd>
+                    Pointing at an element, out of a text box: to its parent, first child
+                    or siblings
+                  </dd>
                   <dt>
                     <kbd>Enter</kbd>
                   </dt>
-                  <dd>Pointing at an element: pick the one outlined</dd>
+                  <dd>
+                    Pointing at an element, out of a text box: pick the one outlined
+                  </dd>
                   <dt>
                     <kbd>Escape</kbd>
                   </dt>
-                  <dd>Stop pointing or drawing, close this list, then the panel</dd>
+                  <dd>Stop pointing or drawing; else close this list; else the panel</dd>
                   <dt>
                     <kbd>?</kbd>
                   </dt>

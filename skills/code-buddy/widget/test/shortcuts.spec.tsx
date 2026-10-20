@@ -1,5 +1,6 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
+import App from '../src/App'
 import { MAC, ariaShortcut, onMac, shortcutLabel, shortcutOf } from '../src/shortcuts'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
@@ -18,6 +19,13 @@ const taken = (event: Event) => event.preventDefault()
 
 /** The reader's message in the thread open. */
 const opened = () => document.querySelector('.cb-bubble--reader')?.textContent
+
+/** Once the page's comments have loaded, the next shortcut toasts `text`. */
+const said = (text: string) =>
+  waitFor(() => {
+    press('ArrowDown')
+    expect(screen.queryAllByText(text)).not.toHaveLength(0)
+  })
 
 const hint = () => document.querySelector('.cb-hint')?.textContent
 
@@ -69,6 +77,13 @@ test("a shortcut takes the platform's modifier and Shift, and nothing else", () 
   expect(
     shortcutOf(key({ code: 'NumpadEnter', ctrlKey: true, shiftKey: true }), false),
   ).toBe('panel')
+  // Composing text with an input method: the keys are its own.
+  expect(
+    shortcutOf(
+      key({ code: 'Period', ctrlKey: true, shiftKey: true, isComposing: true }),
+      false,
+    ),
+  ).toBe(undefined)
 })
 
 test('the shortcut starts pointing at an element, and stops it', async () => {
@@ -216,6 +231,49 @@ test('? lists the shortcuts in the panel, and Escape hides the list first', asyn
     expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull(),
   )
   expect(screen.getByRole('heading', { name: 'Comments' })).toBe(title)
+
+  // ? again hides it too.
+  fireEvent.keyDown(title, { key: '?' })
+  await screen.findByRole('region', { name: 'Keyboard shortcuts' })
+  fireEvent.keyDown(title, { key: '?' })
+  await waitFor(() =>
+    expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull(),
+  )
+})
+
+test("Escape in the message box hides the shortcuts' list first", async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  const title = await screen.findByRole('heading', { name: 'Comments' })
+  fireEvent.keyDown(title, { key: '?' })
+  await screen.findByRole('region', { name: 'Keyboard shortcuts' })
+  fireEvent.click(screen.getByRole('button', { name: 'New comment' }))
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+
+  fireEvent.keyDown(box, { key: 'Escape' })
+
+  await waitFor(() =>
+    expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull(),
+  )
+  expect(screen.getByRole('textbox', { name: 'What should change?' })).toBe(box)
+})
+
+test('Escape while pointing stops pointing, and only that', async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  const title = await screen.findByRole('heading', { name: 'Comments' })
+  fireEvent.keyDown(title, { key: '?' })
+  await screen.findByRole('region', { name: 'Keyboard shortcuts' })
+  press('Period', title)
+  await waitFor(() => expect(hint()).toContain('Click an element to comment on it'))
+
+  fireEvent.keyDown(title, { key: 'Escape' })
+
+  await waitFor(() => expect(hint()).toBeUndefined())
+  expect(screen.getByRole('region', { name: 'Keyboard shortcuts' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Comments' })).toBe(title)
 })
 
 test('the buttons say their shortcut', async () => {
@@ -245,6 +303,71 @@ test('in the message box, the shortcut picks an element for the message', async 
   expect(
     screen.getByRole('button', { name: 'Stop picking' }).getAttribute('aria-pressed'),
   ).toBe('true')
+
+  // Again, it stops.
+  press('Period', box)
+  await waitFor(() => expect(hint()).toBeUndefined())
+  expect(
+    screen
+      .getByRole('button', { name: 'Pick an element in the page' })
+      .getAttribute('aria-pressed'),
+  ).toBe('false')
+})
+
+test('in the message box, the shortcut closes the panel, and the comment one brings it back', async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  fireEvent.change(box, { target: { value: 'Bigger' } })
+
+  expect(press('Enter', box)).toBe(false)
+
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+  press('Comma')
+  const again = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'What should change?',
+  })
+  expect(again.value).toBe('Bigger')
+})
+
+test('from a comment being written, the next one shows it again', async () => {
+  fakeServer([comment({ body: 'Older' })])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+  press('Comma')
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  fireEvent.change(box, { target: { value: 'Bigger' } })
+  press('Enter', box)
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+
+  press('ArrowDown')
+
+  const again = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'What should change?',
+  })
+  expect(again.value).toBe('Bigger')
+  expect(opened()).toBeUndefined()
+})
+
+test('a comment being written, shown again by the shortcut, stops a drawing', async () => {
+  fakeServer([])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+  press('Comma')
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  fireEvent.change(box, { target: { value: 'Bigger' } })
+  press('Enter', box)
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
+  await screen.findByRole('button', { name: 'Cancel' })
+
+  press('Comma')
+
+  await waitFor(() =>
+    expect(screen.getByTestId('code-buddy-panel').hasAttribute('inert')).toBe(false),
+  )
+  expect(screen.getByTestId('code-buddy-panel').dataset['drawing']).toBeUndefined()
 })
 
 test('? typed in the message box is a character, not the list', async () => {
@@ -285,17 +408,55 @@ test('from a new comment, the next comment is the newest', async () => {
   await waitFor(() => expect(opened()).toBe('Newer'))
 })
 
+test("with no session watching, the shortcut says so, not that there's no comment", async () => {
+  fakeServer([], { reachable: false })
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+
+  await said('No Claude session is watching. Run /code-buddy:code-buddy.')
+
+  expect(screen.queryByText('No comments on this page')).toBeNull()
+})
+
 test('with no comment on the page, the shortcut says so', async () => {
   fakeServer([])
   renderWidget()
   await screen.findByRole('button', { name: 'Point at element' })
 
-  press('ArrowDown')
-
-  expect(await screen.findByText('No comments on this page')).toBeTruthy()
+  await said('No comments on this page')
 })
 
 test('aria-keyshortcuts names the keys the ARIA way', () => {
   expect(ariaShortcut('pick', true)).toBe('Meta+Shift+.')
   expect(ariaShortcut('next', false)).toBe('Control+Shift+ArrowDown')
+})
+
+test('inside its shadow root, as on a page, the widget tells its own fields and buttons', async () => {
+  fakeServer([])
+  openPanel()
+  const host = document.createElement('code-buddy-widget')
+  host.setAttribute('data-code-buddy', '')
+  document.body.append(host)
+  const container = document.createElement('div')
+  host.attachShadow({ mode: 'open' }).append(container)
+  const page = document.createElement('main')
+  page.innerHTML = '<h1>Playground</h1>'
+  document.body.append(page)
+  const view = render(<App root={page} />, { container })
+  onTestFinished(() => {
+    view.unmount()
+    host.remove()
+    page.remove()
+  })
+  const panel = within(container)
+  fireEvent.click(await panel.findByRole('button', { name: 'New comment' }))
+  const box = await panel.findByRole('textbox', { name: 'What should change?' })
+
+  // The arrows select text in the message box; the pick shortcut picks for it.
+  expect(press('ArrowDown', box)).toBe(true)
+  expect(press('Period', box)).toBe(false)
+  await waitFor(() => expect(container.querySelector('.cb-hint')).toBeTruthy())
+  // Enter on the button that stops picking is the button's.
+  const stop = panel.getByRole('button', { name: 'Stop picking' })
+  expect(fireEvent.keyDown(stop, { key: 'Enter' })).toBe(true)
 })
