@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import App from '../src/App'
 import {
@@ -27,12 +27,17 @@ const taken = (event: Event) => event.preventDefault()
 /** The reader's message in the thread open. */
 const opened = () => document.querySelector('.cb-bubble--reader')?.textContent
 
+/** The toasts saying `text`: an earlier test's may still be up. */
+const toasted = (text: string) => screen.queryAllByText(text).length
+
 /** Once the page's comments have loaded, the next shortcut toasts `text`. */
-const said = (text: string) =>
-  waitFor(() => {
+async function said(text: string) {
+  const before = toasted(text)
+  await waitFor(() => {
     press('ArrowDown')
-    expect(screen.queryAllByText(text)).not.toHaveLength(0)
+    expect(toasted(text)).toBeGreaterThan(before)
   })
+}
 
 const hint = () => document.querySelector('.cb-hint')?.textContent
 
@@ -46,11 +51,11 @@ test('the platform is a Mac by its user agent data, else by navigator.platform',
 })
 
 test("the shortcuts read with the platform's modifier", () => {
-  expect(shortcutLabel('comment', true)).toBe('⌘⇧,')
-  expect(shortcutLabel('comment', false)).toBe('Ctrl+Shift+,')
-  expect(shortcutLabel('panel', true)).toBe('⌘⇧↩')
-  expect(shortcutLabel('panel', false)).toBe('Ctrl+Shift+Enter')
-  expect(shortcutLabel('next', false)).toBe('Ctrl+Shift+↓')
+  expect(shortcutLabel('comment', { mac: true })).toBe('⌘⇧,')
+  expect(shortcutLabel('comment', { mac: false })).toBe('Ctrl+Shift+,')
+  expect(shortcutLabel('panel', { mac: true })).toBe('⌘⇧↩')
+  expect(shortcutLabel('panel', { mac: false })).toBe('Ctrl+Shift+Enter')
+  expect(shortcutLabel('next', { mac: false })).toBe('Ctrl+Shift+↓')
 })
 
 /** A French AZERTY keyboard, as the Keyboard Map API tells it. */
@@ -60,47 +65,68 @@ const AZERTY = new Map([
   ['KeyM', ','],
 ])
 
+/** A broken stand-in for the API. */
+const broken = async () => {
+  throw new TypeError('not a function')
+}
+
 /** The browser's answer in a frame not allowed the keyboard's map. */
 const refused = async () => {
   throw new DOMException('Not allowed in a frame', 'SecurityError')
 }
 
-test("the labels name what the keys type on the reader's keyboard, when the browser says", async () => {
-  onTestFinished(() => void readKeyboard({}))
-
-  expect(await readKeyboard({ keyboard: { getLayoutMap: async () => AZERTY } })).toBe(
-    true,
+test("the labels name what the keys type on the reader's keyboard", () => {
+  const keyboard = AZERTY
+  expect(shortcutLabel('comment', { mac: true, keyboard })).toBe('⌘⇧;')
+  expect(shortcutLabel('pick', { mac: false, keyboard })).toBe('Ctrl+Shift+:')
+  expect(shortcutLabel('panel', { mac: true, keyboard })).toBe('⌘⇧↩')
+  expect(ariaShortcut('comment', { mac: true, keyboard })).toBe('Meta+Shift+;')
+  expect(ariaShortcut('next', { mac: false, keyboard })).toBe('Control+Shift+ArrowDown')
+  // A letter reads as on the key, and goes to ARIA as typed: Dvorak's `w`.
+  const dvorak = new Map([['Comma', 'w']])
+  expect(shortcutLabel('comment', { mac: false, keyboard: dvorak })).toBe('Ctrl+Shift+W')
+  expect(ariaShortcut('comment', { mac: false, keyboard: dvorak })).toBe(
+    'Control+Shift+w',
   )
-  expect(shortcutLabel('comment', true)).toBe('⌘⇧;')
-  expect(shortcutLabel('pick', false)).toBe('Ctrl+Shift+:')
-  expect(shortcutLabel('panel', true)).toBe('⌘⇧↩')
-  expect(ariaShortcut('comment', true)).toBe('Meta+Shift+;')
-  expect(ariaShortcut('next', false)).toBe('Control+Shift+ArrowDown')
-
-  // Without the API, or not allowed it, a US keyboard's.
-  expect(await readKeyboard({})).toBe(false)
-  expect(shortcutLabel('comment', true)).toBe('⌘⇧,')
-  await readKeyboard({ keyboard: { getLayoutMap: async () => AZERTY } })
-  expect(await readKeyboard({ keyboard: { getLayoutMap: refused } })).toBe(false)
-  expect(ariaShortcut('pick', true)).toBe('Meta+Shift+.')
+  // Unknown, a US keyboard's.
+  expect(shortcutLabel('comment', { mac: true })).toBe('⌘⇧,')
 })
 
-test("the buttons name the keys as the reader's keyboard types them", async () => {
+test('the keyboard is read where the browser tells it, and only there', async () => {
+  expect(await readKeyboard({ keyboard: { getLayoutMap: async () => AZERTY } })).toBe(
+    AZERTY,
+  )
+  expect(await readKeyboard({})).toBeUndefined()
+  expect(await readKeyboard({ keyboard: { getLayoutMap: refused } })).toBeUndefined()
+  // Anything but a refusal is a bug: it shows.
+  await expect(readKeyboard({ keyboard: { getLayoutMap: broken } })).rejects.toThrow(
+    TypeError,
+  )
+})
+
+test("the buttons name the keys as the reader's keyboard types them, once it is read", async () => {
+  let tell: ((keyboard: Map<string, string>) => void) | undefined
   Object.defineProperty(navigator, 'keyboard', {
     configurable: true,
-    value: { getLayoutMap: async () => AZERTY },
+    value: {
+      getLayoutMap: () =>
+        new Promise<Map<string, string>>((resolve) => {
+          tell = resolve
+        }),
+    },
   })
-  onTestFinished(() => {
-    Reflect.deleteProperty(navigator, 'keyboard')
-    void readKeyboard({})
-  })
+  onTestFinished(() => void Reflect.deleteProperty(navigator, 'keyboard'))
   fakeServer([])
   renderWidget()
+  const button = await screen.findByRole('button', { name: 'Comment' })
+  // The comments are in: nothing else draws the widget again.
+  await said('No comments on this page')
+  expect(button.title).toBe(`Comment on the page (${shortcutLabel('comment')})`)
+
+  act(() => tell?.(AZERTY))
 
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Comment' }).title).toBe(
-      `Comment on the page (${MAC ? '⌘⇧;' : 'Ctrl+Shift+;'})`,
-    ),
+    expect(button.title).toBe(`Comment on the page (${MAC ? '⌘⇧;' : 'Ctrl+Shift+;'})`),
   )
 })
 
@@ -470,10 +496,11 @@ test("with no session watching, the shortcut says so, not that there's no commen
   fakeServer([], { reachable: false })
   renderWidget()
   await screen.findByRole('button', { name: 'Point at element' })
+  const before = toasted('No comments on this page')
 
   await said('No Claude session is watching. Run /code-buddy:code-buddy.')
 
-  expect(screen.queryByText('No comments on this page')).toBeNull()
+  expect(toasted('No comments on this page')).toBe(before)
 })
 
 test('with no comment on the page, the shortcut says so', async () => {
@@ -485,8 +512,8 @@ test('with no comment on the page, the shortcut says so', async () => {
 })
 
 test('aria-keyshortcuts names the keys the ARIA way', () => {
-  expect(ariaShortcut('pick', true)).toBe('Meta+Shift+.')
-  expect(ariaShortcut('next', false)).toBe('Control+Shift+ArrowDown')
+  expect(ariaShortcut('pick', { mac: true })).toBe('Meta+Shift+.')
+  expect(ariaShortcut('next', { mac: false })).toBe('Control+Shift+ArrowDown')
 })
 
 test('inside its shadow root, as on a page, the widget tells its own fields and buttons', async () => {
@@ -517,4 +544,85 @@ test('inside its shadow root, as on a page, the widget tells its own fields and 
   // Enter on the button that stops picking is the button's.
   const stop = panel.getByRole('button', { name: 'Stop picking' })
   expect(fireEvent.keyDown(stop, { key: 'Enter' })).toBe(true)
+})
+
+test('with text selected, the shortcut still shows the comment being written', async () => {
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  document.body.replaceChildren()
+  fakeServer([])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+  press('Comma')
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  fireEvent.change(box, { target: { value: 'Bigger' } })
+  press('Enter', box)
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+  const heading = document.querySelector('main h1')?.firstChild
+  if (!heading) throw new Error('no title')
+  const range = document.createRange()
+  range.selectNodeContents(heading)
+  getSelection()?.removeAllRanges()
+  getSelection()?.addRange(range)
+  document.dispatchEvent(new Event('selectionchange'))
+  await screen.findByTestId('cb-selection')
+
+  press('Comma')
+
+  const again = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'What should change?',
+  })
+  expect(again.value).toBe('Bigger')
+  expect(document.querySelector('.cb-quote')).toBeNull()
+})
+
+test('Escape in the message box picking for it stops picking, and keeps the comment', async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  const title = await screen.findByRole('heading', { name: 'Comments' })
+  fireEvent.keyDown(title, { key: '?' })
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  press('Period', box)
+  await waitFor(() => expect(hint()).toContain('add it to your message'))
+
+  fireEvent.keyDown(box, { key: 'Escape' })
+
+  await waitFor(() => expect(hint()).toBeUndefined())
+  expect(screen.getByRole('textbox', { name: 'What should change?' })).toBe(box)
+  // The list of shortcuts goes after the picker.
+  expect(screen.getByRole('region', { name: 'Keyboard shortcuts' })).toBeTruthy()
+})
+
+test('picking for the message being written stops a drawing', async () => {
+  fakeServer([])
+  openPanel()
+  renderWidget()
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw an area' }))
+  const panel = screen.getByTestId('code-buddy-panel')
+  await waitFor(() => expect(panel.hasAttribute('inert')).toBe(true))
+
+  press('Period')
+
+  await waitFor(() => expect(panel.hasAttribute('inert')).toBe(false))
+  expect(panel.dataset['drawing']).toBeUndefined()
+  expect(hint()).toContain('add it to your message')
+})
+
+test('from no comment open, the previous one is the oldest', async () => {
+  fakeServer([
+    comment({ id: 'c1', body: 'Older', createdAt: '2026-01-01T10:00:00.000Z' }),
+    comment({ id: 'c2', body: 'Newer', createdAt: '2026-01-02T10:00:00.000Z' }),
+  ])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Point at element' })
+
+  await waitFor(() => {
+    press('ArrowUp')
+    expect(opened()).toBe('Older')
+  })
 })

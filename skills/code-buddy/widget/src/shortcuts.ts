@@ -38,7 +38,7 @@ export const SHORTCUTS = {
   {
     /** Where the key is on the keyboard. */
     code: string
-    /** The key, as `aria-keyshortcuts` names it. */
+    /** The key on a US keyboard, as `aria-keyshortcuts` names it: what it types on the reader's, when known. */
     key: string
     label: string
     /** Its label on macOS, when it differs. */
@@ -68,7 +68,7 @@ export function onMac(navigator: Platform) {
 export const MAC = onMac(globalThis.navigator)
 
 /** What each key types on a keyboard, by its `code`. */
-interface KeyboardLayout {
+export interface KeyboardLayout {
   get(code: string): string | undefined
 }
 
@@ -77,38 +77,43 @@ interface WithKeyboard {
   keyboard?: { getLayoutMap?: () => Promise<KeyboardLayout> }
 }
 
-/** The reader's keyboard, once read: unknown, the labels are a US keyboard's. */
-let typed: KeyboardLayout | undefined
-
 /**
- * Reads what the keys type on the reader's keyboard, for the labels; whether it
- * could. The browser may not tell (Firefox, Safari), or not to a frame.
+ * What the keys type on the reader's keyboard, for the labels. The browser may
+ * not tell (Firefox, Safari), or not to a frame: none, a US keyboard's labels.
  */
 export async function readKeyboard(
   navigator: Partial<Navigator> & WithKeyboard = globalThis.navigator,
 ) {
   try {
-    typed = await navigator.keyboard?.getLayoutMap?.()
-  } catch {
-    // Not allowed here: a US keyboard's labels, as without the API.
-    typed = undefined
+    return await navigator.keyboard?.getLayoutMap?.()
+  } catch (error) {
+    // Refused here (a frame): as without the API. Anything else is a bug, to see.
+    if (error instanceof DOMException) return undefined
+    throw error
   }
-  return !!typed
 }
 
-/** The key of `shortcut`, as it types on the reader's keyboard, if known. */
-const typedKey = (shortcut: Shortcut) => typed?.get(SHORTCUTS[shortcut].code)
+/** How the labels read: on macOS or not, and on which keyboard (a US one, unknown). */
+interface Reading {
+  mac?: boolean
+  keyboard?: KeyboardLayout | undefined
+}
+
+/** The key of `shortcut`, as it types on `keyboard`, if known. */
+const typedKey = (shortcut: Shortcut, keyboard?: KeyboardLayout) =>
+  keyboard?.get(SHORTCUTS[shortcut].code)
 
 /** How `shortcut` reads: `⌘⇧,` on macOS, `Ctrl+Shift+,` elsewhere. */
-export function shortcutLabel(shortcut: Shortcut, mac = MAC) {
+export function shortcutLabel(shortcut: Shortcut, { mac = MAC, keyboard }: Reading = {}) {
   const keys: { label: string; mac?: string } = SHORTCUTS[shortcut]
-  const label = typedKey(shortcut)?.toUpperCase() ?? keys.label
+  const label = typedKey(shortcut, keyboard)?.toUpperCase() ?? keys.label
   return mac ? `⌘⇧${keys.mac ?? label}` : `Ctrl+Shift+${label}`
 }
 
 /** `shortcut` for `aria-keyshortcuts`. */
-export function ariaShortcut(shortcut: Shortcut, mac = MAC) {
-  return `${mac ? 'Meta' : 'Control'}+Shift+${typedKey(shortcut) ?? SHORTCUTS[shortcut].key}`
+export function ariaShortcut(shortcut: Shortcut, { mac = MAC, keyboard }: Reading = {}) {
+  const key = typedKey(shortcut, keyboard) ?? SHORTCUTS[shortcut].key
+  return `${mac ? 'Meta' : 'Control'}+Shift+${key}`
 }
 
 /** The shortcut `event` presses, if any: the platform's modifier and Shift, nothing else. */

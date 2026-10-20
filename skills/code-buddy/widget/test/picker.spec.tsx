@@ -349,3 +349,88 @@ test('Enter picks the element the arrows moved to, even with the focus on a butt
   expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(false)
   expect(onPick).toHaveBeenCalledWith(second)
 })
+
+test('once the pointer moves the outline, a button has its Enter back', () => {
+  const { root, first, text, hover } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+  const button = document.createElement('button')
+  document.body.append(button)
+  onTestFinished(() => button.remove())
+  act(() => void fireEvent.keyDown(button, { key: 'ArrowRight' }))
+
+  act(() => hover(text))
+
+  expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(true)
+  expect(onPick).not.toHaveBeenCalled()
+})
+
+test('the click Enter makes of a button is the button’s, not a pick', () => {
+  const { root, first, hover } = page()
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  const button = document.createElement('button')
+  const pressed = vi.fn()
+  button.addEventListener('click', pressed)
+  document.body.append(button)
+  onTestFinished(() => button.remove())
+  // A click from the keyboard is at 0, 0: over the page's first element.
+  act(() => hover(first))
+
+  fireEvent.keyDown(button, { key: 'Enter' })
+  fireEvent.click(button)
+
+  expect(pressed).toHaveBeenCalled()
+  expect(onPick).not.toHaveBeenCalled()
+  // The pointer's next click picks again.
+  fireEvent.pointerDown(first)
+  fireEvent.click(first)
+  expect(onPick).toHaveBeenCalledWith(first)
+})
+
+test('a focused link keeps its Enter', () => {
+  const { root, first, hover } = page()
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+  const link = document.createElement('a')
+  link.href = '#somewhere'
+  document.body.append(link)
+  onTestFinished(() => link.remove())
+
+  expect(fireEvent.keyDown(link, { key: 'Enter' })).toBe(true)
+  expect(onPick).not.toHaveBeenCalled()
+})
+
+test('the arrow keys go through a wrapper drawing no box, to its children', () => {
+  const { root } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  root.insertAdjacentHTML(
+    'afterbegin',
+    '<div style="display: contents"><section>Island</section></div>',
+  )
+  const wrapper = root.firstElementChild
+  if (!wrapper) throw new Error('no wrapper')
+  // happy-dom lays nothing out: no box of its own, as in a browser.
+  vi.spyOn(wrapper, 'getClientRects').mockReturnValue(
+    Object.assign([], { item: () => null }),
+  )
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+
+  // The island first, then the table beside it, then up: the page, not the wrapper.
+  pressKey('ArrowDown')
+  pressKey('Enter')
+  expect(onPick).toHaveBeenLastCalledWith(root.querySelector('section'))
+  pressKey('ArrowRight')
+  pressKey('Enter')
+  expect(onPick).toHaveBeenLastCalledWith(root.querySelector('table'))
+})

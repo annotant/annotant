@@ -733,28 +733,42 @@ export const HOVER_DWELL_MS = 50
 /** What the picker's arrow keys skip, besides the widget: elements that draw nothing. */
 const UNPICKABLE = 'script, style, template, noscript, link, meta'
 
-/** Whether `element` has a box (`hidden`, `display: none`: none), or boxes its children do. */
-const hasBox = (element: Element) =>
-  element.getClientRects().length > 0 || getComputedStyle(element).display === 'contents'
+/** A wrapper drawing no box of its own: the keys go through it, to its children. */
+const wraps = (element: Element) => getComputedStyle(element).display === 'contents'
 
-const pickable = (element: Element | null | undefined) =>
-  element && !element.matches(UNPICKABLE) && !element.closest(WIDGET) && hasBox(element)
-    ? element
-    : undefined
+/**
+ * The elements under `parent` the keys stop on: its children, those of its
+ * wrappers, and none drawing nothing (`hidden`, `display: none`).
+ */
+function childrenOf(parent: Element): Element[] {
+  return Array.from(parent.children).flatMap((child) => {
+    if (child.matches(UNPICKABLE) || child.closest(WIDGET)) return []
+    if (wraps(child)) return childrenOf(child)
+    return child.getClientRects().length > 0 ? [child] : []
+  })
+}
 
-const childrenOf = (parent: Element) => Array.from(parent.children).filter(pickable)
+/** What `element` is one of the children of, for the keys: past its wrappers, up to `root`. */
+function parentOf(root: Element, element: Element) {
+  let parent = element.parentElement
+  while (parent && parent !== root && wraps(parent)) parent = parent.parentElement
+  return parent
+}
 
 /** The element an arrow key moves the outline to from `from`, within `root`. */
 function stepFrom(root: Element, from: Element | undefined, key: string) {
   if (!from?.isConnected || !root.contains(from) || from === root) {
     return childrenOf(root)[0]
   }
-  if (key === 'ArrowUp')
-    return from.parentElement === root ? undefined : from.parentElement
+  const parent = parentOf(root, from)
+  if (key === 'ArrowUp') return parent === root ? undefined : (parent ?? undefined)
   if (key === 'ArrowDown') return childrenOf(from)[0]
-  const siblings = from.parentElement ? childrenOf(from.parentElement) : []
+  const siblings = parent ? childrenOf(parent) : []
   return siblings[siblings.indexOf(from) + (key === 'ArrowRight' ? 1 : -1)]
 }
+
+/** What Enter acts on, when it has the focus. */
+const CONTROLS = 'button, a[href], summary, [role="button"], [role="link"]'
 
 const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
@@ -790,9 +804,12 @@ export function ElementPicker({
     let dwell = 0
     // The element outlined, for Enter and the arrow keys: none off an element.
     let outlined: Element | undefined
-    // Moved there with the arrow keys since the focus last moved: Enter picks it,
-    // even with the focus on a button (the picker's own, clicked to start it).
+    // Moved there with the arrow keys since the focus or the pointer last moved:
+    // Enter picks it, even with the focus on a control (the picker's own button,
+    // clicked to start it).
     let byKeys = false
+    // Enter or Space pressed last, not the pointer: a click now comes from them.
+    let keyed = false
     const target = (event: MouseEvent) => {
       const element = document.elementFromPoint(event.clientX, event.clientY)
       return element &&
@@ -818,6 +835,13 @@ export function ElementPicker({
     // The page gets no press on the element being picked, nor its default
     // (focus, a menu opening on pointerdown, a drag): the click only picks.
     const onPress = (event: MouseEvent) => {
+      // The click the browser makes of Enter or Space on a control is the control's:
+      // at 0, 0, it is on no element of its own.
+      if (event.type === 'click' && keyed) {
+        keyed = false
+        return
+      }
+      if (event.type !== 'click') keyed = false
       const element = target(event)
       if (!element) return
       event.preventDefault()
@@ -826,13 +850,15 @@ export function ElementPicker({
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') return onCancel()
+      keyed = event.key === 'Enter' || event.key === ' '
       // Fields keep their keys, and the browser its shortcuts.
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (event.defaultPrevented || fieldOf(event)) return
       if (event.key === 'Enter') {
-        // A button keeps its Enter, the dock's Cancel among them, unless the arrows moved
-        // the outline since the focus came to it.
-        if (!byKeys && event.composedPath()[0] instanceof HTMLButtonElement) return
+        // A control keeps its Enter, the dock's Cancel among them, unless the arrows
+        // moved the outline since the focus came to it.
+        const [focused] = event.composedPath()
+        if (!byKeys && focused instanceof Element && focused.matches(CONTROLS)) return
         const element = outlined
         if (!element?.isConnected) return
         event.preventDefault()

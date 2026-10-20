@@ -89,6 +89,7 @@ import { activityOf, isOngoing, stepKey } from './activity'
 import {
   SHORTCUT_LIST,
   SHORTCUTS,
+  type KeyboardLayout,
   type Shortcut,
   ariaShortcut,
   fieldOf,
@@ -643,10 +644,12 @@ export default function App({ root }: { root: Element }) {
   }, [])
 
   // Once the browser says what the keys type, the shortcuts' labels name them so.
-  const [, setKeyboardRead] = useState(false)
+  const [keyboard, setKeyboard] = useState<KeyboardLayout>()
   useEffect(() => {
-    void readKeyboard().then(setKeyboardRead)
+    void readKeyboard().then(setKeyboard)
   }, [])
+  const keysOf = (shortcut: Shortcut) => shortcutLabel(shortcut, { keyboard })
+  const ariaKeysOf = (shortcut: Shortcut) => ariaShortcut(shortcut, { keyboard })
 
   const page = useComments(route)
   const comments = page.comments
@@ -1128,15 +1131,10 @@ export default function App({ root }: { root: Element }) {
     }
     onShortcut.current = (shortcut) => {
       if (shortcut === 'comment') {
-        if (selectionButton && pendingAnchor.current) {
+        if (draft && written(draft)) showDraft()
+        else if (selectionButton && pendingAnchor.current)
           startDraft(pendingAnchor.current)
-          return
-        }
-        if (draft && written(draft)) {
-          showDraft()
-          return
-        }
-        startDraft(PAGE_LEVEL)
+        else startDraft(PAGE_LEVEL)
       } else if (shortcut === 'pick') {
         // While the reader writes, the element goes into their message, as with its button.
         if (open && writingIn) {
@@ -1827,8 +1825,8 @@ export default function App({ root }: { root: Element }) {
           icon="chat"
           className="cb-selection cb-live"
           data-testid="cb-selection"
-          title={`Comment on the selected text (${shortcutLabel('comment')})`}
-          aria-keyshortcuts={ariaShortcut('comment')}
+          title={`Comment on the selected text (${keysOf('comment')})`}
+          aria-keyshortcuts={ariaKeysOf('comment')}
           style={{ top: selectionButton.top, left: selectionButton.left }}
           onClick={() => pendingAnchor.current && startDraft(pendingAnchor.current)}
         >
@@ -1847,8 +1845,8 @@ export default function App({ root }: { root: Element }) {
           <Button
             variant="secondary"
             icon="chat"
-            title={`Comment on the page (${shortcutLabel('comment')})`}
-            aria-keyshortcuts={ariaShortcut('comment')}
+            title={`Comment on the page (${keysOf('comment')})`}
+            aria-keyshortcuts={ariaKeysOf('comment')}
             onClick={() => startDraft(PAGE_LEVEL)}
           >
             Comment
@@ -1873,8 +1871,8 @@ export default function App({ root }: { root: Element }) {
           </Button>
           <Button
             icon={picking ? 'x' : 'cursor'}
-            title={`${picking ? 'Stop pointing' : 'Point at an element'} (${shortcutLabel('pick')})`}
-            aria-keyshortcuts={ariaShortcut('pick')}
+            title={`${picking ? 'Stop pointing' : 'Point at an element'} (${keysOf('pick')})`}
+            aria-keyshortcuts={ariaKeysOf('pick')}
             onClick={() => {
               setDrawing(false)
               setPicking((value) => !value)
@@ -1899,6 +1897,7 @@ export default function App({ root }: { root: Element }) {
           onKeyDownCapture={(event) => {
             // The list of shortcuts goes first, before the message box's Escape. The
             // picker's comes before both: its own listener, on the document, hears it after.
+            if (event.nativeEvent.isComposing) return
             if (event.key !== 'Escape' || !showKeys || picksFor || picking) return
             event.preventDefault()
             event.stopPropagation()
@@ -1970,8 +1969,8 @@ export default function App({ root }: { root: Element }) {
               <IconButton
                 icon="x"
                 label="Close"
-                keys={shortcutLabel('panel')}
-                aria-keyshortcuts={ariaShortcut('panel')}
+                keys={keysOf('panel')}
+                aria-keyshortcuts={ariaKeysOf('panel')}
                 onClick={close}
               />
             </div>
@@ -1987,7 +1986,7 @@ export default function App({ root }: { root: Element }) {
                   {SHORTCUT_LIST.map((shortcut) => (
                     <Fragment key={shortcut}>
                       <dt>
-                        <kbd>{shortcutLabel(shortcut)}</kbd>
+                        <kbd>{keysOf(shortcut)}</kbd>
                       </dt>
                       <dd>{SHORTCUTS[shortcut].does}</dd>
                     </Fragment>
@@ -2008,7 +2007,10 @@ export default function App({ root }: { root: Element }) {
                   <dt>
                     <kbd>Escape</kbd>
                   </dt>
-                  <dd>Stop pointing or drawing; else close this list; else the panel</dd>
+                  <dd>
+                    Stop pointing or drawing; else close this list; else leave an empty
+                    message; else close the panel
+                  </dd>
                   <dt>
                     <kbd>?</kbd>
                   </dt>
@@ -2130,7 +2132,7 @@ export default function App({ root }: { root: Element }) {
                     ),
                   )}
                   picking={!!picksFor}
-                  pickKeys={shortcutLabel('pick')}
+                  pickKeys={keysOf('pick')}
                   onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
                   placeholder="What should change?"
                   sendLabel="Save"
@@ -2154,7 +2156,8 @@ export default function App({ root }: { root: Element }) {
                     )
                   }
                   onSubmit={() => void save()}
-                  onEscape={() => !written(draft) && backToList()}
+                  // While it picks an element, Escape is the picker's alone.
+                  onEscape={() => !picksFor && !written(draft) && backToList()}
                 />
               )}
               {replying && (
@@ -2172,7 +2175,7 @@ export default function App({ root }: { root: Element }) {
                     ),
                   )}
                   picking={!!picksFor}
-                  pickKeys={shortcutLabel('pick')}
+                  pickKeys={keysOf('pick')}
                   onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
                   placeholder={
                     offered
@@ -2215,7 +2218,11 @@ export default function App({ root }: { root: Element }) {
                   }
                   // Like a new comment's: never at the cost of what the reader wrote.
                   onEscape={() =>
-                    !reply && !replyImages.length && !replyElements.length && backToList()
+                    !picksFor &&
+                    !reply &&
+                    !replyImages.length &&
+                    !replyElements.length &&
+                    backToList()
                   }
                 />
               )}
