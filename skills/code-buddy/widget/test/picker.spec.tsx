@@ -300,3 +300,20 @@ test('Enter on a button is the button’s, not a pick', () => {
   expect(fireEvent.keyDown(cancel, { key: 'Enter' })).toBe(true)
   expect(onPick).not.toHaveBeenCalled()
 })
+
+test('the arrow keys move the outline with the focus on a button', () => {
+  const { root, first, hover } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  render(<ElementPicker root={root} onPick={() => {}} onCancel={() => {}} />)
+  act(() => hover(first))
+  const button = document.createElement('button')
+  document.body.append(button)
+  onTestFinished(() => button.remove())
+
+  act(() => void fireEvent.keyDown(button, { key: 'ArrowRight' }))
+
+  expect(outline()?.style.transform).toBe('translate(110px, 20px)')
+})

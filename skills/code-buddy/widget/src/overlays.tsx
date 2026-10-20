@@ -821,14 +821,9 @@ export function ElementPicker({
       // The reader's message box keeps its keys, and the browser its shortcuts.
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (event.defaultPrevented || fieldOf(event)) return
-      // A button keeps its Enter (the dock's Cancel among them), the widget its keys.
-      const path = event.composedPath()
-      if (
-        path[0] instanceof HTMLButtonElement ||
-        path.some((node) => node instanceof Element && node.matches(WIDGET))
-      )
-        return
       if (event.key === 'Enter') {
+        // A button keeps its Enter: the dock's Cancel among them.
+        if (event.composedPath()[0] instanceof HTMLButtonElement) return
         const element = outlined
         if (!element?.isConnected) return
         event.preventDefault()
