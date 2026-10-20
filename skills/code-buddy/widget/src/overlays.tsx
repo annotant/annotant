@@ -29,7 +29,8 @@ import {
   wasResolved,
 } from './domain'
 import { setInlineStyle } from './inline'
-import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION } from './styles'
+import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
+import { fieldOf } from './shortcuts'
 import { Icon } from './ui'
 
 const WIDGET = '[data-code-buddy]'
@@ -729,13 +730,40 @@ const PRESSES = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'] as
 /** How long the pointer stays on an element before the outline moves to it. */
 export const HOVER_DWELL_MS = 50
 
+/** The elements the picker's arrow keys go through: none of the page's head, nor the widget. */
+const UNPICKABLE = 'script, style, template, noscript, link, meta'
+
+const pickable = (element: Element | null | undefined) =>
+  element && !element.matches(UNPICKABLE) && !element.closest(WIDGET)
+    ? element
+    : undefined
+
+const childrenOf = (parent: Element) => Array.from(parent.children).filter(pickable)
+
+/** The element an arrow key moves the outline to from `from`, within `root`. */
+function stepFrom(root: Element, from: Element | undefined, key: string) {
+  if (!from?.isConnected || !root.contains(from) || from === root) {
+    return childrenOf(root)[0]
+  }
+  if (key === 'ArrowUp')
+    return from.parentElement === root ? undefined : from.parentElement
+  if (key === 'ArrowDown') return childrenOf(from)[0]
+  const siblings = from.parentElement ? childrenOf(from.parentElement) : []
+  return siblings[siblings.indexOf(from) + (key === 'ArrowRight' ? 1 : -1)]
+}
+
+const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+
 /**
  * Dashed outline follows the pointer, gliding from one element to the next
  * once the pointer stays on it; a click picks the element, Escape cancels.
+ * The arrow keys move it too, to the parent (up), the first child (down) or a
+ * sibling (left, right), and Enter picks the element outlined: one hard to
+ * hover can still be chosen.
  */
 export function ElementPicker({
   root,
-  hint = 'Click an element to comment on it. Escape cancels.',
+  hint = 'Click an element to comment on it, or move with the arrow keys and press Enter. Escape cancels.',
   onPick,
   onCancel,
 }: {
@@ -756,6 +784,8 @@ export function ElementPicker({
     // The element the pointer is on, until it has stayed there long enough.
     let next: Element | undefined
     let dwell = 0
+    // The element outlined, for Enter and the arrow keys: none off an element.
+    let outlined: Element | undefined
     const target = (event: MouseEvent) => {
       const element = document.elementFromPoint(event.clientX, event.clientY)
       return element &&
@@ -771,6 +801,7 @@ export function ElementPicker({
       next = element
       clearTimeout(dwell)
       dwell = window.setTimeout(() => {
+        outlined = element
         if (element) setHovered(element)
         setOver(!!element)
         setScrolled(false)
@@ -786,7 +817,28 @@ export function ElementPicker({
       if (event.type === 'click') onPick(element)
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel()
+      if (event.key === 'Escape') return onCancel()
+      // The reader's message box keeps its keys, and the browser its shortcuts.
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (event.defaultPrevented || fieldOf(event)) return
+      if (event.key === 'Enter') {
+        const element = outlined
+        if (!element?.isConnected) return
+        event.preventDefault()
+        onPick(element)
+        return
+      }
+      if (!ARROWS.has(event.key)) return
+      event.preventDefault()
+      const element = stepFrom(root, outlined, event.key)
+      if (!element) return
+      clearTimeout(dwell)
+      next = undefined
+      outlined = element
+      element.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() })
+      setHovered(element)
+      setOver(true)
+      setScrolled(false)
     }
     const onScroll = () => {
       setScrolled(true)

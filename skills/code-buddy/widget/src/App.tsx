@@ -86,6 +86,15 @@ import {
   toast,
 } from './ui'
 import { activityOf, isOngoing, stepKey } from './activity'
+import {
+  SHORTCUT_LIST,
+  SHORTCUTS,
+  type Shortcut,
+  ariaShortcut,
+  fieldOf,
+  shortcutLabel,
+  shortcutOf,
+} from './shortcuts'
 import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
 import buddy from './assets/buddy.webp'
 import buddyThinking from './assets/buddy-thinking.webp'
@@ -618,6 +627,9 @@ export default function App({ root }: { root: Element }) {
   const panel = useRef<HTMLElement>(null)
   const title = useRef<HTMLHeadingElement>(null)
   const [toTitle, setToTitle] = useState(0)
+  const widget = useRef<HTMLDivElement>(null)
+  // The list of the keyboard shortcuts, in the panel.
+  const [showKeys, setShowKeys] = useState(false)
 
   const openPanel = useCallback(() => {
     if (!layout.current.open) opener.current = focusedElement()
@@ -1091,6 +1103,79 @@ export default function App({ root }: { root: Element }) {
         />
       </div>
     ))
+
+  /** What each keyboard shortcut does, with the state of this render. */
+  const onShortcut = useRef<(shortcut: Shortcut) => void>(undefined)
+  useLayoutEffect(() => {
+    onShortcut.current = (shortcut) => {
+      if (shortcut === 'comment') {
+        if (selectionButton && pendingAnchor.current) {
+          startDraft(pendingAnchor.current)
+          return
+        }
+        // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
+        if (draft && written(draft)) {
+          setView('page')
+          setThreadId(undefined)
+          openPanel()
+          return
+        }
+        startDraft(PAGE_LEVEL)
+      } else if (shortcut === 'pick') {
+        // While the reader writes, the element goes into their message, as with its button.
+        if (open && writingIn) {
+          setAttachingTo(picksFor ? undefined : writingIn)
+          return
+        }
+        setDrawing(false)
+        setPicking((value) => !value)
+      } else if (shortcut === 'panel') {
+        if (open) {
+          close()
+          return
+        }
+        openPanel()
+        setToTitle((times) => times + 1)
+      } else {
+        // In the panel's order, newest first, around from one end to the other.
+        const listed = comments.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+        if (!listed.length) {
+          toast('No comments on this page')
+          return
+        }
+        const at =
+          view === 'page' && !drafting
+            ? listed.findIndex(({ id }) => id === threadId)
+            : -1
+        const step = shortcut === 'next' ? 1 : -1
+        const index =
+          at < 0
+            ? step > 0
+              ? 0
+              : listed.length - 1
+            : (at + step + listed.length) % listed.length
+        const to = listed[index]
+        if (to) openFromPage(to)
+      }
+    }
+  })
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      // The page's own handler took the keys first.
+      if (event.defaultPrevented || event.repeat) return
+      const shortcut = shortcutOf(event)
+      if (!shortcut) return
+      // The page's fields keep their keys; in the widget's, the arrows select text.
+      const field = fieldOf(event, widget.current)
+      if (field === 'page' || (field && (shortcut === 'next' || shortcut === 'previous')))
+        return
+      event.preventDefault()
+      onShortcut.current?.(shortcut)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   const cancelAttach = useCallback(() => setAttachingTo(undefined), [])
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
@@ -1684,6 +1769,7 @@ export default function App({ root }: { root: Element }) {
 
   return (
     <div
+      ref={widget}
       className="cb"
       // Not the ups: the area drawer and the panel's resize end on the page's.
       onPointerDown={keepPress}
@@ -1703,7 +1789,7 @@ export default function App({ root }: { root: Element }) {
       {picksFor && (
         <ElementPicker
           root={root}
-          hint="Click an element to add it to your message. Escape cancels."
+          hint="Click an element to add it to your message, or move with the arrow keys and press Enter. Escape cancels."
           onPick={attachElement}
           onCancel={cancelAttach}
         />
@@ -1714,6 +1800,8 @@ export default function App({ root }: { root: Element }) {
           icon="chat"
           className="cb-selection cb-live"
           data-testid="cb-selection"
+          title={`Comment on the selected text (${shortcutLabel('comment')})`}
+          aria-keyshortcuts={ariaShortcut('comment')}
           style={{ top: selectionButton.top, left: selectionButton.left }}
           onClick={() => pendingAnchor.current && startDraft(pendingAnchor.current)}
         >
@@ -1729,7 +1817,13 @@ export default function App({ root }: { root: Element }) {
       {drawing === 'sketch' && <SketchDrawer onDraw={drawSketch} onCancel={cancelDraw} />}
       {!open && (
         <div ref={dock} className="cb-dock cb-live">
-          <Button variant="secondary" icon="chat" onClick={() => startDraft(PAGE_LEVEL)}>
+          <Button
+            variant="secondary"
+            icon="chat"
+            title={`Comment on the page (${shortcutLabel('comment')})`}
+            aria-keyshortcuts={ariaShortcut('comment')}
+            onClick={() => startDraft(PAGE_LEVEL)}
+          >
             Comment
           </Button>
           <Button
@@ -1752,6 +1846,8 @@ export default function App({ root }: { root: Element }) {
           </Button>
           <Button
             icon={picking ? 'x' : 'cursor'}
+            title={`${picking ? 'Stop pointing' : 'Point at an element'} (${shortcutLabel('pick')})`}
+            aria-keyshortcuts={ariaShortcut('pick')}
             onClick={() => {
               setDrawing(false)
               setPicking((value) => !value)
@@ -1774,11 +1870,18 @@ export default function App({ root }: { root: Element }) {
           aria-label="Code Buddy"
           data-testid="code-buddy-panel"
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing || event.defaultPrevented) return
+            if (event.key === '?' && !fieldOf(event.nativeEvent)) {
+              event.preventDefault()
+              setShowKeys((shown) => !shown)
+              return
+            }
             // After the message box's Escape, and the picker's: its own listener, on
             // the document, hears it once this one has.
-            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
-            if (event.defaultPrevented || picksFor) return
-            close()
+            if (event.key !== 'Escape' || picksFor) return
+            // The list of shortcuts first, then the panel.
+            if (showKeys) setShowKeys(false)
+            else close()
           }}
         >
           <div
@@ -1828,14 +1931,62 @@ export default function App({ root }: { root: Element }) {
                 onClick={() => startDraft(PAGE_LEVEL)}
               />
               <IconButton
+                icon="keyboard"
+                label="Keyboard shortcuts"
+                keys="?"
+                aria-keyshortcuts="?"
+                aria-expanded={showKeys}
+                onClick={() => setShowKeys((shown) => !shown)}
+              />
+              <IconButton
                 icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
                 label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
                 onClick={toggleDocked}
               />
-              <IconButton icon="x" label="Close" onClick={close} />
+              <IconButton
+                icon="x"
+                label="Close"
+                keys={shortcutLabel('panel')}
+                aria-keyshortcuts={ariaShortcut('panel')}
+                onClick={close}
+              />
             </div>
           </header>
           <div className="cb-body" ref={setScroller}>
+            {showKeys && (
+              <section
+                className="cb-keys"
+                aria-label="Keyboard shortcuts"
+                data-testid="cb-keys"
+              >
+                <dl>
+                  {SHORTCUT_LIST.map((shortcut) => (
+                    <Fragment key={shortcut}>
+                      <dt>
+                        <kbd>{shortcutLabel(shortcut)}</kbd>
+                      </dt>
+                      <dd>{SHORTCUTS[shortcut].does}</dd>
+                    </Fragment>
+                  ))}
+                  <dt>
+                    <kbd>↑ ↓ ← →</kbd>
+                  </dt>
+                  <dd>Pointing at an element: to its parent, first child or siblings</dd>
+                  <dt>
+                    <kbd>Enter</kbd>
+                  </dt>
+                  <dd>Pointing at an element: pick the one outlined</dd>
+                  <dt>
+                    <kbd>Escape</kbd>
+                  </dt>
+                  <dd>Stop pointing or drawing, close this list, then the panel</dd>
+                  <dt>
+                    <kbd>?</kbd>
+                  </dt>
+                  <dd>Show or hide this list</dd>
+                </dl>
+              </section>
+            )}
             <Boundary
               // Somewhere else in the panel, it draws again.
               key={`${view} ${threadId ?? ''} ${drafting}`}
@@ -1950,6 +2101,7 @@ export default function App({ root }: { root: Element }) {
                     ),
                   )}
                   picking={!!picksFor}
+                  pickKeys={shortcutLabel('pick')}
                   onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
                   placeholder="What should change?"
                   sendLabel="Save"
@@ -1991,6 +2143,7 @@ export default function App({ root }: { root: Element }) {
                     ),
                   )}
                   picking={!!picksFor}
+                  pickKeys={shortcutLabel('pick')}
                   onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
                   placeholder={
                     offered

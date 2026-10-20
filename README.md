@@ -169,6 +169,13 @@ directory, else from the repository root.
   the comment and send it again to hand it to a new agent.
 - Once answered: reply in the thread to follow up, reusing the same agent and
   its context when it is still around.
+- **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
+  focus is but in a field of your app: `,` comments on the selected text (or
+  on the page), `.` points at an element (in a message box, picks one for
+  it), `Enter` opens or closes the panel, `↓` and `↑` go to the next and
+  previous comment on the page. While pointing, the arrow keys move the
+  outline to the parent, the first child or a sibling, and `Enter` picks it.
+  `?` in the panel lists them.
 
 ## Troubleshooting
 

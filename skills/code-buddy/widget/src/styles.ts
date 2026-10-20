@@ -194,6 +194,11 @@ code { font-family: var(--cb-mono); }
 .cb-form { display: flex; flex-direction: column; gap: 8px; }
 .cb-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .cb-empty { display: flex; justify-content: center; padding: 32px 0; }
+.cb-keys { padding: 12px; border: 1px solid var(--cb-border); border-radius: var(--cb-radius); font-size: 13px; }
+.cb-keys dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; margin: 0; }
+.cb-keys dt, .cb-keys dd { margin: 0; }
+.cb-keys dd { color: var(--cb-muted); }
+.cb-keys kbd { font: inherit; font-weight: 600; white-space: nowrap; }
 .cb-idle { font-size: 13px; color: var(--cb-muted); }
 
 .cb-section, .cb-author, .cb-label, .cb-model { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-muted); }

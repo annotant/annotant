@@ -18,7 +18,7 @@ function page() {
   const box = vi
     .spyOn(Element.prototype, 'getBoundingClientRect')
     .mockImplementation(function (this: Element) {
-      return boxes.get(this) ?? DOMRect.fromRect()
+      return boxes.get(this) ?? new DOMRect()
     })
   vi.useFakeTimers()
   let under: Element | null = null
@@ -193,4 +193,77 @@ test("the picker puts the host's cursor back", () => {
 
   unmount()
   expect(document.documentElement.style.cursor).toBe('wait')
+})
+
+/** The reader presses `key`, with the focus on the page. */
+const pressKey = (key: string) => act(() => void fireEvent.keyDown(document, { key }))
+
+test('the arrow keys move the outline through the page, and Enter picks', () => {
+  const { root, second } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+
+  // From nothing outlined, the page's first element.
+  pressKey('ArrowDown')
+  expect(outline()?.textContent).toBe('table')
+  pressKey('ArrowRight')
+  expect(outline()?.textContent).toBe('p')
+  pressKey('ArrowLeft')
+  // Down to the first cell, through the table's body and row.
+  for (let step = 0; step < 3; step += 1) pressKey('ArrowDown')
+  expect(outline()?.style.transform).toBe('translate(10px, 20px)')
+  pressKey('ArrowRight')
+  expect(outline()?.style.transform).toBe('translate(110px, 20px)')
+  expect(scroll.mock.contexts.at(-1)).toBe(second)
+  // Past the last sibling, or up past the page's elements, it stays.
+  pressKey('ArrowRight')
+  pressKey('Enter')
+  expect(onPick).toHaveBeenCalledWith(second)
+})
+
+test('the arrow keys go up to the parent, never past the page', () => {
+  const { root, first, hover } = page()
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  onTestFinished(() => scroll.mockRestore())
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+
+  for (let step = 0; step < 6; step += 1) pressKey('ArrowUp')
+  pressKey('Enter')
+
+  expect(onPick).toHaveBeenCalledWith(root.querySelector('table'))
+})
+
+test('Enter picks nothing while the pointer is off every element', () => {
+  const { root, first, hover } = page()
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+  act(() => hover(undefined))
+
+  fireEvent.keyDown(document, { key: 'Enter' })
+
+  expect(onPick).not.toHaveBeenCalled()
+})
+
+test("the picker's keys leave a field and the browser's shortcuts alone", () => {
+  const { root, first, hover } = page()
+  const onPick = vi.fn()
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(first))
+  const field = document.createElement('textarea')
+  document.body.append(field)
+  onTestFinished(() => field.remove())
+
+  expect(fireEvent.keyDown(field, { key: 'Enter' })).toBe(true)
+  expect(fireEvent.keyDown(document, { key: 'ArrowUp', shiftKey: true })).toBe(true)
+  expect(onPick).not.toHaveBeenCalled()
+  expect(outline()?.textContent).toBe('td')
 })

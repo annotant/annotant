@@ -43,6 +43,7 @@ const PATHS = {
   'arrow-up': 'M12 19V5M6 11l6-6 6 6',
   'chevron-down': 'M6 9l6 6 6-6',
   check: 'M5 12l5 5 9-11',
+  keyboard: 'M3 6h18v12H3zM7 10h0M11 10h0M15 10h0M8 14h8',
 } as const
 
 export type IconName = keyof typeof PATHS
@@ -94,12 +95,15 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconName
   label: string
   danger?: boolean
+  /** The keyboard shortcut doing the same, shown in the tooltip. */
+  keys?: string
 }
 
 export function IconButton({
   icon,
   label,
   danger,
+  keys,
   className = '',
   ...props
 }: IconButtonProps) {
@@ -107,7 +111,7 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={keys ? `${label} (${keys})` : label}
       className={`cb-icon-btn ${danger ? 'cb-icon-btn--danger' : ''} ${className}`}
       {...props}
     >
@@ -182,6 +186,7 @@ export function Composer({
   images,
   elements,
   picking = false,
+  pickKeys,
   onChange,
   onSubmit,
   onEscape,
@@ -202,6 +207,8 @@ export function Composer({
   elements?: ReactNode[]
   /** The page's elements are being picked for it. */
   picking?: boolean
+  /** The keyboard shortcut of the button picking them. */
+  pickKeys?: string
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
@@ -334,6 +341,7 @@ export function Composer({
         <IconButton
           icon="cursor"
           label={picking ? 'Stop picking' : 'Pick an element in the page'}
+          {...(pickKeys ? { keys: pickKeys } : {})}
           className="cb-pick"
           aria-pressed={picking}
           disabled={disabled}
