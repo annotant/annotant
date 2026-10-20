@@ -1931,14 +1931,6 @@ export default function App({ root }: { root: Element }) {
                 onClick={() => startDraft(PAGE_LEVEL)}
               />
               <IconButton
-                icon="keyboard"
-                label="Keyboard shortcuts"
-                keys="?"
-                aria-keyshortcuts="?"
-                aria-expanded={showKeys}
-                onClick={() => setShowKeys((shown) => !shown)}
-              />
-              <IconButton
                 icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
                 label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
                 onClick={toggleDocked}

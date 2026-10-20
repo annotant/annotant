@@ -43,7 +43,6 @@ const PATHS = {
   'arrow-up': 'M12 19V5M6 11l6-6 6 6',
   'chevron-down': 'M6 9l6 6 6-6',
   check: 'M5 12l5 5 9-11',
-  keyboard: 'M3 6h18v12H3zM7 10h0M11 10h0M15 10h0M8 14h8',
 } as const
 
 export type IconName = keyof typeof PATHS
