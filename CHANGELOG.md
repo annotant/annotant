@@ -89,6 +89,12 @@ released to the `stable` branch.
 
 ### Added
 
+- **Keyboard shortcuts in the widget.** ⌘⇧ on macOS, Ctrl+Shift elsewhere:
+  `,` comments on the selected text (or the page), `.` points at an element,
+  `Enter` opens or closes the panel, `↓`/`↑` go through the page's comments.
+  While pointing, the arrow keys move the outline and Enter picks. `?` in the
+  panel lists them; the buttons' tooltips name them. The page's own fields
+  keep their keys. (#47)
 - **`/code-buddy status`.** For each project watched, the server's state and
   address or why it stopped, the agents at work (comment, agent, model, for
   how long), the comments waiting for a free agent in order, and the server's
