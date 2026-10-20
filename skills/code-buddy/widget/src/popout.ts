@@ -37,10 +37,22 @@ export const canPopOut = () => !!window.documentPictureInPicture
 export async function popOut(width: number, onClose: () => void): Promise<Popout> {
   const pip = window.documentPictureInPicture
   if (!pip) throw new Error('This browser cannot open the panel in a window.')
-  const opened = await pip.requestWindow({
-    width,
-    height: Math.min(window.screen.availHeight, 720),
-  })
+  const opened = await pip
+    .requestWindow({ width, height: Math.min(window.screen.availHeight, 720) })
+    .catch((error: unknown) => {
+      const reason = error instanceof Error ? `: ${error.message}` : ''
+      throw new Error(`Could not open the panel in a window${reason}`)
+    })
+  try {
+    return { window: opened, container: mountIn(opened, onClose) }
+  } catch (error) {
+    // Never an empty window left on top.
+    opened.close()
+    throw error
+  }
+}
+
+function mountIn(opened: Window, onClose: () => void): HTMLElement {
   const { document } = opened
   document.title = 'Code Buddy'
   // The fonts, which a shadow root ignores, go in the window's own document.
@@ -55,5 +67,5 @@ export async function popOut(width: number, onClose: () => void): Promise<Popout
   const container = document.createElement('div')
   shadow.append(style, container)
   opened.addEventListener('pagehide', onClose, { once: true })
-  return { window: opened, container }
+  return container
 }

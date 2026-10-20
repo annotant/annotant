@@ -626,9 +626,12 @@ export default function App({ root }: { root: Element }) {
   const openPanel = useCallback(() => {
     if (!layout.current.open) opener.current = focusedElement()
     setOpen(true)
-    // The window comes to the front, so the message box takes the keys.
+    // Brings the window to the front, if the browser lets it.
     popout?.window.focus()
   }, [popout])
+
+  // Gone with the widget: an empty window must not stay on top.
+  useEffect(() => () => popout?.window.close(), [popout])
 
   const page = useComments(route)
   const comments = page.comments
@@ -756,7 +759,8 @@ export default function App({ root }: { root: Element }) {
     popout?.window.close()
     setOpen(false)
     setAttachingTo(undefined)
-    setLeaving(true)
+    // From the window, no leave animation: it would play in the page.
+    setLeaving(!popout)
     refocus.current = true
   }
 
@@ -1704,7 +1708,8 @@ export default function App({ root }: { root: Element }) {
       data-testid="code-buddy-panel"
       onKeyDown={(event) => {
         // After the message box's Escape, and the picker's: its own listener, on
-        // the document, hears it once this one has.
+        // the document, hears it once this one has. Not in the separate window,
+        // which the reader closes.
         if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
         if (event.defaultPrevented || picksFor || popout) return
         close()
@@ -1764,7 +1769,9 @@ export default function App({ root }: { root: Element }) {
               label="Open in a window"
               onClick={() =>
                 void run(async () => {
-                  setPopout(await popOut(width, () => setPopout(undefined)))
+                  const opened = await popOut(width, () => setPopout(undefined))
+                  // Closed before it was set: `pagehide` has already run.
+                  if (!opened.window.closed) setPopout(opened)
                 })
               }
             />
