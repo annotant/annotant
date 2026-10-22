@@ -8,13 +8,13 @@ import { SCRIPTS } from './helpers.mjs'
 
 const ROOT = new URL('../', import.meta.url).pathname
 const agent = await readFile(path.join(ROOT, 'agents/worker.md'), 'utf8')
-const skill = await readFile(path.join(ROOT, 'skills/code-buddy/SKILL.md'), 'utf8')
+const skill = await readFile(path.join(ROOT, 'skills/annotant/SKILL.md'), 'utf8')
 const hooks = await readFile(path.join(ROOT, 'hooks/register.ts'), 'utf8')
 
 test("each comment's agent gets the instructions of the agent the plugin ships", () => {
   const name = agent.match(/^---\n[\s\S]*?^name: (\S+)$[\s\S]*?^---$/m)?.[1]
   assert.equal(name, 'worker')
-  assert.match(hooks, /^const WORKER = 'code-buddy:worker'$/m)
+  assert.match(hooks, /^const WORKER = 'annotant:worker'$/m)
   assert.match(hooks, /\$\.fs\s*\.read\(`\$\{\$\.plugin\.root\}\/agents\/worker\.md`\)/)
 })
 
@@ -46,9 +46,9 @@ test('the agent runs scripts the skill has', async () => {
   for (const name of names) await access(path.join(SCRIPTS, name))
 })
 
-test('the agent reads values init writes to .code-buddy.json', () => {
+test('the agent reads values init writes to .annotant.json', () => {
   const config = skill.match(/```json\n\s*(\{[\s\S]*?\})\n\s*```/)?.[1]
-  assert.ok(config, 'the skill shows .code-buddy.json')
+  assert.ok(config, 'the skill shows .annotant.json')
   for (const key of ['commentsFile', 'devUrl', 'editable', 'checks', 'build']) {
     assert.match(agent, new RegExp(`\`${key}\``), key)
     assert.match(config, new RegExp(`"${key}":`), key)

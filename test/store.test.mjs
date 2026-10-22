@@ -14,15 +14,15 @@ async function appendProgress(project, comment, ...steps) {
   )
 }
 
-/** @type {typeof import('../skills/code-buddy/scripts/lib/store.mjs')} */
+/** @type {typeof import('../skills/annotant/scripts/lib/store.mjs')} */
 let store
-/** @type {typeof import('../skills/code-buddy/scripts/lib/project.mjs')} */
+/** @type {typeof import('../skills/annotant/scripts/lib/project.mjs')} */
 let projects
 
 before(async (t) => {
-  process.env.CODE_BUDDY_STATE_DIR = await tempDir(t)
-  store = await import('../skills/code-buddy/scripts/lib/store.mjs')
-  projects = await import('../skills/code-buddy/scripts/lib/project.mjs')
+  process.env.ANNOTANT_STATE_DIR = await tempDir(t)
+  store = await import('../skills/annotant/scripts/lib/store.mjs')
+  projects = await import('../skills/annotant/scripts/lib/project.mjs')
 })
 
 async function setUp(t) {
@@ -527,8 +527,8 @@ test('only a dev build of the widget counts as one', async (t) => {
   const dir = await tempDir(t)
   const dev = path.join(dir, 'dev.js')
   const release = path.join(dir, 'release.js')
-  await writeFile(dev, '/* code-buddy widget (dev build, with the debug panel): x */')
-  await writeFile(release, '/* code-buddy widget: served by the code-buddy skill */')
+  await writeFile(dev, '/* annotant widget (dev build, with the debug panel): x */')
+  await writeFile(release, '/* annotant widget: served by the annotant skill */')
   assert.equal(projects.isDevWidget(dev), true)
   assert.equal(projects.isDevWidget(release), false)
   assert.equal(projects.isDevWidget(path.join(dir, 'missing.js')), false)

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src=".github/assets/buddy.png" alt="Code Buddy's mascot, a small blue caterpillar" height="180">
+  <img src=".github/assets/annotant.png" alt="Annotant's mascot, a small blue ant" height="180">
 </p>
 
-<h1 align="center">Code Buddy</h1>
+<h1 align="center">Annotant</h1>
 
 <p align="center">
   <strong>Comment on your running app. Claude makes the change.</strong><br>
@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/neolitec/code-buddy/actions/workflows/ci.yml"><img src="https://github.com/neolitec/code-buddy/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/neolitec/code-buddy/actions/workflows/codeql.yml"><img src="https://github.com/neolitec/code-buddy/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://scorecard.dev/viewer/?uri=github.com/neolitec/code-buddy"><img src="https://api.scorecard.dev/projects/github.com/neolitec/code-buddy/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://github.com/annotant/annotant/actions/workflows/ci.yml"><img src="https://github.com/annotant/annotant/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/annotant/annotant/actions/workflows/codeql.yml"><img src="https://github.com/annotant/annotant/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/annotant/annotant"><img src="https://api.scorecard.dev/projects/github.com/annotant/annotant/badge" alt="OpenSSF Scorecard"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
@@ -37,10 +37,10 @@ follow up; cancel to stop it.
 ## How it works
 
 - **The widget** is served by a small local server that the plugin starts
-  when you run `/code-buddy`, for the session's life. No server, no widget:
+  when you run `/annotant`, for the session's life. No server, no widget:
   nothing runs when Claude is not watching.
 - **Your project** only gets a few lines: a dev-only loader snippet, a
-  `.code-buddy.json` config, and a `.code-buddy/` folder for the comments
+  `.annotant.json` config, and a `.annotant/` folder for the comments
   (git-ignored by default; `comments.json`, its format versioned, each thread
   whole with its state and history: see
   [the comments file](docs/comments-file.md)). The widget's code never enters your project or
@@ -63,7 +63,7 @@ follow up; cancel to stop it.
   around each of its tools, and no other agent does.
 - **Each comment gets a model that fits it.** Before its agent starts, a
   classifier sorts the comment as `trivial`, `standard` or `hard`, and
-  `models` in `.code-buddy.json` picks the model for it (by default Haiku,
+  `models` in `.annotant.json` picks the model for it (by default Haiku,
   the session's own model, and Opus). The widget names it on the thread
   ("haiku · trivial"). A comment of images alone is not classified: it
   starts on the session's model at a medium effort. See
@@ -77,7 +77,7 @@ From nothing to a first comment on your app, in four steps.
 
 - **Claude Code 2.1.287 or later**, for its mods: `claude --version`, and
   `claude update` when it is older. On an older Claude Code,
-  `/code-buddy:code-buddy` says so and does not start, and `/code-buddy` does
+  `/annotant:annotant` says so and does not start, and `/annotant` does
   not exist.
 - **Node.js 22 or later**: `node --version`.
 - **A JavaScript web frontend served by a dev server**: a `package.json`
@@ -89,19 +89,19 @@ From nothing to a first comment on your app, in four steps.
 Straight from GitHub, no clone needed:
 
 ```sh
-claude plugin marketplace add neolitec/code-buddy#stable
-claude plugin install code-buddy@code-buddy
+claude plugin marketplace add annotant/annotant#stable
+claude plugin install annotant@annotant
 ```
 
-Or, inside a session: `/plugin marketplace add neolitec/code-buddy#stable`,
-then `/plugin install code-buddy@code-buddy`.
+Or, inside a session: `/plugin marketplace add annotant/annotant#stable`,
+then `/plugin install annotant@annotant`.
 
 ### 3. Set it up in your project
 
 Start Claude Code in your frontend project, and run:
 
 ```
-/code-buddy:code-buddy init
+/annotant:annotant init
 ```
 
 That is the skill's full name; see [Commands](#commands).
@@ -111,10 +111,10 @@ lint) and the folders agents may edit. It asks, in one round, only what it
 could not detect, and whether to git-ignore the comments (recommended: they
 hold excerpts of your pages' HTML). Then it writes:
 
-- `.code-buddy.json`, the project's config;
+- `.annotant.json`, the project's config;
 - a dev-only loader snippet in the app's client entry
   (`instrumentation-client.ts`, `pages/_app`, `index.html`, `src/index`…);
-- `.code-buddy/`, the comments' folder, in `.gitignore` if you agreed;
+- `.annotant/`, the comments' folder, in `.gitignore` if you agreed;
 - a dev-only change to the Content Security Policy, proposed only when it
   finds one in the Next config, the HTML entry or the middleware or proxy
   files.
@@ -124,7 +124,7 @@ Last, it builds the app for production and checks the widget is not in it
 changed.
 
 When the frontend lives in a folder of the repository, name it after the
-command: `/code-buddy:code-buddy init web` installs Code Buddy in `web/`. The
+command: `/annotant:annotant init web` installs Annotant in `web/`. The
 folder is resolved from the current directory, else from the repository root.
 On a monorepo root that is not itself an app, `init` asks which of its apps
 to use.
@@ -132,10 +132,10 @@ to use.
 ### 4. Start commenting
 
 ```
-/code-buddy
+/annotant
 ```
 
-(`/code-buddy web` for a folder.) Then open your dev app in the browser, its
+(`/annotant web` for a folder.) Then open your dev app in the browser, its
 dev server running as usual: a small strip of icons shows in the bottom right
 corner of the page. Click the **Comment** icon (hover one for its name),
 write what to change and send it: an agent starts, its progress shows live
@@ -147,16 +147,16 @@ No icons? See [the widget does not show](#the-widget-does-not-show).
 
 | Command                             | What it does                                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------ |
-| `/code-buddy:code-buddy init [dir]` | Install in this project, or its folder `dir` (asks only what it cannot detect) |
-| `/code-buddy [dir]`                 | Watch the app: open your dev app and comment                                   |
-| `/code-buddy stop`                  | Stop watching                                                                  |
-| `/code-buddy status`                | The server, the agents at work and the comments waiting                        |
-| `/code-buddy:code-buddy update`     | Migrate an older install                                                       |
-| `/code-buddy:code-buddy uninstall`  | Remove Code Buddy from the project                                             |
+| `/annotant:annotant init [dir]` | Install in this project, or its folder `dir` (asks only what it cannot detect) |
+| `/annotant [dir]`                 | Watch the app: open your dev app and comment                                   |
+| `/annotant stop`                  | Stop watching                                                                  |
+| `/annotant status`                | The server, the agents at work and the comments waiting                        |
+| `/annotant:annotant update`     | Migrate an older install                                                       |
+| `/annotant:annotant uninstall`  | Remove Annotant from the project                                             |
 
-Plugin skills are prefixed with the plugin name, hence `/code-buddy:code-buddy`;
-`/code-buddy` is a command of the plugin's hooks, and runs at once, even while
-Claude is answering. `/code-buddy:code-buddy` with no mode watches too, through
+Plugin skills are prefixed with the plugin name, hence `/annotant:annotant`;
+`/annotant` is a command of the plugin's hooks, and runs at once, even while
+Claude is answering. `/annotant:annotant` with no mode watches too, through
 the skill.
 
 ### While it watches
@@ -165,27 +165,34 @@ Work on in the same session: the comments go straight to their agents, never
 through your conversation. When an agent ends, its one-line answer shows in
 the session's transcript (Claude does not read it), and a question it asks in
 the thread shows as a notification too. Closing the session stops the server;
-`/code-buddy` starts it again, and nothing is lost.
+`/annotant` starts it again, and nothing is lost.
 
 In a git worktree, both commands find the project in the main checkout when
-the worktree lacks `.code-buddy.json`.
+the worktree lacks `.annotant.json`.
 
 ### Updating
 
 The `stable` branch holds the released versions; `main` is where development
 happens and does not work without a build. Get new versions with `claude
-plugin marketplace update code-buddy`, or turn on auto-update for the
+plugin marketplace update annotant`, or turn on auto-update for the
 marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
-After an update, `/code-buddy:code-buddy update` migrates a project installed
+After an update, `/annotant:annotant update` migrates a project installed
 by an older version.
+
+**Coming from Code Buddy**, Annotant's former name: remove the old plugin and
+its marketplace (`claude plugin uninstall code-buddy@code-buddy`, then
+`claude plugin marketplace remove code-buddy`), install Annotant as in
+[step 2](#2-install-the-plugin), and run `/annotant:annotant update` in each
+project: it moves `.code-buddy.json` and `.code-buddy/` to `.annotant.json`
+and `.annotant/`, and updates the loader and `.gitignore`.
 
 ### Uninstalling
 
-`/code-buddy:code-buddy uninstall` removes the loader snippet (and a file
-`init` created only for it), `.code-buddy.json` and the `.gitignore` entry. It
-asks before deleting `.code-buddy/`, which holds your comments. A dev-only
+`/annotant:annotant uninstall` removes the loader snippet (and a file
+`init` created only for it), `.annotant.json` and the `.gitignore` entry. It
+asks before deleting `.annotant/`, which holds your comments. A dev-only
 change `init` made to the Content Security Policy stays: revert it by hand.
-Remove the plugin itself with `claude plugin uninstall code-buddy@code-buddy`,
+Remove the plugin itself with `claude plugin uninstall annotant@annotant`,
 or from `/plugin`.
 
 ## In the widget
@@ -260,11 +267,11 @@ progress shows its _Cancel_ there.
 
 When the dev app shows no strip of icons in its bottom right corner:
 
-- Run `/code-buddy status`: the server must be running, at the address in
+- Run `/annotant status`: the server must be running, at the address in
   the loader snippet (`http://127.0.0.1:<port>`); the snippet keeps the port
-  `init` wrote, so a new `port` in `.code-buddy.json` (or
-  `CODE_BUDDY_PORT`) needs it changed too.
-- No `/code-buddy` command at all: the plugin's hooks did not load. Claude
+  `init` wrote, so a new `port` in `.annotant.json` (or
+  `ANNOTANT_PORT`) needs it changed too.
+- No `/annotant` command at all: the plugin's hooks did not load. Claude
   Code is older than 2.1.287 (`claude update`, then a new session), or mods
   are turned off for this session.
 - Reload the page once the watch has started: the loader asks for the widget
@@ -279,11 +286,11 @@ When the dev app shows no strip of icons in its bottom right corner:
   proxy) needs it by hand.
 - An app opened on a host that is not local (`localhost`, `127.0.0.1`,
   `[::1]`, `*.localhost`) needs its origin in `devOrigins` in
-  `.code-buddy.json`.
+  `.annotant.json`.
 
 ### A comment waits, or an agent seems stuck
 
-When a comment seems to wait for nothing, run `/code-buddy status`. For each
+When a comment seems to wait for nothing, run `/annotant status`. For each
 project it watches, it tells the server's state and address (or why it
 stopped), the agents at work (their comment, agent, model and for how long),
 the comments waiting for a free agent in order, and the server's last error
@@ -296,19 +303,19 @@ each decision the plugin's hooks make about the agents working on comments.
 In any Claude Code session:
 
 ```
-/code-buddy-debug on
+/annotant-debug on
 ```
 
 It is on in every session within 5 seconds, with no restart. Then follow it
 from a terminal:
 
 ```sh
-tail -f ~/.cache/code-buddy/hook.log
+tail -f ~/.cache/annotant/hook.log
 ```
 
-or run `/code-buddy-debug` (no word) to see its last 20 lines. Turn it off
-with `/code-buddy-debug off`; the log stays where it is. Without the command,
-`touch ~/.cache/code-buddy/debug` turns it on and removing that file turns it
+or run `/annotant-debug` (no word) to see its last 20 lines. Turn it off
+with `/annotant-debug off`; the log stays where it is. Without the command,
+`touch ~/.cache/annotant/debug` turns it on and removing that file turns it
 off. The log keeps its last 128 to 256 KB.
 
 Each line reads `<time> <agent> <comment> <what happened>`; the agent is
@@ -325,7 +332,7 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 
 | Line                                                        | What it means                                                                                                                                  |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hooks loaded in a new session`                             | The hooks run in that session. **No line at all** after starting a session: they did not load (Code Buddy needs Claude Code 2.1.287 or later). |
+| `hooks loaded in a new session`                             | The hooks run in that session. **No line at all** after starting a session: they did not load (Annotant needs Claude Code 2.1.287 or later). |
 | `locked <file>`                                             | The agent holds that file, named from the repository root, until its run ends.                                                                 |
 | `waiting for <file>, held by comment <id>`                  | Another comment's agent is changing it; the agent waits up to 6 seconds.                                                                       |
 | `refused <file>: still held by comment <id>`                | The wait ran out: the agent releases its locks, re-reads and retries.                                                                          |
@@ -336,7 +343,7 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 | `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |
 | `hook.mjs failed: <error>`                                  | The agent's hook could not run: its tool ran without a lock or a step.                                                                         |
 | `started on <model>, …`                                     | The model the comment's agent runs on, its effort when routing set one (`at medium effort`), and how the classifier sorted the comment.        |
-| `started for NEW`, `sent the follow-up`                     | `/code-buddy` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
+| `started for NEW`, `sent the follow-up`                     | `/annotant` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
 | `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
 | `turn ended with the comment working: …` | The agent ended its turn neither answering nor asking: the comment stops, and the reader sends it again from its thread. |
 | `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
@@ -351,14 +358,14 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
 - Comments hold page text and HTML excerpts; they stay in your project folder,
-  with the images attached to them (`.code-buddy/images/`), which the server
+  with the images attached to them (`.annotant/images/`), which the server
   checks are images by their bytes.
 
 To report a vulnerability, see the [security policy](SECURITY.md).
 
 ## Development
 
-The repository holds a playground, a small fake app to try Code Buddy on.
+The repository holds a playground, a small fake app to try Annotant on.
 Claude Code started in your clone loads the plugin from it, instead of the
 installed copy; launch the playground there:
 
@@ -368,7 +375,7 @@ claude
 ```
 
 ```
-/playground        a fresh copy of the playground, with Code Buddy, in your browser
+/playground        a fresh copy of the playground, with Annotant, in your browser
 /playground keep   the same, keeping the changes agents made last time
 ```
 
@@ -381,7 +388,7 @@ What to do after a change:
 | ------------------------------------- | ------------------------------------------------------ |
 | `SKILL.md`, `agents/*`, `hooks/*`     | `/reload-plugins` in the session, or a new session     |
 | `scripts/*.mjs` except the server     | Nothing: each call runs the script again               |
-| `scripts/server.mjs`, `scripts/lib/*` | Restart the server: `/code-buddy stop`, then `/code-buddy` |
+| `scripts/server.mjs`, `scripts/lib/*` | Restart the server: `/annotant stop`, then `/annotant` |
 | `widget/src/*`                        | Rebuild, reload the page: `npm run watch` does both     |
 
 The server reads `dist/widget.js` on every page load, so a rebuild and a page
@@ -399,7 +406,7 @@ packages it bundles) is never committed on `main`: the Release workflow builds
 it and publishes it on the `stable` branch. See [CONTRIBUTING.md](CONTRIBUTING.md)
 for the rest of the rules.
 
-Paths below are relative to `skills/code-buddy/`.
+Paths below are relative to `skills/annotant/`.
 
 | Path                                                   | What                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------- |
@@ -410,9 +417,9 @@ Paths below are relative to `skills/code-buddy/`.
 | `widget/src`                                           | The widget (React, TypeScript)                             |
 
 At the repository root, `agents/worker.md` is the agent that handles a
-comment (`code-buddy:worker`): its steps and rules. `hooks/register.ts` is
+comment (`annotant:worker`): its steps and rules. `hooks/register.ts` is
 the plugin's hooks module (a Claude Code mod, declared in `hooks/hooks.json`):
-the watch (`/code-buddy`, the server, one agent per comment, each registered
+the watch (`/annotant`, the server, one agent per comment, each registered
 with `scripts/hook.mjs` around its tools for file locks and live progress).
 The values it keeps for the session are typed in `types/index.d.ts`, and
 `test/hooks.test.ts` tests it against Claude Code itself:
@@ -433,6 +440,6 @@ follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 [MIT](LICENSE) © Kevin Manson
 
-Code Buddy is an independent open source project. It is not affiliated with,
+Annotant is an independent open source project. It is not affiliated with,
 endorsed by or supported by Anthropic. Claude and Claude Code are trademarks
 of Anthropic, PBC.

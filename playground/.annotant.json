@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "annotant-playground",
+  "port": 4590,
+  "devUrl": "http://localhost:5190",
+  "commentsFile": ".annotant/comments.json",
+  "framework": "react",
+  "loader": ["src/main.tsx"],
+  "checks": ["npm run typecheck"],
+  "build": "npm run build",
+  "buildOutput": "dist",
+  "editable": ["src", "public"]
+}

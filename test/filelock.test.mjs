@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
-import { withFileLock } from '../skills/code-buddy/scripts/lib/filelock.mjs'
+import { withFileLock } from '../skills/annotant/scripts/lib/filelock.mjs'
 import { SCRIPTS, tempDir } from './helpers.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))

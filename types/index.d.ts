@@ -1,4 +1,4 @@
-// The values Code Buddy's hooks module keeps in $.state for the session.
+// The values Annotant's hooks module keeps in $.state for the session.
 
 /**
  * What the hooks read of the comments file: a narrowed view of lib/format.mjs's
@@ -44,14 +44,14 @@ export type Worker = {
 declare module 'claude-code' {
   interface McpToolInputs {
     /** The skill's way in: the project root, absolute. */
-    'mcp__code-buddy__watch': { project?: string; stop?: boolean; status?: boolean }
+    mcp__annotant__watch: { project?: string; stop?: boolean; status?: boolean }
   }
   interface PluginState {
-    'code-buddy': {
+    annotant: {
       /** By comment id. */
       workers: Record<string, Worker>
       /**
-       * The projects `/code-buddy` watches, by root: their servers die with the
+       * The projects `/annotant` watches, by root: their servers die with the
        * module, and a reload starts them again.
        */
       watching: Record<string, true>

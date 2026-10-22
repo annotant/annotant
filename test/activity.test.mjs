@@ -6,7 +6,7 @@ import {
   isOngoing,
   modelName,
   stepKey,
-} from '../skills/code-buddy/widget/src/activity.ts'
+} from '../skills/annotant/widget/src/activity.ts'
 
 const step = (fields) => ({ at: 1, kind: 'read', label: 'src/a.ts', ...fields })
 

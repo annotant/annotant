@@ -1,0 +1,25 @@
+{
+  "name": "annotant-widget",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "build": "tsc -p . && node build.mjs",
+    "build:dev": "tsc -p . && node build.mjs --dev",
+    "watch": "node build.mjs --dev --watch",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.28.2",
+    "happy-dom": "20.14.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

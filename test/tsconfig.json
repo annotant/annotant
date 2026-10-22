@@ -1,5 +1,5 @@
 {
-  "extends": "../skills/code-buddy/scripts/tsconfig.json",
+  "extends": "../skills/annotant/scripts/tsconfig.json",
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",

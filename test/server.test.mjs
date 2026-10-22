@@ -30,11 +30,11 @@ before(async (t) => {
     {
       env: {
         ...process.env,
-        CODE_BUDDY_PORT: String(port),
-        CODE_BUDDY_STATE_DIR: (state = await tempDir(t)),
-        CODE_BUDDY_HOOKS: '1',
+        ANNOTANT_PORT: String(port),
+        ANNOTANT_STATE_DIR: (state = await tempDir(t)),
+        ANNOTANT_HOOKS: '1',
         // Never during a test: the server sees every change through its watches.
-        CODE_BUDDY_POLL_MS: '600000',
+        ANNOTANT_POLL_MS: '600000',
       },
       stdio: ['ignore', 'pipe', 'inherit'],
     },
@@ -579,7 +579,7 @@ test('prints one line per event, whatever line breaks the reader sent', async ()
  * @param {(messages: any[]) => boolean} ready
  */
 async function storedMessages(id, ready) {
-  const file = path.join(root, '.code-buddy', 'comments.json')
+  const file = path.join(root, '.annotant', 'comments.json')
   for (let waited = 0; waited < 3000; waited += 25) {
     const { comments } = JSON.parse(await readFile(file, 'utf8'))
     const messages = comments.find((comment) => comment.id === id)?.messages
@@ -619,7 +619,7 @@ test("names the reader's message it hands over, and dates the hand-over in the f
 
 test('a server started again hands the same message over, its first date kept', async (t) => {
   const project = await tempProject(t)
-  const file = path.join(project, '.code-buddy', 'comments.json')
+  const file = path.join(project, '.annotant', 'comments.json')
   const at = '2026-01-01T10:00:00.000Z'
   const notifiedAt = '2026-01-01T10:00:01.000Z'
   await mkdir(path.dirname(file), { recursive: true })
@@ -648,10 +648,10 @@ test('a server started again hands the same message over, its first date kept', 
     {
       env: {
         ...process.env,
-        CODE_BUDDY_PORT: String(await freePort()),
-        CODE_BUDDY_STATE_DIR: await tempDir(t),
-        CODE_BUDDY_HOOKS: '1',
-        CODE_BUDDY_POLL_MS: '600000',
+        ANNOTANT_PORT: String(await freePort()),
+        ANNOTANT_STATE_DIR: await tempDir(t),
+        ANNOTANT_HOOKS: '1',
+        ANNOTANT_POLL_MS: '600000',
       },
       stdio: ['ignore', 'pipe', 'inherit'],
     },
@@ -837,36 +837,36 @@ test('keeps a character split between two chunks of the body', async () => {
 })
 
 test('answers an internal error with a fixed message', async () => {
-  await mkdir(path.join(root, '.code-buddy'), { recursive: true })
-  await writeFile(path.join(root, '.code-buddy', 'comments.json'), '{corrupt')
+  await mkdir(path.join(root, '.annotant'), { recursive: true })
+  await writeFile(path.join(root, '.annotant', 'comments.json'), '{corrupt')
   const response = await fetch(`${base}/api/comments?route=%2F`)
   assert.equal(response.status, 500)
   assert.deepEqual(await json(response), { error: 'internal error' })
   await writeFile(
-    path.join(root, '.code-buddy', 'comments.json'),
+    path.join(root, '.annotant', 'comments.json'),
     JSON.stringify({ version: 2, comments: [] }),
   )
 })
 
 test('refuses to start on a comments file in the old format', async (t) => {
   const old = await tempProject(t)
-  await mkdir(path.join(old, '.code-buddy'), { recursive: true })
-  await writeFile(path.join(old, '.code-buddy', 'comments.json'), '[]')
+  await mkdir(path.join(old, '.annotant'), { recursive: true })
+  await writeFile(path.join(old, '.annotant', 'comments.json'), '[]')
   const started = await run(
     process.execPath,
     [path.join(SCRIPTS, 'server.mjs'), '--project', old],
     {
       env: {
-        CODE_BUDDY_PORT: String(await freePort()),
-        CODE_BUDDY_HOOKS: '1',
-        CODE_BUDDY_STATE_DIR: await tempDir(t),
+        ANNOTANT_PORT: String(await freePort()),
+        ANNOTANT_HOOKS: '1',
+        ANNOTANT_STATE_DIR: await tempDir(t),
       },
     },
   )
   assert.equal(started.code, 2)
   assert.match(
     started.stdout,
-    /^COMMENTS_REFUSED old comments format: delete .*\.code-buddy\/comments\.json$/m,
+    /^COMMENTS_REFUSED old comments format: delete .*\.annotant\/comments\.json$/m,
   )
 })
 
@@ -875,7 +875,7 @@ test('a second server for the same project reports the port as busy', async () =
     process.execPath,
     [path.join(SCRIPTS, 'server.mjs'), '--project', root],
     {
-      env: { CODE_BUDDY_PORT: String(port), CODE_BUDDY_HOOKS: '1' },
+      env: { ANNOTANT_PORT: String(port), ANNOTANT_HOOKS: '1' },
     },
   )
   assert.equal(second.code, 3)
@@ -886,7 +886,7 @@ test("refuses to start when Claude Code did not load the plugin's hooks", async 
   const started = await run(
     process.execPath,
     [path.join(SCRIPTS, 'server.mjs'), '--project', root],
-    { env: { CODE_BUDDY_PORT: String(await freePort()), CODE_BUDDY_HOOKS: '' } },
+    { env: { ANNOTANT_PORT: String(await freePort()), ANNOTANT_HOOKS: '' } },
   )
   assert.equal(started.code, 2)
   assert.match(started.stdout, /^HOOKS_MISSING .*Claude Code 2\.1\.287 or later/m)
@@ -965,7 +965,7 @@ test("files the reader's images, serves them, and gives the agent their paths", 
     ),
   )
   assert.deepEqual(created.messages[0].images, ['m1-1.png'])
-  const file = path.join(root, '.code-buddy', 'images', created.id, 'm1-1.png')
+  const file = path.join(root, '.annotant', 'images', created.id, 'm1-1.png')
   const event = await nextLine(`NEW ${created.id} `, printed)
   assert.ok(event.endsWith(` body="Like this" images=${JSON.stringify([file])}`), event)
 
@@ -1136,7 +1136,7 @@ test('an image it cannot read is an error, not a missing image', async () => {
       }),
     ),
   )
-  await mkdir(path.join(root, '.code-buddy', 'images', created.id, 'm1-2.png'))
+  await mkdir(path.join(root, '.annotant', 'images', created.id, 'm1-2.png'))
   const served = await fetch(`${base}/api/images/${created.id}/m1-2.png`)
   assert.equal(served.status, 500)
 })
@@ -1269,7 +1269,7 @@ test('takes images with a reply only', async () => {
     }),
   )
   assert.equal(resolved.state, 'resolved')
-  assert.equal(existsSync(path.join(root, '.code-buddy', 'images', created.id)), false)
+  assert.equal(existsSync(path.join(root, '.annotant', 'images', created.id)), false)
 })
 
 test('takes a comment of the elements the reader picked alone, and tells the hooks', async () => {

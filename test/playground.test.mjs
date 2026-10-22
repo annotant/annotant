@@ -7,7 +7,7 @@ import { SCRIPTS, run, tempDir } from './helpers.mjs'
 
 const PLAYGROUND = new URL('../playground/', import.meta.url).pathname
 
-test('detect.mjs sees a React frontend with Code Buddy installed', async () => {
+test('detect.mjs sees a React frontend with Annotant installed', async () => {
   const { code, stdout } = await run('node', [
     path.join(SCRIPTS, 'detect.mjs'),
     '--project',
@@ -22,7 +22,7 @@ test('detect.mjs sees a React frontend with Code Buddy installed', async () => {
 })
 
 test('the production build carries no widget loader', async (t) => {
-  const dist = await tempDir(t, 'code-buddy-playground-')
+  const dist = await tempDir(t, 'annotant-playground-')
   const build = await run('node', [path.join(PLAYGROUND, 'build.mjs'), '--outdir', dist])
   assert.equal(build.code, 0, build.stderr)
   const verify = await run('node', [
