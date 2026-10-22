@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const REPOSITORY = 'https://github.com/neolitec/code-buddy'
+export const REPOSITORY = 'https://github.com/annotant/annotant'
 
 /**
  * A docs page: its source in the repository, where it goes on the site, and,
@@ -228,7 +228,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(2)
   }
   cpSync('site', out, { recursive: true })
-  cpSync('.github/assets/buddy.png', join(out, 'assets/buddy.png'))
+  cpSync('.github/assets/annotant.png', join(out, 'assets/annotant.png'))
   const sources = new Map(
     PAGES.map((page) => [page.source, readFileSync(page.source, 'utf8')]),
   )

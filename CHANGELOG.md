@@ -9,7 +9,7 @@ released to the `stable` branch.
 
 ### Added
 
-- **A website**, at <https://neolitec.github.io/code-buddy/>: a landing page
+- **A website**, at <https://annotant.github.io/annotant/>: a landing page
   and the docs, built from the README and `docs/` whenever they change on `main`.
   (#182)
 

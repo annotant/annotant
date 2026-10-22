@@ -1,6 +1,6 @@
 # Built by .github/workflows/pages.yml from what .github/scripts/site.mjs stages:
 # this folder, and the docs pages made from the repository's Markdown.
-title: Code Buddy
+title: Annotant
 description: Comment on your running app. Claude makes the change.
 markdown: kramdown
 kramdown:

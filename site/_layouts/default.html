@@ -9,26 +9,26 @@
       content="{{ page.description | default: site.description }}"
     />
     <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href="{{ page.root }}assets/buddy.png" />
+    <link rel="icon" href="{{ page.root }}assets/annotant.png" />
     <link rel="stylesheet" href="{{ page.root }}assets/site.css" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to the content</a>
     <header class="bar">
       <a class="brand" href="{{ page.root | default: './' }}">
-        <img src="{{ page.root }}assets/buddy.png" alt="" width="18" height="33" />
-        Code Buddy
+        <img src="{{ page.root }}assets/annotant.png" alt="" width="28" height="21" />
+        Annotant
       </a>
       <nav aria-label="Site">
         <a href="{{ page.root }}docs/">Docs</a>
-        <a href="https://github.com/neolitec/code-buddy">GitHub</a>
+        <a href="https://github.com/annotant/annotant">GitHub</a>
       </nav>
     </header>
     <main id="main">{{ content }}</main>
     <footer class="foot">
       <p>
-        <a href="https://github.com/neolitec/code-buddy/blob/main/LICENSE">MIT</a> © Kevin
-        Manson. Code Buddy is an independent open source project, not affiliated with,
+        <a href="https://github.com/annotant/annotant/blob/main/LICENSE">MIT</a> © Kevin
+        Manson. Annotant is an independent open source project, not affiliated with,
         endorsed by or supported by Anthropic. Claude and Claude Code are trademarks of
         Anthropic, PBC.
       </p>
