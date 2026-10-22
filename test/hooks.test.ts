@@ -22,7 +22,7 @@ type Comment = {
   route?: string
   anchor?: { quote: string; element?: { tag: string; text: string } }
   messages?: { author: string; body: string; images?: string[] }[]
-  events?: { by: string }[]
+  events?: { by: string; state?: string; agent?: string }[]
 }
 
 /** The comments file, as lib/format.mjs writes it. */
@@ -49,6 +49,8 @@ function world(
     [`${ROOT}/.code-buddy/comments.json`, commentsFile(comments)],
   ])
   const removed: string[] = []
+  // The arguments of each `hook.mjs ended` the hooks ran.
+  const endings: string[][] = []
   // Another process appending to the hook log (a comment agent's hook.mjs,
   // another session): its line lands right after the mod next reads or
   // appends to it.
@@ -152,6 +154,19 @@ function world(
       }
       files.set(file, text)
       otherAppends(file)
+    }
+    // hook.mjs ended: it stops the comment its agent left working.
+    if (e.argv[2] === 'ended') {
+      endings.push(e.argv.slice(3))
+      return {
+        value: {
+          exitCode: 0,
+          stdout: 'STOPPED\n',
+          stderr: '',
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      }
     }
     if (e.argv[0] === 'rm') {
       const file = e.argv[e.argv.length - 1] ?? ''
@@ -311,6 +326,7 @@ function world(
     env,
     clock,
     removed,
+    ended: endings,
     setComments: (next: Comment[]) =>
       files.set(`${ROOT}/.code-buddy/comments.json`, commentsFile(next)),
   }
@@ -348,6 +364,8 @@ const open = (id: string): Comment => ({
   ...titleComment,
   id,
 })
+/** A comment's events, the last its claim by `agent`. */
+const working = (agent: string) => [{ by: 'agent', state: 'working', agent }]
 const ended = (agentId: string, answer = '') => ({
   answer,
   durationMs: 1,
@@ -1060,6 +1078,33 @@ test('a reply the agent missed as it ended its turn goes to it again', async ($,
   await $.turn.complete(ended('a1', 'Done.'))
   await w.clock.settle()
   expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a2', 'a1'])
+  await w.exit(0)
+})
+
+test('a comment its agent left working as its turn ended stops, for the reader to send again', async ($, on) => {
+  const w = world(on, ['c1', 'c2', 'c3'].map(open))
+  await $.command.run(debugCommand('on'))
+  await watch($, w)
+  await w.print(newLine('c1'), newLine('c2'), newLine('c3'))
+  // c1's agent ends on a summary, c2's asked, c3 was claimed by another agent.
+  w.setComments([
+    { ...open('c1'), state: 'working', events: working('a1') },
+    { ...open('c2'), state: 'asking', events: [{ by: 'agent', state: 'asking' }] },
+    { ...open('c3'), state: 'working', events: working('a9') },
+  ])
+  await $.turn.complete(ended('a1', 'I changed the title.'))
+  await $.turn.complete(ended('a2', 'QUESTION: Which colour?'))
+  await $.turn.complete(ended('a3', 'Done.'))
+  await w.clock.settle()
+  expect(w.ended).toEqual([
+    ['--comment', 'c1', '--project', ROOT, '--lock-root', ROOT, '--agent', 'a1'],
+  ])
+  expect(w.file(LOG)).toMatch(
+    / a1 c1 turn ended with the comment working: stopped it, the reader can send it again\n/,
+  )
+  // The server's line for the stop finds no agent to end.
+  await w.print('CANCELLED c1')
+  expect(w.stopped).toEqual([])
   await w.exit(0)
 })
 

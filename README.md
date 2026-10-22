@@ -119,6 +119,10 @@ directory, else from the repository root.
 
 ## In the widget
 
+While the panel is closed, the tools sit in a small strip of icons in the
+bottom right corner, their names and shortcuts in the tooltips; a tool in
+progress shows its _Cancel_ there.
+
 - **Comment** opens a new comment for the page, or the whole app.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.
@@ -169,6 +173,15 @@ directory, else from the repository root.
   the comment and send it again to hand it to a new agent.
 - Once answered: reply in the thread to follow up, reusing the same agent and
   its context when it is still around.
+- **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
+  focus is but in a field of your app: `,` comments on the selected text (or
+  on the page), `.` points at an element (while you write a comment or a
+  reply, picks one for it), `Enter` opens or closes the panel, `↓` and `↑` go
+  to the next and previous comment on the page (not from a message box, where
+  they select text). While pointing, out of a text box, the arrow keys move
+  the outline to the parent, the first child or a sibling, and `Enter` picks
+  it. `?` in the panel lists them, named as your keyboard types them in
+  Chromium (`;` for `,` on AZERTY).
 
 ## Troubleshooting
 
@@ -220,13 +233,14 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 | `refused <file>: still held by comment <id>`                | The wait ran out: the agent releases its locks, re-reads and retries.                                                                          |
 | `no lock for <file>: outside <repository>`                  | Files outside the git repository take no lock.                                                                                                 |
 | `refused a Bash write: <command>`                           | The agent tried to write files from Bash, where they cannot be locked; it is told to use Edit or Write.                                        |
-| `recorded <step>`                                           | A step shown under the comment, once the agent claimed it, until the reader stops it.                                                          |
+| `recorded <step>`                                           | A step shown under the comment, once the agent claimed it, until its run ends or stops.                                                          |
 | `run ended …`, `agent stopped …`                            | The agent answered, asked, or stopped: its locks are released.                                                                                 |
 | `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |
 | `hook.mjs failed: <error>`                                  | The agent's hook could not run: its tool ran without a lock or a step.                                                                         |
 | `started on <model>, …`                                     | The model the comment's agent runs on, its effort when routing set one (`at medium effort`), and how the classifier sorted the comment.        |
 | `started for NEW`, `sent the follow-up`                     | `/code-buddy` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
 | `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
+| `turn ended with the comment working: …` | The agent ended its turn neither answering nor asking: the comment stops, and the reader sends it again from its thread. |
 | `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
 | `stopped: the reader ended the comment`                     | The reader stopped, resolved or deleted the comment while its agent worked.                                                                    |
 

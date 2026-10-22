@@ -9,7 +9,8 @@ export const FORMAT_VERSION = 2
  * Where a comment stands. `open`: waiting for an agent; `working`: an agent
  * claimed it; `asking`: Claude waits on the reader's answer; `answered`:
  * Claude answered a follow-up, and the reader follows up again or resolves it;
- * `stopped`: the reader stopped the run; `resolved`: done.
+ * `stopped`: the reader stopped the run, or its agent ended without
+ * finishing; `resolved`: done.
  * @typedef {'open' | 'working' | 'asking' | 'answered' | 'stopped' | 'resolved'} State
  */
 
@@ -19,8 +20,9 @@ export const STATES = ['open', 'working', 'asking', 'answered', 'stopped', 'reso
 /**
  * The moves a comment may make, from each state. An agent claims (`working`),
  * asks, resolves, or once the comment was resolved, answers (`answered`): only
- * the reader resolves it again. The reader stops, answers, sends again,
- * follows up or resolves it themselves.
+ * the reader resolves it again; one that ends its turn without either
+ * stops (`stopped`). The reader stops, answers, sends again, follows up or
+ * resolves it themselves.
  * @type {Readonly<Record<State, readonly State[]>>}
  */
 export const TRANSITIONS = {

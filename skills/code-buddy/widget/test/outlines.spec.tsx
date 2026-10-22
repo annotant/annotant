@@ -124,7 +124,7 @@ async function pickTitle() {
 
   fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
   fireEvent.mouseMove(document, { clientX: 50, clientY: 110 })
-  fireEvent.click(title, { clientX: 50, clientY: 110 })
+  fireEvent.click(title, { clientX: 50, clientY: 110, detail: 1 })
   return screen.findByRole('textbox')
 }
 
