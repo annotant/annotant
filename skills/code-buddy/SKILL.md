@@ -121,9 +121,10 @@ this session; then stop.
    `node SKILL/scripts/verify-prod.mjs --project PROJECT`. On `FAIL`, fix the
    guard before finishing. If the build fails for unrelated reasons, say so
    and leave the check to the user.
-9. List the files changed and tell the user to run `/code-buddy:code-buddy`,
-   followed by PROJECT relative to the git toplevel when it is not the
-   toplevel itself (e.g. `/code-buddy:code-buddy web`).
+9. List the files changed and tell the user to run `/code-buddy`, followed
+   by PROJECT relative to the git toplevel when it is not the toplevel itself
+   (e.g. `/code-buddy web`), then to open the dev app: a strip of icons shows
+   in its bottom right corner.
 
 ## Update
 

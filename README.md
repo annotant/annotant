@@ -71,7 +71,22 @@ follow up; cancel to stop it.
 
 ## Install
 
-Install it as a Claude Code plugin, straight from GitHub (no clone needed):
+From nothing to a first comment on your app, in four steps.
+
+### 1. Check the requirements
+
+- **Claude Code 2.1.287 or later**, for its mods: `claude --version`, and
+  `claude update` when it is older. On an older Claude Code,
+  `/code-buddy:code-buddy` says so and does not start, and `/code-buddy` does
+  not exist.
+- **Node.js 22 or later**: `node --version`.
+- **A JavaScript web frontend served by a dev server**: a `package.json`
+  and Next.js, Vite, CRA, Astro, SvelteKit, Angular or another framework (or
+  an `index.html` at its root).
+
+### 2. Install the plugin
+
+Straight from GitHub, no clone needed:
 
 ```sh
 claude plugin marketplace add neolitec/code-buddy#stable
@@ -79,32 +94,72 @@ claude plugin install code-buddy@code-buddy
 ```
 
 Or, inside a session: `/plugin marketplace add neolitec/code-buddy#stable`,
-then `/plugin install code-buddy@code-buddy`. The `stable` branch holds the
-released versions; `main` is where development happens and does not work
-without a build. Get new versions with `claude plugin marketplace update
-code-buddy`, or turn on auto-update for the marketplace in `/plugin`; the
-[changelog](CHANGELOG.md) lists what each brings.
+then `/plugin install code-buddy@code-buddy`.
 
-Requires Claude Code 2.1.287 or later (`claude update`), for its mods, and
-Node.js 22 or later. On an older Claude Code, `/code-buddy:code-buddy` says so
-and does not start, and `/code-buddy` does not exist.
+### 3. Set it up in your project
 
-Then, in your frontend project:
+Start Claude Code in your frontend project, and run:
 
 ```
-/code-buddy:code-buddy init    install in this project (asks only what it cannot detect)
-/code-buddy                    watch the app; open your dev app and comment
-/code-buddy stop               stop watching
-/code-buddy status             the server, the agents at work and the comments waiting
-/code-buddy:code-buddy update  migrate an older install
-/code-buddy:code-buddy uninstall
+/code-buddy:code-buddy init
 ```
+
+That is the skill's full name; see [Commands](#commands).
+
+`init` detects the framework, the dev URL, the check commands (type-check,
+lint) and the folders agents may edit. It asks, in one round, only what it
+could not detect, and whether to git-ignore the comments (recommended: they
+hold excerpts of your pages' HTML). Then it writes:
+
+- `.code-buddy.json`, the project's config;
+- a dev-only loader snippet in the app's client entry
+  (`instrumentation-client.ts`, `pages/_app`, `index.html`, `src/index`…);
+- `.code-buddy/`, the comments' folder, in `.gitignore` if you agreed;
+- a dev-only change to the Content Security Policy, proposed only when it
+  finds one in the Next config, the HTML entry or the middleware or proxy
+  files.
+
+Last, it builds the app for production and checks the widget is not in it
+(or says so when the build fails for another reason), then lists the files it
+changed.
+
+When the frontend lives in a folder of the repository, name it after the
+command: `/code-buddy:code-buddy init web` installs Code Buddy in `web/`. The
+folder is resolved from the current directory, else from the repository root.
+On a monorepo root that is not itself an app, `init` asks which of its apps
+to use.
+
+### 4. Start commenting
+
+```
+/code-buddy
+```
+
+(`/code-buddy web` for a folder.) Then open your dev app in the browser, its
+dev server running as usual: a small strip of icons shows in the bottom right
+corner of the page. Click the **Comment** icon (hover one for its name),
+write what to change and send it: an agent starts, its progress shows live
+under your comment, and it answers in the same thread. [In the widget](#in-the-widget) tells the rest.
+
+No icons? See [the widget does not show](#the-widget-does-not-show).
+
+### Commands
+
+| Command                             | What it does                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| `/code-buddy:code-buddy init [dir]` | Install in this project, or its folder `dir` (asks only what it cannot detect) |
+| `/code-buddy [dir]`                 | Watch the app: open your dev app and comment                                   |
+| `/code-buddy stop`                  | Stop watching                                                                  |
+| `/code-buddy status`                | The server, the agents at work and the comments waiting                        |
+| `/code-buddy:code-buddy update`     | Migrate an older install                                                       |
+| `/code-buddy:code-buddy uninstall`  | Remove Code Buddy from the project                                             |
 
 Plugin skills are prefixed with the plugin name, hence `/code-buddy:code-buddy`;
 `/code-buddy` is a command of the plugin's hooks, and runs at once, even while
 Claude is answering. `/code-buddy:code-buddy` with no mode watches too, through
-the skill. Both find the project of a git worktree in the main checkout when
-the worktree lacks `.code-buddy.json`.
+the skill.
+
+### While it watches
 
 Work on in the same session: the comments go straight to their agents, never
 through your conversation. When an agent ends, its one-line answer shows in
@@ -112,10 +167,26 @@ the session's transcript (Claude does not read it), and a question it asks in
 the thread shows as a notification too. Closing the session stops the server;
 `/code-buddy` starts it again, and nothing is lost.
 
-When the frontend lives in a folder of the repository, name it after the
-command: `/code-buddy:code-buddy init web` installs Code Buddy in `web/`, and
-`/code-buddy web` watches it. The folder is resolved from the current
-directory, else from the repository root.
+In a git worktree, both commands find the project in the main checkout when
+the worktree lacks `.code-buddy.json`.
+
+### Updating
+
+The `stable` branch holds the released versions; `main` is where development
+happens and does not work without a build. Get new versions with `claude
+plugin marketplace update code-buddy`, or turn on auto-update for the
+marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
+After an update, `/code-buddy:code-buddy update` migrates a project installed
+by an older version.
+
+### Uninstalling
+
+`/code-buddy:code-buddy uninstall` removes the loader snippet (and a file
+`init` created only for it), `.code-buddy.json` and the `.gitignore` entry. It
+asks before deleting `.code-buddy/`, which holds your comments. A dev-only
+change `init` made to the Content Security Policy stays: revert it by hand.
+Remove the plugin itself with `claude plugin uninstall code-buddy@code-buddy`,
+or from `/plugin`.
 
 ## In the widget
 
@@ -184,6 +255,33 @@ progress shows its _Cancel_ there.
   Chromium (`;` for `,` on AZERTY).
 
 ## Troubleshooting
+
+### The widget does not show
+
+When the dev app shows no strip of icons in its bottom right corner:
+
+- Run `/code-buddy status`: the server must be running, at the address in
+  the loader snippet (`http://127.0.0.1:<port>`); the snippet keeps the port
+  `init` wrote, so a new `port` in `.code-buddy.json` (or
+  `CODE_BUDDY_PORT`) needs it changed too.
+- No `/code-buddy` command at all: the plugin's hooks did not load. Claude
+  Code is older than 2.1.287 (`claude update`, then a new session), or mods
+  are turned off for this session.
+- Reload the page once the watch has started: the loader asks for the widget
+  on page load. While the server is not running, the browser's console shows
+  one failed request to `widget.js` per page load.
+- Open the dev build: the loader is removed from production builds, by
+  design.
+- A Content Security Policy must allow, in development, `script-src` and
+  `connect-src` `http://127.0.0.1:<port>` (and `font-src data:` for the
+  widget's fonts). `init` proposes a dev-only change for a policy in the Next
+  config, the HTML entry or the middleware; one set elsewhere (a server, a
+  proxy) needs it by hand.
+- An app opened on a host that is not local (`localhost`, `127.0.0.1`,
+  `[::1]`, `*.localhost`) needs its origin in `devOrigins` in
+  `.code-buddy.json`.
+
+### A comment waits, or an agent seems stuck
 
 When a comment seems to wait for nothing, run `/code-buddy status`. For each
 project it watches, it tells the server's state and address (or why it
