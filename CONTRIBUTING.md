@@ -1,4 +1,4 @@
-# Contributing to Code Buddy
+# Contributing to Annotant
 
 Thanks for helping! This guide covers everything a pull request needs to be
 merged. By taking part, you agree to follow the [code of conduct](CODE_OF_CONDUCT.md).
@@ -11,7 +11,7 @@ merged. By taking part, you agree to follow the [code of conduct](CODE_OF_CONDUC
 - **Bugs**: open an issue with the bug report form first, unless the fix is
   obvious and small.
 - **Features and larger changes**: open an issue with the feature request form
-  and wait for a maintainer's go-ahead before writing code. Code Buddy stays
+  and wait for a maintainer's go-ahead before writing code. Annotant stays
   small on purpose, and a change that has not been discussed may be declined
   however well it is written.
 - One pull request does one thing. Refactors, formatting and dependency bumps
@@ -24,8 +24,8 @@ Vitest does not support and `npm ci` refuses (CI uses the version in
 [`.nvmrc`](.nvmrc)); npm; and [Claude Code](https://claude.com/claude-code).
 
 ```sh
-git clone https://github.com/<you>/code-buddy
-cd code-buddy
+git clone https://github.com/<you>/annotant
+cd annotant
 npm ci
 ```
 
@@ -35,7 +35,7 @@ npm ci
 ## Trying your changes
 
 `playground/` is a small fake app (a coffee roaster's shop: routes, a table, a
-form, a dialog, text split across elements) with Code Buddy installed in it as
+form, a dialog, text split across elements) with Annotant installed in it as
 `init` would install it. Start Claude Code in your clone and launch it:
 
 ```sh
@@ -46,22 +46,22 @@ claude
 /playground
 ```
 
-In this repository, Claude Code loads Code Buddy from your clone, with no
-flag: `.claude/skills/code-buddy` is a link to the repository root, which
-Claude Code loads as a plugin (`code-buddy@skills-dir` in `claude plugin
+In this repository, Claude Code loads Annotant from your clone, with no
+flag: `.claude/skills/annotant` is a link to the repository root, which
+Claude Code loads as a plugin (`annotant@skills-dir` in `claude plugin
 list`), and `.claude/settings.json` disables the copy installed from the
 marketplace, in this project only. It loads once you trust the folder, on the
 first start. Do not add `--plugin-dir .`: the plugin would load twice. On
 Windows, git creates the link only with `core.symlinks` enabled (Developer
 Mode, then `git config core.symlinks true` before cloning).
 
-Edits are read from your clone: after a change to `skills/code-buddy/SKILL.md`,
+Edits are read from your clone: after a change to `skills/annotant/SKILL.md`,
 `agents/` or `hooks/`, run `/reload-plugins` before the next `/playground`.
 
 It builds the widget (a dev build, see below) when `widget/dist/` is missing,
 a release build or older than `widget/src/`, copies `playground/` to
 `.playground/` (git-ignored), starts the app there on <http://localhost:5190>,
-starts `npm run watch`, runs `/code-buddy:code-buddy .playground` and opens
+starts `npm run watch`, runs `/annotant:annotant .playground` and opens
 the app in your browser. `npm run watch` rebuilds the dev widget on every
 change to `widget/src/`, and the server tells the page to reload; a build that
 fails keeps the last good bundle and prints the error, and `tsc --watch` next
@@ -70,7 +70,7 @@ the agents edit `.playground/`, so `git status` stays clean. `/playground` start
 a fresh copy, comments included; `/playground keep` keeps the copy and the
 changes made to it. To change the playground itself (a page for a new
 feature), edit `playground/` and commit it like the rest. `npm run playground`
-serves the committed app alone, without Code Buddy.
+serves the committed app alone, without Annotant.
 
 The dev build (`npm run build:dev`) adds a **debug panel** to the widget: the
 wrench in the panel's header, or Alt+Shift+D, shows every comment as the widget
@@ -89,8 +89,8 @@ first message exactly as it was sent, read in its transcript. `npm run build` le
 has none of its code (`test/bundle.test.mjs` checks it).
 
 To try a change in an app of your own instead, start Claude Code in it with
-`claude --plugin-dir ~/dev/code-buddy`, after `claude plugin disable
-code-buddy@code-buddy` if the plugin is also installed, and run the skill as
+`claude --plugin-dir ~/dev/annotant`, after `claude plugin disable
+annotant@annotant` if the plugin is also installed, and run the skill as
 usual.
 
 What to do after a change, in a running session, is in the README's
@@ -101,19 +101,19 @@ What to do after a change, in a running session, is in the README's
 | Path                                  | What                                                                |
 | ------------------------------------- | ------------------------------------------------------------------- |
 | `.claude-plugin/`                     | Plugin and marketplace manifests                                    |
-| `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: `/code-buddy` and the dispatch; each comment's agent gets `scripts/hook.mjs` (file locks, progress) as its own hooks |
+| `hooks/register.ts`                   | The plugin's hooks, a Claude Code mod: `/annotant` and the dispatch; each comment's agent gets `scripts/hook.mjs` (file locks, progress) as its own hooks |
 | `types/index.d.ts`                    | The values the hooks keep for the session (`$.state`)               |
-| `agents/worker.md`                    | The agent that handles one comment (`code-buddy:worker`): its steps and rules |
-| `skills/code-buddy/SKILL.md`          | The skill Claude reads: its modes; the watch is the hooks'          |
-| `skills/code-buddy/scripts/`          | Node.js scripts (ES modules, JSDoc types), run by the skill         |
-| `skills/code-buddy/scripts/lib/format.mjs` | The comments file's format: its version, states, moves and types; the reference for every part that reads it |
+| `agents/worker.md`                    | The agent that handles one comment (`annotant:worker`): its steps and rules |
+| `skills/annotant/SKILL.md`          | The skill Claude reads: its modes; the watch is the hooks'          |
+| `skills/annotant/scripts/`          | Node.js scripts (ES modules, JSDoc types), run by the skill         |
+| `skills/annotant/scripts/lib/format.mjs` | The comments file's format: its version, states, moves and types; the reference for every part that reads it |
 | `docs/comments-file.md` | The comments file and the step files: where they live, their schemas, the states diagram |
 | `site/`                               | The website's landing page and layouts; `.github/scripts/site.mjs` adds the docs pages from the Markdown files its `PAGES` lists (`README.md`, `docs/`); the Pages workflow builds it on pull requests and publishes it from `main` |
-| `skills/code-buddy/widget/src/`       | The browser widget (React, TypeScript)                              |
-| `skills/code-buddy/widget/dist/`      | The built widget: `npm run build`; never committed on `main`        |
-| `playground/`                         | A fake app to try Code Buddy on, launched by `/playground`          |
+| `skills/annotant/widget/src/`       | The browser widget (React, TypeScript)                              |
+| `skills/annotant/widget/dist/`      | The built widget: `npm run build`; never committed on `main`        |
+| `playground/`                         | A fake app to try Annotant on, launched by `/playground`          |
 | `.claude/skills/playground/`          | The `/playground` skill of this repository                          |
-| `.claude/skills/code-buddy`           | A link to the root: Claude Code loads the plugin from the clone     |
+| `.claude/skills/annotant`           | A link to the root: Claude Code loads the plugin from the clone     |
 
 ## Checks
 
@@ -141,7 +141,7 @@ It runs, in order:
 `*.test.ts` and `*.test.tsx` in the plugin: `test/hooks.test.ts` only, since the
 widget's Vitest suites are named `*.spec.tsx`).
 It needs Claude Code 2.1.287 or later, which CI does not install: run it
-whenever you change `hooks/` or `types/`. In a real session, `/code-buddy-debug on`
+whenever you change `hooks/` or `types/`. In a real session, `/annotant-debug on`
 logs every decision the hooks make (README, Troubleshooting); log a new
 decision with `debug(...)` when you add one. To type-check the module, load the
 plugin once (`claude --plugin-dir .`): Claude Code writes its API types to
@@ -177,7 +177,7 @@ Rules that go with them:
 
 ## Dependencies
 
-Code Buddy has no runtime dependencies: the scripts use Node.js only, and the
+Annotant has no runtime dependencies: the scripts use Node.js only, and the
 widget bundles React. Adding one is a design decision; ask in an issue first.
 
 - Versions are pinned exactly (`save-exact=true`); the lockfile is committed.
@@ -211,7 +211,7 @@ updates: merging to `main` ships nothing. To release:
 
 1. Open a `chore: release x.y.z` pull request that sets `version`
    ([semver](https://semver.org): patch for fixes, minor for features, major
-   for breaking changes to commands or `.code-buddy.json`) and moves the
+   for breaking changes to commands or `.annotant.json`) and moves the
    `Unreleased` entries under a `## x.y.z - YYYY-MM-DD` heading.
 2. Once it is merged, run **Actions → Release → Run workflow** on `main`, with
    the version. Nothing is tagged or published otherwise: merging to `main`

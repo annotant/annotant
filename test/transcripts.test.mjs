@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import {
   findAgentPrompt,
   findToolCall,
-} from '../skills/code-buddy/scripts/lib/transcripts.mjs'
+} from '../skills/annotant/scripts/lib/transcripts.mjs'
 import { tempDir } from './helpers.mjs'
 
 const ID = 'toolu_01EYsupHGk3ov4ydNDsUL5XG'
@@ -83,11 +83,11 @@ test("reads an agent's first message from its own transcript", async (t) => {
   // Its type, from the metadata Claude Code writes next to the transcript.
   await writeFile(
     path.join(subagents, 'agent-a1aaaaaaaa.meta.json'),
-    JSON.stringify({ agentType: 'code-buddy:worker', name: 'cb-c1' }),
+    JSON.stringify({ agentType: 'annotant:worker', name: 'an-c1' }),
   )
   assert.equal(
     (await findAgentPrompt('a1aaaaaaaa', { dir }))?.agentType,
-    'code-buddy:worker',
+    'annotant:worker',
   )
   assert.equal(await findAgentPrompt('c3cccccccc', { dir }), undefined)
   assert.equal(await findAgentPrompt('../../etc', { dir }), undefined)

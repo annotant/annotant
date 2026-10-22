@@ -13,9 +13,9 @@ import {
   parseFile,
   sentKey,
   wasResolved,
-} from '../skills/code-buddy/scripts/lib/format.mjs'
+} from '../skills/annotant/scripts/lib/format.mjs'
 
-/** @type {[import('../skills/code-buddy/scripts/lib/format.mjs').State, import('../skills/code-buddy/scripts/lib/format.mjs').State][]} */
+/** @type {[import('../skills/annotant/scripts/lib/format.mjs').State, import('../skills/annotant/scripts/lib/format.mjs').State][]} */
 const ALLOWED = [
   ['open', 'working'],
   ['open', 'stopped'],
@@ -83,10 +83,10 @@ test('reads an envelope of its version', () => {
 
 test('refuses a bare array, the old format, saying what to delete', () => {
   assert.throws(
-    () => parseFile('[]', '/app/.code-buddy/comments.json'),
+    () => parseFile('[]', '/app/.annotant/comments.json'),
     (error) =>
       error instanceof FormatError &&
-      error.message === 'old comments format: delete /app/.code-buddy/comments.json',
+      error.message === 'old comments format: delete /app/.annotant/comments.json',
   )
 })
 
@@ -115,7 +115,7 @@ test('knows a comment resolved once, even open again', () => {
 test("keys a hand-over on the reader's latest message and when it was sent", () => {
   const at = '2026-01-01T10:00:00.000Z'
   const sentAt = '2026-01-01T11:00:00.000Z'
-  /** @type {import('../skills/code-buddy/scripts/lib/format.mjs').MessageV2[]} */
+  /** @type {import('../skills/annotant/scripts/lib/format.mjs').MessageV2[]} */
   const messages = [
     { id: 'm1', author: 'reader', body: 'Blue', at },
     { id: 'm2', author: 'claude', body: 'Which?', at, question: true },

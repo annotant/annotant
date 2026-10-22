@@ -3,15 +3,15 @@ import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
 
-/** @type {typeof import('../skills/code-buddy/scripts/lib/store.mjs')} */
+/** @type {typeof import('../skills/annotant/scripts/lib/store.mjs')} */
 let store
-/** @type {typeof import('../skills/code-buddy/scripts/lib/project.mjs')} */
+/** @type {typeof import('../skills/annotant/scripts/lib/project.mjs')} */
 let projects
 
 before(async (t) => {
-  process.env.CODE_BUDDY_STATE_DIR = await tempDir(t)
-  store = await import('../skills/code-buddy/scripts/lib/store.mjs')
-  projects = await import('../skills/code-buddy/scripts/lib/project.mjs')
+  process.env.ANNOTANT_STATE_DIR = await tempDir(t)
+  store = await import('../skills/annotant/scripts/lib/store.mjs')
+  projects = await import('../skills/annotant/scripts/lib/project.mjs')
 })
 
 async function setUp(t) {

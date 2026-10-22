@@ -6,18 +6,18 @@ import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
 
-/** @type {typeof import('../skills/code-buddy/scripts/lib/store.mjs')} */
+/** @type {typeof import('../skills/annotant/scripts/lib/store.mjs')} */
 let store
-/** @type {typeof import('../skills/code-buddy/scripts/lib/project.mjs')} */
+/** @type {typeof import('../skills/annotant/scripts/lib/project.mjs')} */
 let projects
 /** @type {string} */
 let stateDir
 
 before(async (t) => {
   stateDir = await tempDir(t)
-  process.env.CODE_BUDDY_STATE_DIR = stateDir
-  store = await import('../skills/code-buddy/scripts/lib/store.mjs')
-  projects = await import('../skills/code-buddy/scripts/lib/project.mjs')
+  process.env.ANNOTANT_STATE_DIR = stateDir
+  store = await import('../skills/annotant/scripts/lib/store.mjs')
+  projects = await import('../skills/annotant/scripts/lib/project.mjs')
 })
 
 const HOOK = path.join(SCRIPTS, 'hook.mjs')
@@ -35,8 +35,8 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
   if (lockRoot) {
     await mkdir(root, { recursive: true })
     await writeFile(
-      path.join(root, '.code-buddy.json'),
-      JSON.stringify({ version: 1, commentsFile: '.code-buddy/comments.json' }),
+      path.join(root, '.annotant.json'),
+      JSON.stringify({ version: 1, commentsFile: '.annotant/comments.json' }),
     )
   }
   const project = projects.project(root)
@@ -74,7 +74,7 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
           typeof event === 'string'
             ? event
             : JSON.stringify({ agent_id: `a${index + 1}`, ...event }),
-        env: { CODE_BUDDY_STATE_DIR: stateDir, CODE_BUDDY_LOCK_WAIT_MS: '300' },
+        env: { ANNOTANT_STATE_DIR: stateDir, ANNOTANT_LOCK_WAIT_MS: '300' },
       },
     )
     assert.equal(ran.code, 0, ran.stderr)
@@ -126,7 +126,7 @@ const edit = (file) => ({ file_path: file, old_string: 'a', new_string: 'b' })
 
 test("records a claimed run's steps, and ends the run on resolve", async (t) => {
   const w = await world(t, 2)
-  await w.tool(0, 'Read', { file_path: path.join(w.root, '.code-buddy.json') })
+  await w.tool(0, 'Read', { file_path: path.join(w.root, '.annotant.json') })
   await w.claim(0)
   await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
   const steps = await w.progress(0)
@@ -206,7 +206,7 @@ test('a comment its agent left working when its turn ended stops', async (t) => 
     run(
       process.execPath,
       [HOOK, 'ended', '--comment', w.id(index), '--project', w.root, '--agent', agent],
-      { input: '', env: { CODE_BUDDY_STATE_DIR: stateDir } },
+      { input: '', env: { ANNOTANT_STATE_DIR: stateDir } },
     )
   assert.equal((await ended(0)).stdout.trim(), 'STOPPED')
   // An answered comment, or one stopped already, stays as it is.

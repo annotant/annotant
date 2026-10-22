@@ -56,8 +56,7 @@ export function App() {
       </main>
       <footer className="footer">
         <div className="container">
-          © Northwind Roasters, a fake shop for trying Code Buddy. Nothing here is for
-          sale.
+          © Northwind Roasters, a fake shop for trying Annotant. Nothing here is for sale.
         </div>
       </footer>
     </Router>

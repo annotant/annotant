@@ -6,7 +6,7 @@
         // Loaded by Claude Code from hooks/hooks.json.
         "hooks/register.ts",
         // The scripts the skill and the worker run (`node SKILL/scripts/<name>.mjs`).
-        "skills/code-buddy/scripts/*.mjs",
+        "skills/annotant/scripts/*.mjs",
         // Run by the /playground skill.
         ".claude/skills/playground/scripts/*.mjs",
         // The plugin's types, named by .claude-plugin/plugin.json.
@@ -21,7 +21,7 @@
       // claude-code and claude-code/testing: modules Claude Code provides to the hooks, not packages.
       "ignoreDependencies": ["claude-code"]
     },
-    "skills/code-buddy/widget": {
+    "skills/annotant/widget": {
       // Its Vitest suites (vitest.config.ts), not every file under test/.
       "node": false
     }

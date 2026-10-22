@@ -6,7 +6,7 @@ if (process.env.NODE_ENV === 'development') {
   const script = document.createElement('script')
   script.type = 'module'
   script.src = 'http://127.0.0.1:4590/widget.js'
-  script.dataset.codeBuddyLoader = ''
+  script.dataset.annotantLoader = ''
   document.head.append(script)
 }
 

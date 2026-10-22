@@ -4,7 +4,7 @@
 //   bundle is missing, a release build or older than its sources, then refreshes
 //   the working copy .playground/ from playground/ (kept as it is with `keep`).
 //   PORT_BUSY lists what holds the ports: HOLDER <pid> <command>, one per process.
-// open: waits for the app and its Code Buddy server, then opens the app in the browser.
+// open: waits for the app and its Annotant server, then opens the app in the browser.
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -13,12 +13,12 @@ import { fileURLToPath } from 'node:url'
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
 const SOURCE = path.join(REPO, 'playground')
 const COPY = path.join(REPO, '.playground')
-const WIDGET = path.join(REPO, 'skills/code-buddy/widget')
+const WIDGET = path.join(REPO, 'skills/annotant/widget')
 // Top-level folders never copied: installed packages, the build, and earlier comments.
-const SKIPPED = new Set(['node_modules', 'dist', '.code-buddy'])
+const SKIPPED = new Set(['node_modules', 'dist', '.annotant'])
 
 /** @type {{ port: number, devUrl: string }} */
-const config = JSON.parse(readFileSync(path.join(SOURCE, '.code-buddy.json'), 'utf8'))
+const config = JSON.parse(readFileSync(path.join(SOURCE, '.annotant.json'), 'utf8'))
 const health = `http://127.0.0.1:${config.port}/api/health`
 
 /** The latest modification time under `dir`, in milliseconds. */
@@ -68,7 +68,7 @@ async function prepare(keep) {
       .then((response) => response.json())
       .then((body) => (typeof body?.project === 'string' ? ` for ${body.project}` : ''))
       .catch(() => '')
-    busy.push(`Code Buddy server ${health}${served}`)
+    busy.push(`Annotant server ${health}${served}`)
   }
   if (busy.length) {
     console.log(`PORT_BUSY ${busy.join(', ')}`)
@@ -83,7 +83,7 @@ async function prepare(keep) {
     !existsSync(bundle) ||
     // A release build, from npm run build: no debug panel. build.mjs writes this
     // banner on a dev build; test/bundle.test.mjs holds it to it.
-    !readFileSync(bundle, 'utf8').startsWith('/* code-buddy widget (dev build') ||
+    !readFileSync(bundle, 'utf8').startsWith('/* annotant widget (dev build') ||
     statSync(bundle).mtimeMs < newest(path.join(WIDGET, 'src'))
   ) {
     console.log(
@@ -104,7 +104,7 @@ async function prepare(keep) {
     })
     console.log(`COPIED ${SOURCE} to ${COPY}`)
   }
-  console.log(`READY app ${config.devUrl}, Code Buddy port ${config.port}`)
+  console.log(`READY app ${config.devUrl}, Annotant port ${config.port}`)
 }
 
 async function open() {

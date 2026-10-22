@@ -6,7 +6,7 @@ import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-export const SCRIPTS = new URL('../skills/code-buddy/scripts/', import.meta.url).pathname
+export const SCRIPTS = new URL('../skills/annotant/scripts/', import.meta.url).pathname
 
 /**
  * A TCP port nothing listens on.
@@ -33,23 +33,23 @@ export function freePort() {
 export const json = (response) => response.json()
 
 /** A folder removed after the test. */
-export async function tempDir(t, prefix = 'code-buddy-test-') {
+export async function tempDir(t, prefix = 'annotant-test-') {
   const dir = await mkdtemp(path.join(tmpdir(), prefix))
   t.after(() => rm(dir, { recursive: true, force: true }))
   return dir
 }
 
-/** A project with a .code-buddy.json, as init writes it. */
+/** A project with a .annotant.json, as init writes it. */
 export async function tempProject(t, config = {}) {
-  const root = await tempDir(t, 'code-buddy-project-')
+  const root = await tempDir(t, 'annotant-project-')
   await mkdir(path.join(root, 'src'), { recursive: true })
   await writeFile(
-    path.join(root, '.code-buddy.json'),
+    path.join(root, '.annotant.json'),
     JSON.stringify({
       version: 1,
       name: 'test',
       port: 4599,
-      commentsFile: '.code-buddy/comments.json',
+      commentsFile: '.annotant/comments.json',
       editable: ['src'],
       ...config,
     }),

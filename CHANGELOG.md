@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to Code Buddy. The format follows
+Notable changes to Annotant (Code Buddy until its rename). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org). Users receive a change when it is
 released to the `stable` branch.
@@ -14,6 +14,16 @@ released to the `stable` branch.
   (#182)
 
 ### Changed
+
+- **Breaking: Code Buddy is now Annotant.** The plugin is
+  `annotant@annotant`, from the `annotant/annotant` marketplace
+  (`claude plugin marketplace add annotant/annotant#stable`); the commands
+  are `/annotant`, `/annotant:annotant` and `/annotant-debug`; a project's
+  config and comments are `.annotant.json` and `.annotant/`; the environment
+  variables are `ANNOTANT_*`, and the hook log lives in
+  `~/.cache/annotant/`. `/annotant:annotant update` moves a project installed
+  as Code Buddy (its config, comments, loader marker and `.gitignore` entry);
+  uninstall the `code-buddy` plugin and its marketplace by hand.
 
 - **The README's Install section is four numbered steps**, from the
   requirements to a first comment, then the commands, updating and
@@ -379,7 +389,7 @@ First release.
 ### Added
 
 - Install as a Claude Code plugin, straight from GitHub:
-  `claude plugin marketplace add neolitec/code-buddy#stable`. The `stable`
+  `claude plugin marketplace add annotant/annotant#stable`. The `stable`
   branch holds the released versions, with the built widget; `main` is where
   development happens.
 - `/code-buddy:code-buddy [dir]` and `init [dir]` target a folder of the

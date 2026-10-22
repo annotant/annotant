@@ -18,7 +18,7 @@ export function options(mode) {
     jsx: 'automatic',
     loader: { '.woff2': 'file' },
     assetNames: '[name]-[hash]',
-    // Production drops the dev-only branches, the Code Buddy loader among them.
+    // Production drops the dev-only branches, the Annotant loader among them.
     minify: mode === 'production',
     sourcemap: mode === 'development',
     define: { 'process.env.NODE_ENV': JSON.stringify(mode) },
