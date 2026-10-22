@@ -527,9 +527,11 @@ function areaSummary(area: ReviewArea): string {
 function keepPress(event: SyntheticEvent) {
   event.stopPropagation()
   const target = event.target
+  // Not `instanceof Element`: in the separate window, elements are its own realm's.
   if (
     event.type === 'mousedown' &&
-    target instanceof Element &&
+    'closest' in target &&
+    typeof target.closest === 'function' &&
     target.closest('button')
   ) {
     event.preventDefault()
@@ -1062,6 +1064,8 @@ export default function App({ root }: { root: Element }) {
   const attachElement = useCallback(
     (element: Element) => {
       setAttachingTo(undefined)
+      // Picked in the page: the keys go back to the message box in the window.
+      popout?.window.focus()
       const added = pickedOf(element)
       if (!added) return
       if (writingIn === DRAFT) {
@@ -1082,7 +1086,7 @@ export default function App({ root }: { root: Element }) {
         }
       })
     },
-    [pickedOf, writingIn],
+    [pickedOf, writingIn, popout],
   )
 
   /** The chips of the elements picked for a message box, each with its button to remove it. */
