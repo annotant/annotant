@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/buddy.png" alt="Annotant's mascot, a small blue caterpillar" height="180">
+  <img src=".github/assets/annotant.png" alt="Annotant's mascot, a small blue ant" height="180">
 </p>
 
 <h1 align="center">Annotant</h1>
