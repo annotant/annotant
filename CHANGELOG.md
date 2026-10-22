@@ -9,6 +9,10 @@ released to the `stable` branch.
 
 ### Changed
 
+- **The tools take a small strip of icons, not four buttons.** While the
+  panel is closed, Comment, Draw area, Draw and Point at element are icons in
+  the bottom right corner, their names and shortcuts in the tooltips; a tool
+  in progress shows its Cancel there. (#179)
 - **Point at element starts a comment about the page, the element in its
   message box.** The element is no longer the comment's anchor: it goes with
   the message, as an image does. The page still marks it until the thread is first resolved; a reply that picks an

@@ -83,6 +83,7 @@ import {
   Textarea,
   Toasts,
   Toggle,
+  ToolButton,
   toast,
 } from './ui'
 import { activityOf, isOngoing, stepKey } from './activity'
@@ -1841,45 +1842,47 @@ export default function App({ root }: { root: Element }) {
       )}
       {drawing === 'sketch' && <SketchDrawer onDraw={drawSketch} onCancel={cancelDraw} />}
       {!open && (
-        <div ref={dock} className="cb-dock cb-live">
-          <Button
-            variant="secondary"
+        // Icons only, their names in the tooltips: a tool in progress shows its Cancel.
+        <div
+          ref={dock}
+          role="group"
+          aria-label="Code Buddy tools"
+          className="cb-dock cb-live"
+        >
+          <ToolButton
             icon="chat"
+            label="Comment"
             title={`Comment on the page (${keysOf('comment')})`}
             aria-keyshortcuts={ariaKeysOf('comment')}
             onClick={() => startDraft(PAGE_LEVEL)}
-          >
-            Comment
-          </Button>
-          <Button
-            variant="secondary"
-            icon={drawing === 'area' ? 'x' : 'frame'}
+          />
+          <ToolButton
+            icon="frame"
+            label="Draw area"
+            active={drawing === 'area'}
             onClick={() =>
               drawing === 'area' ? setDrawing(false) : startDrawing('area')
             }
-          >
-            {drawing === 'area' ? 'Cancel' : 'Draw area'}
-          </Button>
-          <Button
-            variant="secondary"
-            icon={drawing === 'sketch' ? 'x' : 'pencil'}
+          />
+          <ToolButton
+            icon="pencil"
+            label="Draw"
+            active={drawing === 'sketch'}
             onClick={() =>
               drawing === 'sketch' ? setDrawing(false) : startDrawing('sketch')
             }
-          >
-            {drawing === 'sketch' ? 'Cancel' : 'Draw'}
-          </Button>
-          <Button
-            icon={picking ? 'x' : 'cursor'}
+          />
+          <ToolButton
+            icon="cursor"
+            label="Point at element"
+            active={picking}
             title={`${picking ? 'Stop pointing' : 'Point at an element'} (${keysOf('pick')})`}
             aria-keyshortcuts={ariaKeysOf('pick')}
             onClick={() => {
               setDrawing(false)
               setPicking((value) => !value)
             }}
-          >
-            {picking ? 'Cancel' : 'Point at element'}
-          </Button>
+          />
         </div>
       )}
 
