@@ -27,7 +27,7 @@
   "devDependencies": {
     "@types/node": "26.6.5",
     "knip": "6.41.0",
-    "oxlint": "1.87.0",
+    "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
     "prettier": "3.9.10"
   }
