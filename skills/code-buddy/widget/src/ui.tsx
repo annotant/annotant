@@ -119,6 +119,38 @@ export function IconButton({
   )
 }
 
+interface ToolButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  icon: IconName
+  label: string
+  /** In progress: the button says Cancel. */
+  active?: boolean
+}
+
+/**
+ * A tool of the dock: its icon alone, or Cancel while it is in progress. The
+ * same button either way, so it keeps the focus.
+ */
+export function ToolButton({
+  icon,
+  label,
+  active,
+  className = '',
+  ...props
+}: ToolButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={active ? undefined : label}
+      title={active ? undefined : label}
+      className={`cb-btn cb-btn--secondary cb-btn--sm cb-tool ${active ? '' : 'cb-tool--idle'} ${className}`}
+      {...props}
+    >
+      <Icon name={active ? 'x' : icon} />
+      {active && 'Cancel'}
+    </button>
+  )
+}
+
 export function Chip({
   tone,
   small = false,

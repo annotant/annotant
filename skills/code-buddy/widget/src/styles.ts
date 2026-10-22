@@ -129,8 +129,9 @@ code { font-family: var(--cb-mono); }
   padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
   background: var(--cb-surface); box-shadow: 0 4px 16px rgba(0,0,0,.15);
 }
-.cb-dock .cb-icon-btn { width: 30px; height: 30px; color: var(--cb-accent); }
-.cb-dock .cb-btn { border-radius: 7px; }
+.cb-tool { border-radius: 7px; }
+.cb-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
+.cb-tool--idle svg { width: 18px; height: 18px; }
 .cb-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
 
 .cb-panel {

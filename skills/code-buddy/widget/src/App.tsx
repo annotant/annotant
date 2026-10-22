@@ -83,6 +83,7 @@ import {
   Textarea,
   Toasts,
   Toggle,
+  ToolButton,
   toast,
 } from './ui'
 import { activityOf, isOngoing, stepKey } from './activity'
@@ -1848,58 +1849,40 @@ export default function App({ root }: { root: Element }) {
           aria-label="Code Buddy tools"
           className="cb-dock cb-live"
         >
-          <IconButton
+          <ToolButton
             icon="chat"
             label="Comment"
             title={`Comment on the page (${keysOf('comment')})`}
             aria-keyshortcuts={ariaKeysOf('comment')}
             onClick={() => startDraft(PAGE_LEVEL)}
           />
-          {drawing === 'area' ? (
-            <Button small variant="secondary" icon="x" onClick={() => setDrawing(false)}>
-              Cancel
-            </Button>
-          ) : (
-            <IconButton
-              icon="frame"
-              label="Draw area"
-              onClick={() => startDrawing('area')}
-            />
-          )}
-          {drawing === 'sketch' ? (
-            <Button small variant="secondary" icon="x" onClick={() => setDrawing(false)}>
-              Cancel
-            </Button>
-          ) : (
-            <IconButton
-              icon="pencil"
-              label="Draw"
-              onClick={() => startDrawing('sketch')}
-            />
-          )}
-          {picking ? (
-            <Button
-              small
-              variant="secondary"
-              icon="x"
-              title={`Stop pointing (${keysOf('pick')})`}
-              aria-keyshortcuts={ariaKeysOf('pick')}
-              onClick={() => setPicking(false)}
-            >
-              Cancel
-            </Button>
-          ) : (
-            <IconButton
-              icon="cursor"
-              label="Point at element"
-              title={`Point at an element (${keysOf('pick')})`}
-              aria-keyshortcuts={ariaKeysOf('pick')}
-              onClick={() => {
-                setDrawing(false)
-                setPicking(true)
-              }}
-            />
-          )}
+          <ToolButton
+            icon="frame"
+            label="Draw area"
+            active={drawing === 'area'}
+            onClick={() =>
+              drawing === 'area' ? setDrawing(false) : startDrawing('area')
+            }
+          />
+          <ToolButton
+            icon="pencil"
+            label="Draw"
+            active={drawing === 'sketch'}
+            onClick={() =>
+              drawing === 'sketch' ? setDrawing(false) : startDrawing('sketch')
+            }
+          />
+          <ToolButton
+            icon="cursor"
+            label="Point at element"
+            active={picking}
+            title={`${picking ? 'Stop pointing' : 'Point at an element'} (${keysOf('pick')})`}
+            aria-keyshortcuts={ariaKeysOf('pick')}
+            onClick={() => {
+              setDrawing(false)
+              setPicking((value) => !value)
+            }}
+          />
         </div>
       )}
 

@@ -250,8 +250,25 @@ test('the closed panel leaves icons only, and a tool in progress its Cancel', as
   for (const name of ['Comment', 'Draw area', 'Draw', 'Point at element'])
     expect(screen.getByRole('button', { name })).toBeTruthy()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
-  expect(tools.textContent).toBe('Cancel')
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-  expect(tools.textContent).toBe('')
+  for (const name of ['Draw area', 'Draw', 'Point at element']) {
+    fireEvent.click(screen.getByRole('button', { name }))
+    expect(tools.textContent).toBe('Cancel')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(tools.textContent).toBe('')
+  }
+})
+
+test('a tool keeps the focus as it turns into its Cancel, and back', async () => {
+  fakeServer([])
+  renderWidget()
+
+  const draw = await screen.findByRole('button', { name: 'Draw area' })
+  draw.focus()
+  fireEvent.click(draw)
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBe(draw)
+  expect(draw.matches(':focus')).toBe(true)
+
+  fireEvent.click(draw)
+  expect(screen.getByRole('button', { name: 'Draw area' })).toBe(draw)
+  expect(draw.matches(':focus')).toBe(true)
 })
