@@ -1,5 +1,5 @@
 {
-  "name": "code-buddy",
+  "name": "annotant",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -7,21 +7,21 @@
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "workspaces": [
-    "skills/code-buddy/widget",
+    "skills/annotant/widget",
     "playground"
   ],
   "scripts": {
-    "build": "npm run build --workspace skills/code-buddy/widget",
-    "build:dev": "npm run build:dev --workspace skills/code-buddy/widget",
-    "watch": "npm run watch --workspace skills/code-buddy/widget",
+    "build": "npm run build --workspace skills/annotant/widget",
+    "build:dev": "npm run build:dev --workspace skills/annotant/widget",
+    "watch": "npm run watch --workspace skills/annotant/widget",
     "playground": "npm run dev --workspace playground",
-    "typecheck": "tsc -p skills/code-buddy/scripts && tsc -p .github/scripts && tsc -p test && tsc -p skills/code-buddy/widget && tsc -p playground && tsc -p .claude/skills/playground/scripts",
+    "typecheck": "tsc -p skills/annotant/scripts && tsc -p .github/scripts && tsc -p test && tsc -p skills/annotant/widget && tsc -p playground && tsc -p .claude/skills/playground/scripts",
     "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives",
     "lint:unused": "knip",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run lint && npm run lint:unused && npm run typecheck && npm run build && npm test",
-    "test": "node --test \"test/**/*.test.mjs\" && npm test --workspace skills/code-buddy/widget",
+    "test": "node --test \"test/**/*.test.mjs\" && npm test --workspace skills/annotant/widget",
     "test:hooks": "claude plugin validate .claude-plugin/plugin.json && claude plugin test ."
   },
   "devDependencies": {

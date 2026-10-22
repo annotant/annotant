@@ -10,11 +10,11 @@ const offerOf = (agent: string): Parameters<EngineInterface['agent']['offer']>[0
   agent,
   description: '',
   source: 'plugin',
-  provider: { plugin: 'code-buddy', tier: 'plugin' },
+  provider: { plugin: 'annotant', tier: 'plugin' },
 })
 
 const ROOT = '/repo/web'
-const LOG = '/home/u/.cache/code-buddy/hook.log'
+const LOG = '/home/u/.cache/annotant/hook.log'
 
 type Comment = {
   id: string
@@ -43,10 +43,10 @@ function world(
 ) {
   const files = new Map<string, string>([
     [
-      `${ROOT}/.code-buddy.json`,
-      JSON.stringify({ commentsFile: '.code-buddy/comments.json' }),
+      `${ROOT}/.annotant.json`,
+      JSON.stringify({ commentsFile: '.annotant/comments.json' }),
     ],
-    [`${ROOT}/.code-buddy/comments.json`, commentsFile(comments)],
+    [`${ROOT}/.annotant/comments.json`, commentsFile(comments)],
   ])
   const removed: string[] = []
   // The arguments of each `hook.mjs ended` the hooks ran.
@@ -83,7 +83,7 @@ function world(
   const tools: string[] = []
   on('tool.register', (_$, e) => {
     tools.push(e.name)
-    return { value: { tool: `mcp__code-buddy__${e.name}` } }
+    return { value: { tool: `mcp__annotant__${e.name}` } }
   })
   on('session.cwd', () => ({ value: cwd }))
   const toasts: string[] = []
@@ -203,8 +203,8 @@ function world(
   // The agent types the plugin defines, by full name.
   const registered = new Map<string, AgentSpec>()
   on('agent.register', (_$, e) => {
-    registered.set(`code-buddy:${e.name}`, e)
-    return { value: { agent: `code-buddy:${e.name}` } }
+    registered.set(`annotant:${e.name}`, e)
+    return { value: { agent: `annotant:${e.name}` } }
   })
   // Claude Code starts the agent on its type's model, else the parent's.
   const spawned: { model?: string; prompt: string; name?: string; type: string }[] = []
@@ -328,7 +328,7 @@ function world(
     removed,
     ended: endings,
     setComments: (next: Comment[]) =>
-      files.set(`${ROOT}/.code-buddy/comments.json`, commentsFile(next)),
+      files.set(`${ROOT}/.annotant/comments.json`, commentsFile(next)),
   }
 }
 
@@ -338,7 +338,7 @@ test('tells the server, through the environment, that the hooks are loaded', asy
   const w = world(on, [])
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  expect(w.env.get('CODE_BUDDY_HOOKS')).toBe('1')
+  expect(w.env.get('ANNOTANT_HOOKS')).toBe('1')
 })
 
 const titleComment: Comment = {
@@ -350,7 +350,7 @@ const titleComment: Comment = {
 }
 
 const watchCommand = (args = ''): CommandRunInput => ({
-  command: 'code-buddy',
+  command: 'annotant',
   args,
   origin: { kind: 'composer' },
   presentation: { isFullscreen: false, columns: 100 },
@@ -375,7 +375,7 @@ const ended = (agentId: string, answer = '') => ({
   reason: 'answer' as const,
 })
 
-/** `/code-buddy` from a folder of the project, its server ready. */
+/** `/annotant` from a folder of the project, its server ready. */
 async function watch(
   $: Parameters<Parameters<typeof test>[1]>[0],
   w: ReturnType<typeof world>,
@@ -387,7 +387,7 @@ async function watch(
 }
 
 const debugCommand = (args: string): CommandRunInput => ({
-  command: 'code-buddy-debug',
+  command: 'annotant-debug',
   args,
   origin: { kind: 'composer' },
   presentation: { isFullscreen: false, columns: 100 },
@@ -401,10 +401,10 @@ test('logs nothing while the hook log is off', async ($, on) => {
   await w.exit(0)
 })
 
-test('/code-buddy-debug turns the hook log on, shows it, and turns it off', async ($, on) => {
+test('/annotant-debug turns the hook log on, shows it, and turns it off', async ($, on) => {
   const w = world(on, [open('c1'), open('c2')])
   const turnedOn = await $.command.run(debugCommand('on'))
-  expect(turnedOn.text).toMatch(/tail -f \/home\/u\/\.cache\/code-buddy\/hook\.log/)
+  expect(turnedOn.text).toMatch(/tail -f \/home\/u\/\.cache\/annotant\/hook\.log/)
 
   await watch($, w)
   await w.print(newLine('c1'))
@@ -455,7 +455,7 @@ test('keeps the hook log under its cap, its newest whole lines', async ($, on) =
 const hookCommand = (mode: string, id: string, lockRoot = ROOT) =>
   expect.stringMatching(
     new RegExp(
-      `^'node' '/.+/skills/code-buddy/scripts/hook\\.mjs' '${mode}' '--comment' '${id}' '--project' '${ROOT}' '--lock-root' '${lockRoot}'$`,
+      `^'node' '/.+/skills/annotant/scripts/hook\\.mjs' '${mode}' '--comment' '${id}' '--project' '${ROOT}' '--lock-root' '${lockRoot}'$`,
     ),
   )
 
@@ -471,9 +471,9 @@ test("starts a comment's agent with hooks of its own, on the model its label map
   await w.print(newLine('c1'))
 
   expect(w.spawned[0]).toEqual(
-    expect.objectContaining({ type: 'code-buddy:cb-c1', name: 'cb-c1', model: 'haiku' }),
+    expect.objectContaining({ type: 'annotant:an-c1', name: 'an-c1', model: 'haiku' }),
   )
-  const spec = w.registered.get('code-buddy:cb-c1')
+  const spec = w.registered.get('annotant:an-c1')
   // The worker's instructions, its frontmatter left out.
   expect(spec?.prompt).toBe('You handle one comment.\n')
   expect(spec?.hooks).toEqual({
@@ -511,7 +511,7 @@ test("locks a comment's files across the git repository the project is in", asyn
   const w = world(on, [titleComment], { gitRoot: '/repo' })
   await watch($, w)
   await w.print(newLine('c1'))
-  expect(w.registered.get('code-buddy:cb-c1')?.hooks).toEqual(
+  expect(w.registered.get('annotant:an-c1')?.hooks).toEqual(
     expect.objectContaining({
       PreToolUse: [
         {
@@ -574,7 +574,7 @@ test("a comment of an image alone starts on the session's model at a medium effo
   await w.print(newLine('c1'))
   expect(w.classified).toEqual([])
   expect(w.spawned[0]?.model).toBeUndefined()
-  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  expect(w.registered.get('annotant:an-c1')?.effort).toBe('medium')
   expect(w.route('c1')).toEqual({
     model: 'claude-sonnet-5-5',
     effort: 'medium',
@@ -586,15 +586,15 @@ test("a comment of an image alone starts on the session's model at a medium effo
 test('a comment of an image alone gets its medium effort with routing off too', async ($, on) => {
   const w = world(on, [imageOnly])
   w.write(
-    `${ROOT}/.code-buddy.json`,
+    `${ROOT}/.annotant.json`,
     JSON.stringify({
-      commentsFile: '.code-buddy/comments.json',
+      commentsFile: '.annotant/comments.json',
       models: { trivial: 'inherit' },
     }),
   )
   await watch($, w)
   await w.print(newLine('c1'))
-  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  expect(w.registered.get('annotant:an-c1')?.effort).toBe('medium')
   await w.exit(0)
 })
 
@@ -607,12 +607,12 @@ test('the medium effort of an image alone holds when its agent is resumed or rel
   w.registered.clear()
   await w.print(followUpLine('c1'))
   expect(w.sent.map((one) => one.to)).toEqual(['a1'])
-  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  expect(w.registered.get('annotant:an-c1')?.effort).toBe('medium')
 
   w.registered.clear()
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   await w.clock.settle()
-  expect(w.registered.get('code-buddy:cb-c1')?.effort).toBe('medium')
+  expect(w.registered.get('annotant:an-c1')?.effort).toBe('medium')
   await w.exit(0)
 })
 
@@ -644,9 +644,9 @@ test('a classifier that fails never blocks the comment: its agent starts on the 
 test('models set to inherit turn routing off: no classifier, the model still recorded', async ($, on) => {
   const w = world(on, [titleComment])
   w.write(
-    `${ROOT}/.code-buddy.json`,
+    `${ROOT}/.annotant.json`,
     JSON.stringify({
-      commentsFile: '.code-buddy/comments.json',
+      commentsFile: '.annotant/comments.json',
       models: { trivial: 'inherit' },
     }),
   )
@@ -678,12 +678,12 @@ test('a label the classifier makes up routes nothing', async ($, on) => {
   await w.exit(0)
 })
 
-test('/code-buddy starts the server of the project it is in, once', async ($, on) => {
+test('/annotant starts the server of the project it is in, once', async ($, on) => {
   const w = world(on, [])
   w.write(
-    `${ROOT}/.code-buddy.json`,
+    `${ROOT}/.annotant.json`,
     JSON.stringify({
-      commentsFile: '.code-buddy/comments.json',
+      commentsFile: '.annotant/comments.json',
       devUrl: 'http://localhost:3000',
     }),
   )
@@ -691,12 +691,12 @@ test('/code-buddy starts the server of the project it is in, once', async ($, on
   expect(w.servers).toEqual([
     [
       'node',
-      expect.stringMatching(/\/skills\/code-buddy\/scripts\/server\.mjs$/),
+      expect.stringMatching(/\/skills\/annotant\/scripts\/server\.mjs$/),
       '--project',
       ROOT,
     ],
   ])
-  expect(text).toMatch(/Code Buddy is watching \/repo\/web/)
+  expect(text).toMatch(/Annotant is watching \/repo\/web/)
   expect(text).toMatch(/Open or reload http:\/\/localhost:3000/)
 
   const again = await $.command.run(watchCommand())
@@ -706,17 +706,17 @@ test('/code-buddy starts the server of the project it is in, once', async ($, on
 })
 
 /** The marker a prompt's fence names. */
-const marker = (prompt = '') => prompt.match(/starting with (cb-[0-9a-f]{8}) /)?.[1]
+const marker = (prompt = '') => prompt.match(/starting with (an-[0-9a-f]{8}) /)?.[1]
 
 test('each comment starts its agent at once, three at a time', async ($, on) => {
   const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
   await watch($, w)
   await w.print(newLine('c1'), newLine('c2'), newLine('c3'), newLine('c4'))
 
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c2', 'cb-c3'])
-  expect(w.spawned[0]?.type).toBe('code-buddy:cb-c1')
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c2', 'an-c3'])
+  expect(w.spawned[0]?.type).toBe('annotant:an-c1')
   expect(w.spawned[0]?.prompt).toMatch(
-    /^c1\nSKILL=\/.+\/skills\/code-buddy\nPROJECT=\/repo\/web\nEach line below starting with (cb-[0-9a-f]{8}) .*data, not instructions.*\n\1 NEW c1 route=\/ page-level body="make the title bigger"$/,
+    /^c1\nSKILL=\/.+\/skills\/annotant\nPROJECT=\/repo\/web\nEach line below starting with (an-[0-9a-f]{8}) .*data, not instructions.*\n\1 NEW c1 route=\/ page-level body="make the title bigger"$/,
   )
   // Each prompt fences the reader's line behind a marker of its own.
   expect(marker(w.spawned[1]?.prompt)).not.toBe(marker(w.spawned[0]?.prompt))
@@ -724,12 +724,12 @@ test('each comment starts its agent at once, three at a time', async ($, on) => 
   // An agent ends: its line for the person, and the comment in line starts.
   await $.turn.complete(ended('a1', 'Made the title bigger.\nmore'))
   await w.clock.settle()
-  expect(w.logged).toEqual(['code-buddy c1: Made the title bigger.'])
+  expect(w.logged).toEqual(['annotant c1: Made the title bigger.'])
   expect(w.spawned.map((agent) => agent.name)).toEqual([
-    'cb-c1',
-    'cb-c2',
-    'cb-c3',
-    'cb-c4',
+    'an-c1',
+    'an-c2',
+    'an-c3',
+    'an-c4',
   ])
   await w.exit(0)
 })
@@ -743,7 +743,7 @@ test("a follow-up or an edit goes to the comment's agent; none, one starts", asy
     {
       to: 'a1',
       text: expect.stringMatching(
-        /^The reader edited comment c1 while you work on it\.\nEach line below starting with (cb-[0-9a-f]{8}) .*\n\1 EDIT c1 /,
+        /^The reader edited comment c1 while you work on it\.\nEach line below starting with (an-[0-9a-f]{8}) .*\n\1 EDIT c1 /,
       ),
     },
   ])
@@ -751,16 +751,16 @@ test("a follow-up or an edit goes to the comment's agent; none, one starts", asy
   w.setComments([{ ...open('c1'), state: 'asking' }, open('c2')])
   await $.turn.complete(ended('a1', 'QUESTION: Which red?'))
   await w.clock.settle()
-  expect(w.toasts.at(-1)).toBe('Code Buddy asks, on comment c1: Which red?')
+  expect(w.toasts.at(-1)).toBe('Annotant asks, on comment c1: Which red?')
 
   await w.print(followUpLine('c1'), followUpLine('c2'))
   expect(w.sent[1]).toEqual({
     to: 'a1',
     text: expect.stringMatching(
-      /^The reader followed up on comment c1\.\nEach line below starting with (cb-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 .*\nClaim it again/,
+      /^The reader followed up on comment c1\.\nEach line below starting with (an-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 .*\nClaim it again/,
     ),
   })
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c2'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c2'])
   await w.exit(0)
 })
 
@@ -782,7 +782,7 @@ test('a message handed over again, as a server restart prints it, starts no agen
 
   // Sent again by the reader: a hand-over of its own.
   await w.print(handOver('NEW', 'm1@2026-01-01T10:05:00.000Z'))
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c1'])
   await w.exit(0)
 })
 
@@ -798,10 +798,10 @@ test('a comment still queued when the watch starts again starts on the same line
   await watch($, w)
   await w.print(handOver('OPEN', SENT, 'c1'), handOver('OPEN', SENT, 'c4'))
   expect(w.spawned.map((agent) => agent.name)).toEqual([
-    'cb-c1',
-    'cb-c2',
-    'cb-c3',
-    'cb-c4',
+    'an-c1',
+    'an-c2',
+    'an-c3',
+    'an-c4',
   ])
   await w.exit(0)
 })
@@ -827,7 +827,7 @@ test('a comment stopped and sent again while its agent starts gets a new agent',
   await w.print('CANCELLED c1', handOver('NEW', 'm1@2026-01-01T10:05:00.000Z'))
   await w.releaseSpawns()
   expect(w.stopped).toEqual(['a1'])
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c1'])
   await w.exit(0)
 })
 
@@ -868,7 +868,7 @@ test('a comment the reader resolves stops its agent; one its agent resolved does
   await w.exit(0)
 })
 
-test('a server that cannot start says why, and /code-buddy tries again', async ($, on) => {
+test('a server that cannot start says why, and /annotant tries again', async ($, on) => {
   const w = world(on, [])
   w.resumesThrough($)
   const answer = $.command.run(watchCommand())
@@ -886,18 +886,18 @@ test('a server that cannot start says why, and /code-buddy tries again', async (
 test('the skill starts the watch through its tool', async ($, on) => {
   const w = world(on, [])
   const ran = $.tool.call({
-    tool: 'mcp__code-buddy__watch',
+    tool: 'mcp__annotant__watch',
     project: ROOT,
     tool_use_id: 'w1',
   })
   await w.print(READY)
   const { result } = await ran
-  expect(result).toMatch(/Code Buddy is watching \/repo\/web/)
+  expect(result).toMatch(/Annotant is watching \/repo\/web/)
   await w.exit(0)
 })
 
-test('registers the tool even when Claude Code refuses the name /code-buddy', async ($, on) => {
-  const w = world(on, [], { refused: 'code-buddy' })
+test('registers the tool even when Claude Code refuses the name /annotant', async ($, on) => {
+  const w = world(on, [], { refused: 'annotant' })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   expect(w.tools).toEqual(['watch'])
@@ -907,7 +907,7 @@ test('the skill ends the watch through its tool', async ($, on) => {
   const w = world(on, [])
   await watch($, w)
   const { result } = await $.tool.call({
-    tool: 'mcp__code-buddy__watch',
+    tool: 'mcp__annotant__watch',
     stop: true,
     tool_use_id: 'w2',
   })
@@ -915,14 +915,14 @@ test('the skill ends the watch through its tool', async ($, on) => {
   await w.exit(0)
 })
 
-test('/code-buddy names the folder it found no project in', async ($, on) => {
+test('/annotant names the folder it found no project in', async ($, on) => {
   const w = world(on, [])
   const { text } = await $.command.run(watchCommand('api'))
-  expect(text).toMatch(/^No \.code-buddy\.json in api: \/code-buddy:code-buddy init/)
+  expect(text).toMatch(/^No \.annotant\.json in api: \/annotant:annotant init/)
   expect(w.servers).toEqual([])
 })
 
-test('/code-buddy stop ends the watch', async ($, on) => {
+test('/annotant stop ends the watch', async ($, on) => {
   const w = world(on, [])
   await watch($, w)
   const { text } = await $.command.run(watchCommand('stop'))
@@ -962,10 +962,10 @@ test('an edit or a stop while the agent starts reaches it once started', async (
   await w.print(`EDIT c4 route=/ page-level body="make it red"`)
   await w.releaseSpawns()
   expect(w.spawned.map((agent) => agent.name)).toEqual([
-    'cb-c1',
-    'cb-c2',
-    'cb-c3',
-    'cb-c4',
+    'an-c1',
+    'an-c2',
+    'an-c3',
+    'an-c4',
   ])
   expect(w.sent).toEqual([
     { to: 'a4', text: expect.stringMatching(/^The reader edited comment c4 /) },
@@ -1002,7 +1002,7 @@ test("a message resumes the comment's agent with its hooks, which a reload unloa
   w.registered.clear()
   await w.print(followUpLine('c1'))
   expect(w.sent.map((one) => one.to)).toEqual(['a1'])
-  expect(w.registered.get('code-buddy:cb-c1')).toEqual(
+  expect(w.registered.get('annotant:an-c1')).toEqual(
     expect.objectContaining({
       model: 'haiku',
       hooks: expect.objectContaining({ PreToolUse: expect.any(Array) }),
@@ -1019,13 +1019,13 @@ test('a reply resumes the agent that finished its turn, whose type the model is 
   await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
   w.classifyAs('hard')
   await w.print(followUpLine('c1'))
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1'])
   // Resumed, it is at work: an edit goes to it too.
   await w.print(`EDIT c1 route=/ page-level body="make it red"`)
   expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a1'])
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1'])
   // Once sent, the model is offered neither the comment's type nor the worker.
-  for (const agent of ['code-buddy:cb-c1', 'code-buddy:worker'])
+  for (const agent of ['annotant:an-c1', 'annotant:worker'])
     expect(await $.agent.offer(offerOf(agent))).toEqual({ isOffered: false })
   await w.exit(0)
 })
@@ -1046,8 +1046,8 @@ test('a reload gives the agents at work their hooks again, a resumed one too', a
   w.registered.clear()
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   await w.clock.settle()
-  expect([...w.registered.keys()]).toEqual(['code-buddy:cb-c1'])
-  expect(w.registered.get('code-buddy:cb-c1')).toEqual(
+  expect([...w.registered.keys()]).toEqual(['annotant:an-c1'])
+  expect(w.registered.get('annotant:an-c1')).toEqual(
     expect.objectContaining({
       model: 'haiku',
       hooks: expect.objectContaining({ PreToolUse: expect.any(Array) }),
@@ -1071,7 +1071,7 @@ test('a reply the agent missed as it ended its turn goes to it again', async ($,
   await w.clock.settle()
   expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a2', 'a1'])
   expect(w.sent[2]?.text).toMatch(
-    /^The reader followed up on comment c1\.\nEach line below starting with (cb-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 /,
+    /^The reader followed up on comment c1\.\nEach line below starting with (an-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 /,
   )
 
   // Once only: a turn that ends again without taking it never loops.
@@ -1114,7 +1114,7 @@ test('an agent that cannot take a message gives way to a new one', async ($, on)
   await w.print(newLine('c1'))
   w.refuseSends()
   await w.print(`EDIT c1 route=/ page-level body="make it red"`)
-  expect(w.spawned.map((agent) => agent.name)).toEqual(['cb-c1', 'cb-c1'])
+  expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c1'])
   await w.exit(0)
 })
 
@@ -1123,7 +1123,7 @@ test('a server that stops after it started says so', async ($, on) => {
   await watch($, w)
   await w.exit(1)
   expect(w.toasts.at(-1)).toMatch(
-    /^Code Buddy stopped watching web: the server exited \(code 1\)\. \/code-buddy starts it again\.$/,
+    /^Annotant stopped watching web: the server exited \(code 1\)\. \/annotant starts it again\.$/,
   )
   // Not watching any more: the command starts a new server.
   const again = $.command.run(watchCommand())
@@ -1137,7 +1137,7 @@ test('a server that stops after it started says so', async ($, on) => {
 test('the skill watches only a project of its session', async ($, on) => {
   const w = world(on, [])
   const ran = await $.tool.call({
-    tool: 'mcp__code-buddy__watch',
+    tool: 'mcp__annotant__watch',
     project: '/tmp/elsewhere',
     tool_use_id: 'w2',
   })
@@ -1145,7 +1145,7 @@ test('the skill watches only a project of its session', async ($, on) => {
   expect(w.servers).toEqual([])
 })
 
-test("/code-buddy in a git worktree watches the main checkout's project", async ($, on) => {
+test("/annotant in a git worktree watches the main checkout's project", async ($, on) => {
   const w = world(on, [], {
     cwd: '/wt/feature/web/src',
     gitRoot: '/wt/feature',
@@ -1159,10 +1159,10 @@ test("/code-buddy in a git worktree watches the main checkout's project", async 
   await w.exit(0)
 })
 
-test('/code-buddy status tells the server, the agents at work and the queue in order', async ($, on) => {
+test('/annotant status tells the server, the agents at work and the queue in order', async ($, on) => {
   const w = world(on, ['c1', 'c2', 'c3', 'c4', 'c5'].map(open))
   expect((await $.command.run(watchCommand('status'))).text).toMatch(
-    /^Code Buddy is not watching any project in this session/,
+    /^Annotant is not watching any project in this session/,
   )
   await watch($, w)
   w.classifyAs('trivial')
@@ -1174,7 +1174,7 @@ test('/code-buddy status tells the server, the agents at work and the queue in o
   const { text } = await $.command.run(watchCommand('status'))
   expect(text).toBe(
     [
-      'Code Buddy: 3 of 3 agents at work in this session.',
+      'Annotant: 3 of 3 agents at work in this session.',
       '',
       '/repo/web: server ready at http://127.0.0.1:4599',
       '  At work:',
@@ -1189,7 +1189,7 @@ test('/code-buddy status tells the server, the agents at work and the queue in o
   )
   // The skill asks the same through the tool.
   const { result } = await $.tool.call({
-    tool: 'mcp__code-buddy__watch',
+    tool: 'mcp__annotant__watch',
     status: true,
     tool_use_id: 's1',
   })
@@ -1197,21 +1197,21 @@ test('/code-buddy status tells the server, the agents at work and the queue in o
   await w.exit(0)
 })
 
-test('/code-buddy status says why a server stopped, and the agents still at work', async ($, on) => {
+test('/annotant status says why a server stopped, and the agents still at work', async ($, on) => {
   const w = world(on, [open('c1')])
   await watch($, w)
   await w.print(newLine('c1'))
   await w.exit(1)
   const { text } = await $.command.run(watchCommand('status'))
   expect(text).toMatch(
-    /\/repo\/web: server stopped: the server exited \(code 1\)\. \/code-buddy starts it again\.\n  At work:\n    c1 "make the title bigger": agent a1 on claude-sonnet-5-5, for 0 s$/,
+    /\/repo\/web: server stopped: the server exited \(code 1\)\. \/annotant starts it again\.\n  At work:\n    c1 "make the title bigger": agent a1 on claude-sonnet-5-5, for 0 s$/,
   )
   // Stopping the watch forgets the server that ended.
   await $.command.run(watchCommand('stop'))
   expect((await $.command.run(watchCommand('status'))).text).not.toMatch(/server stopped/)
 })
 
-test('/code-buddy status tells an agent starting, an edit waiting, and a server that failed', async ($, on) => {
+test('/annotant status tells an agent starting, an edit waiting, and a server that failed', async ($, on) => {
   const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
   await watch($, w)
   w.holdSpawns()

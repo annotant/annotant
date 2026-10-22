@@ -1,12 +1,12 @@
 {
-  "name": "code-buddy",
+  "name": "annotant",
   "description": "Turn feedback on a running frontend app into code changes",
   "owner": {
     "name": "Kevin Manson"
   },
   "plugins": [
     {
-      "name": "code-buddy",
+      "name": "annotant",
       "source": "./",
       "description": "Comment on your dev app in the browser; one background agent per comment makes the change and answers in the thread"
     }

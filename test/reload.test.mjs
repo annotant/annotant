@@ -6,7 +6,7 @@ import path from 'node:path'
 import { test } from 'node:test'
 import { SCRIPTS, freePort, tempDir, tempProject } from './helpers.mjs'
 
-const DEV_BANNER = '/* code-buddy widget (dev build, with the debug panel) */\n'
+const DEV_BANNER = '/* annotant widget (dev build, with the debug panel) */\n'
 
 /**
  * A server run from a copy of the skill, its widget `widget`: the bundle is
@@ -15,7 +15,7 @@ const DEV_BANNER = '/* code-buddy widget (dev build, with the debug panel) */\n'
  * @param {string} widget
  */
 async function serve(t, widget) {
-  const skill = path.join(await tempDir(t, 'code-buddy-skill-'), 'skills', 'code-buddy')
+  const skill = path.join(await tempDir(t, 'annotant-skill-'), 'skills', 'annotant')
   await cp(SCRIPTS, path.join(skill, 'scripts'), { recursive: true })
   const bundle = path.join(skill, 'widget', 'dist', 'widget.js')
   await mkdir(path.dirname(bundle), { recursive: true })
@@ -27,10 +27,10 @@ async function serve(t, widget) {
     {
       env: {
         ...process.env,
-        CODE_BUDDY_PORT: String(port),
-        CODE_BUDDY_STATE_DIR: await tempDir(t),
-        CODE_BUDDY_HOOKS: '1',
-        CODE_BUDDY_POLL_MS: '600000',
+        ANNOTANT_PORT: String(port),
+        ANNOTANT_STATE_DIR: await tempDir(t),
+        ANNOTANT_HOOKS: '1',
+        ANNOTANT_POLL_MS: '600000',
       },
       stdio: ['ignore', 'pipe', 'inherit'],
     },
@@ -103,15 +103,15 @@ test("tells the pages nothing when another file of the bundle's folder changes",
 })
 
 test('tells the pages when a dev build replaces the released one it started on', async (t) => {
-  const { bundle, base } = await serve(t, '/* code-buddy widget */\none')
+  const { bundle, base } = await serve(t, '/* annotant widget */\none')
   const received = await events(t, base)
   await writeFile(bundle, `${DEV_BANNER}two`)
   assert.deepEqual(await received(1000), ['widget'])
 })
 
 test('tells the pages nothing about a released widget', async (t) => {
-  const { bundle, base } = await serve(t, '/* code-buddy widget */\none')
+  const { bundle, base } = await serve(t, '/* annotant widget */\none')
   const received = await events(t, base)
-  await writeFile(bundle, '/* code-buddy widget */\ntwo')
+  await writeFile(bundle, '/* annotant widget */\ntwo')
   assert.deepEqual(await received(500), [])
 })

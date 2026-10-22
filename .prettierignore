@@ -1,6 +1,6 @@
 # Prompts and docs are wrapped by hand; reformatting them changes what Claude reads.
 *.md
 package-lock.json
-skills/code-buddy/widget/dist/
+skills/annotant/widget/dist/
 /.playground/
 /playground/dist/

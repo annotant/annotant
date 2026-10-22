@@ -1,24 +1,24 @@
 # The comments file and the step files
 
-Code Buddy keeps two kinds of files for a project:
+Annotant keeps two kinds of files for a project:
 
 | File | Where | Holds | Written by |
 | --- | --- | --- | --- |
-| `comments.json` | In the project, at `commentsFile` of `.code-buddy.json` (`.code-buddy/comments.json` by default; `CODE_BUDDY_COMMENTS_FILE` overrides it) | The discussions: every comment, its thread, its state and the history of its moves | The store (`scripts/lib/store.mjs`), for the server and the agents' scripts |
+| `comments.json` | In the project, at `commentsFile` of `.annotant.json` (`.annotant/comments.json` by default; `ANNOTANT_COMMENTS_FILE` overrides it) | The discussions: every comment, its thread, its state and the history of its moves | The store (`scripts/lib/store.mjs`), for the server and the agents' scripts |
 | `<id>.jsonl` | In the state folder, `<state>/<hash>/progress/` | The steps of the run in progress on comment `<id>` | The hooks (`hooks/register.ts`) |
 | `<id>.history.jsonl` | Next to it | The steps of every run that ended, with a dev build of the widget only | The store, when a run ends |
 | `images/<id>/m<n>-<k>.<ext>` | Beside `comments.json` | The images the reader attached to message `m<n>` of comment `<id>` | The store, from the widget's request |
 
-`<state>` is `CODE_BUDDY_STATE_DIR`, else `$XDG_CACHE_HOME/code-buddy`, else
-`~/.cache/code-buddy`. `<hash>` is the first 12 hex digits of the SHA-1 of the
+`<state>` is `ANNOTANT_STATE_DIR`, else `$XDG_CACHE_HOME/annotant`, else
+`~/.cache/annotant`. `<hash>` is the first 12 hex digits of the SHA-1 of the
 project's root: each project has its own folder. Deleting a comment deletes
 its step files and its images; `comments.json` never holds a step nor an
 image's bytes.
 
 The reference for the comments file is
-[`skills/code-buddy/scripts/lib/format.mjs`](../skills/code-buddy/scripts/lib/format.mjs):
+[`skills/annotant/scripts/lib/format.mjs`](../skills/annotant/scripts/lib/format.mjs):
 its version, states, moves and JSDoc types. The widget mirrors them in
-`skills/code-buddy/widget/src/domain.ts`.
+`skills/annotant/widget/src/domain.ts`.
 
 ## `comments.json`
 
@@ -127,7 +127,7 @@ copy.
 | `run` | `r1`, `r2`…, optional | The run it belongs to. Each `working` event starts one. |
 | `agent` | string, optional, `working` only | The Claude Code agent that claimed it (`main` for a session's main loop), which the hooks pass to `claim.mjs`. |
 | `model` | string, optional, `working` only | The model its agent runs on, as Claude Code resolved it when the hooks started it (`claude-haiku-5-5`); the widget names its family (`haiku`). |
-| `complexity` | `trivial`, `standard` or `hard`, optional, `working` only | How the hooks' classifier sorted the comment, which picked `model` through `.code-buddy.json`'s `models` (see [Models](#models)). Absent when the classifier did not run or failed. |
+| `complexity` | `trivial`, `standard` or `hard`, optional, `working` only | How the hooks' classifier sorted the comment, which picked `model` through `.annotant.json`'s `models` (see [Models](#models)). Absent when the classifier did not run or failed. |
 
 ### A cancellation
 
@@ -226,7 +226,7 @@ Code's small fast model for one label:
 | `standard` | A component's behaviour, a new element, a small feature. |
 | `hard` | Anything across several components or pages, data or API changes, or a question that needs a product decision. |
 
-`models` in `.code-buddy.json` maps each label to a model alias (`haiku`,
+`models` in `.annotant.json` maps each label to a model alias (`haiku`,
 `sonnet`, `opus`) or id; `inherit` keeps the session's model. Without
 it, the default is:
 
@@ -242,8 +242,8 @@ cannot read, is not classified, routing on or off: its agent starts on the
 session's model at a `medium` effort, with no label. In every case the hooks
 write the agent, the model it runs on and the label in the state folder
 (`routes/<id>.json`, beside `progress/`), and `claim.mjs` records them on the
-`working` event (`CODE_BUDDY_AGENT`, `CODE_BUDDY_MODEL` and
-`CODE_BUDDY_COMPLEXITY` override them). A follow-up resumes the same agent,
+`working` event (`ANNOTANT_AGENT`, `ANNOTANT_MODEL` and
+`ANNOTANT_COMPLEXITY` override them). A follow-up resumes the same agent,
 with no new start: it keeps its model and its effort.
 
 ## The step files
@@ -303,7 +303,7 @@ The store writes them beside the comments file, as
 comment), and lists their names on the message. The server serves them at
 `GET /api/images/<comment id>/<name>`, for the thread's bubbles, and adds their
 full paths to the comment's line for the hooks (`NEW`, `OPEN`, `FOLLOWUP`,
-`EDIT`): ` images=["/…/.code-buddy/images/<id>/m1-1.png"]`, at the end of the
+`EDIT`): ` images=["/…/.annotant/images/<id>/m1-1.png"]`, at the end of the
 line, for the images of the message it carries. The agent opens them with
 Read. Deleting the comment deletes its folder.
 
