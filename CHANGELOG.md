@@ -9,6 +9,11 @@ released to the `stable` branch.
 
 ### Changed
 
+- **The README's Install section is four numbered steps**, from the
+  requirements to a first comment, then the commands, updating and
+  uninstalling; Troubleshooting says what to check when the widget does not
+  show. `init` now ends by suggesting `/code-buddy` and where the widget
+  appears. (#181)
 - **The tools take a small strip of icons, not four buttons.** While the
   panel is closed, Comment, Draw area, Draw and Point at element are icons in
   the bottom right corner, their names and shortcuts in the tooltips; a tool
