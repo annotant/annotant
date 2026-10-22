@@ -16,6 +16,7 @@ import path from 'node:path'
 import {
   SKILL_DIR,
   WIDGET_VERSION,
+  appOrigins,
   findProject,
   isDevWidget,
   servedProject,
@@ -574,7 +575,13 @@ async function handle(req, res) {
     return send(
       res,
       200,
-      { project: project.root, name: config.name, version: WIDGET_VERSION },
+      {
+        project: project.root,
+        name: config.name,
+        version: WIDGET_VERSION,
+        // The origins whose pages the browser extension mounts the widget on.
+        origins: appOrigins(config),
+      },
       cors,
     )
   }

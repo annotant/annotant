@@ -87,6 +87,23 @@ export async function servedProject(port) {
     : undefined
 }
 
+/**
+ * The origins of the project's dev app, which the browser extension mounts
+ * the widget on: `devUrl`'s, then `devOrigins`. A `devUrl` that is no URL
+ * with an origin (`localhost:3000`) adds none.
+ * @param {{ devUrl?: unknown, devOrigins?: unknown }} config
+ * @returns {string[]}
+ */
+export function appOrigins(config) {
+  const origins = Array.isArray(config.devOrigins)
+    ? config.devOrigins.filter((origin) => typeof origin === 'string')
+    : []
+  const { devUrl } = config
+  const origin =
+    typeof devUrl === 'string' && URL.canParse(devUrl) ? new URL(devUrl).origin : 'null'
+  return origin === 'null' ? origins : [origin, ...origins]
+}
+
 /** Removes `--project <dir>` so the remaining arguments are positional. */
 export function positional(argv = process.argv.slice(2)) {
   const flag = argv.indexOf('--project')

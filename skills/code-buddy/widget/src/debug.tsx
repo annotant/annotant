@@ -19,6 +19,7 @@ import {
   type ReviewProgress,
   type ReviewState,
 } from './domain'
+import { SERVER } from './server'
 import { readSession, writeSession } from './session'
 import { Chip, IconButton } from './ui'
 
@@ -404,13 +405,12 @@ interface AgentPrompt {
 }
 
 /** A comment's step files, every run's, as the server has them on disk. */
-const stepsUrl = (id: string) =>
-  new URL(`api/debug/steps/${id}`, new URL('.', import.meta.url)).href
+const stepsUrl = (id: string) => new URL(`api/debug/steps/${id}`, SERVER).href
 
 /** What the server read in Claude Code's transcripts; null when it could not. */
 async function fetchDebug<T>(path: string): Promise<T | null> {
   try {
-    const url = new URL(`api/debug/${path}`, new URL('.', import.meta.url))
+    const url = new URL(`api/debug/${path}`, SERVER)
     const response = await fetch(url.href)
     // The server's JSON has the shape it answers with.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion

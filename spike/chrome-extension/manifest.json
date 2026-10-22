@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Code Buddy (spike)",
+  "version": "0.0.1",
+  "description": "Spike for #101: mounts the Code Buddy widget on the pages a local Code Buddy server watches.",
+  "background": { "service_worker": "background.js" },
+  "host_permissions": ["http://127.0.0.1/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*", "http://*.localhost/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/widget.js"],
+      "matches": ["http://localhost/*", "http://127.0.0.1/*", "http://*.localhost/*"]
+    }
+  ]
+}

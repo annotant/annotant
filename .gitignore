@@ -19,3 +19,6 @@ skills/code-buddy/widget/dist/
 # The playground's working copy, which /playground runs and agents edit, and its build.
 /.playground/
 /playground/dist/
+
+# The spike of #101 bundles its own copy of the widget.
+/spike/chrome-extension/dist/

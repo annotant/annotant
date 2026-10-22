@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
+import { SERVER } from './server'
 
-const API = new URL('api/comments', new URL('.', import.meta.url)).href
-const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
-const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
+const API = new URL('api/comments', SERVER).href
+const EVENTS = new URL('api/events', SERVER).href
+const IMAGES = new URL('api/images/', SERVER).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
