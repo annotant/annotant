@@ -182,6 +182,25 @@ test('a press on nothing to pick reaches the page', () => {
   expect(reached).toHaveBeenCalledOnce()
 })
 
+test("a click on the widget's own buttons reaches them, not the picker", () => {
+  const { root, hover } = page()
+  const widget = document.createElement('code-buddy-widget')
+  widget.setAttribute('data-code-buddy', '')
+  const cancel = document.createElement('button')
+  widget.append(cancel)
+  root.append(widget)
+  const onPick = vi.fn()
+  const clicked = vi.fn()
+  cancel.addEventListener('click', clicked)
+  render(<ElementPicker root={root} onPick={onPick} onCancel={() => {}} />)
+  act(() => hover(cancel))
+
+  fireEvent.click(cancel, { detail: 1 })
+
+  expect(onPick).not.toHaveBeenCalled()
+  expect(clicked).toHaveBeenCalledOnce()
+})
+
 test("the picker puts the host's cursor back", () => {
   const { root } = page()
   document.documentElement.style.cursor = 'wait'
