@@ -124,8 +124,13 @@ code { font-family: var(--cb-mono); }
 .cb-spinner { animation: cb-spin .8s linear infinite; flex-shrink: 0; }
 @keyframes cb-spin { to { transform: rotate(360deg); } }
 
-.cb-dock { position: fixed; right: 24px; bottom: 24px; display: flex; gap: 8px; }
-.cb-dock .cb-btn { box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+.cb-dock {
+  position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 2px;
+  padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
+  background: var(--cb-surface); box-shadow: 0 4px 16px rgba(0,0,0,.15);
+}
+.cb-dock .cb-icon-btn { width: 30px; height: 30px; color: var(--cb-accent); }
+.cb-dock .cb-btn { border-radius: 7px; }
 .cb-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
 
 .cb-panel {

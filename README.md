@@ -119,6 +119,10 @@ directory, else from the repository root.
 
 ## In the widget
 
+While the panel is closed, the tools sit in a small strip of icons in the
+bottom right corner, their names and shortcuts in the tooltips; a tool in
+progress shows its _Cancel_ there.
+
 - **Comment** opens a new comment for the page, or the whole app.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.

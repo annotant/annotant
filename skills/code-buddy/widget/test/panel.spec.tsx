@@ -240,3 +240,18 @@ test('a stopped comment shows a Stopped chip, in the page list and in all commen
   await screen.findByRole('link', { name: '/' })
   expect(await summaryChip()).toBe('Stopped')
 })
+
+test('the closed panel leaves icons only, and a tool in progress its Cancel', async () => {
+  fakeServer([])
+  renderWidget()
+
+  const tools = await screen.findByRole('group', { name: 'Code Buddy tools' })
+  expect(tools.textContent).toBe('')
+  for (const name of ['Comment', 'Draw area', 'Draw', 'Point at element'])
+    expect(screen.getByRole('button', { name })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
+  expect(tools.textContent).toBe('Cancel')
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(tools.textContent).toBe('')
+})
