@@ -7,6 +7,12 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **A website**, at <https://neolitec.github.io/code-buddy/>: a landing page
+  and the docs, built from the README and `docs/` on every change on `main`.
+  (#182)
+
 ### Changed
 
 - **The README's Install section is four numbered steps**, from the

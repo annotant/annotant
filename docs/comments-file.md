@@ -29,8 +29,9 @@ its version, states, moves and JSDoc types. The widget mirrors them in
 ```
 
 Any other `version`, or a bare array (version 1), is refused and left
-untouched: the server stops with `COMMENTS_REFUSED old comments format: delete
-<file>`, and the scripts print the same message.
+untouched: the server stops with
+`COMMENTS_REFUSED old comments format: delete <file>`, and the scripts print
+the same message.
 
 ### A comment
 

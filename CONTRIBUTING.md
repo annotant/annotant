@@ -108,6 +108,7 @@ What to do after a change, in a running session, is in the README's
 | `skills/code-buddy/scripts/`          | Node.js scripts (ES modules, JSDoc types), run by the skill         |
 | `skills/code-buddy/scripts/lib/format.mjs` | The comments file's format: its version, states, moves and types; the reference for every part that reads it |
 | `docs/comments-file.md` | The comments file and the step files: where they live, their schemas, the states diagram |
+| `site/`                               | The website's landing page and layouts; `.github/scripts/site.mjs` adds the docs pages from `README.md` and `docs/`, and the Pages workflow publishes it on every change on `main` |
 | `skills/code-buddy/widget/src/`       | The browser widget (React, TypeScript)                              |
 | `skills/code-buddy/widget/dist/`      | The built widget: `npm run build`; never committed on `main`        |
 | `playground/`                         | A fake app to try Code Buddy on, launched by `/playground`          |

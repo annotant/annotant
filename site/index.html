@@ -1,0 +1,86 @@
+---
+layout: default
+root: ''
+---
+
+<section class="hero">
+  <img
+    class="mascot"
+    src="assets/buddy.png"
+    alt="Code Buddy's mascot, a small blue caterpillar"
+    width="99"
+    height="180"
+  />
+  <h1>Comment on your running app.<br />Claude makes the change.</h1>
+  <p class="lede">
+    Code Buddy is a <a href="https://claude.com/claude-code">Claude Code</a> plugin:
+    select text, point at an element or draw on your dev app in the browser, write what to
+    change, and a background agent makes the change and answers in the same thread.
+  </p>
+  <p class="actions">
+    <a class="button" href="#install">Install</a>
+    <a class="button secondary" href="docs/">Read the docs</a>
+    <a class="button secondary" href="https://github.com/neolitec/code-buddy">GitHub</a>
+  </p>
+</section>
+
+<section class="demo" aria-label="A comment turning into a change">
+  <figure class="page">
+    <div class="page-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="page-body">
+      <p class="page-title">Fresh roasts, <mark>shiped</mark> every Monday</p>
+      <div class="thread">
+        <p class="who">You</p>
+        <p>Typo: “shiped” → “shipped”.</p>
+        <ol class="steps">
+          <li>Reading <code>Hero.tsx</code></li>
+          <li>Edited <code>Hero.tsx</code></li>
+        </ol>
+        <p class="who">Claude · haiku · trivial</p>
+        <p>Fixed the typo in the hero’s title.</p>
+      </div>
+    </div>
+    <figcaption>
+      One comment, one agent: its steps show live under the comment, then its answer.
+    </figcaption>
+  </figure>
+</section>
+
+<section class="points">
+  <div>
+    <h2>Right on the page</h2>
+    <p>
+      Comment on selected text, an element, a drawn area or freehand lines, the page or
+      the whole app. Paste a screenshot or a mockup.
+    </p>
+  </div>
+  <div>
+    <h2>One agent per comment</h2>
+    <p>
+      Each comment gets its own background agent, on a model that fits it. File locks keep
+      parallel agents out of each other’s way.
+    </p>
+  </div>
+  <div>
+    <h2>Nothing in production</h2>
+    <p>
+      Your project only gets a dev-only loader snippet and a config file.
+      <code>init</code> checks the widget is not in your production build.
+    </p>
+  </div>
+</section>
+
+<section class="install" id="install">
+  <h2>Install</h2>
+  <p>
+    With Claude Code 2.1.287 or later and Node.js 22 or later, in your frontend project:
+  </p>
+  <pre><code>claude plugin marketplace add neolitec/code-buddy#stable
+claude plugin install code-buddy@code-buddy
+claude "/code-buddy:code-buddy init"</code></pre>
+  <p>
+    Then run <code>/code-buddy</code> in the session, open your dev app and click the
+    <strong>Comment</strong> icon. <a href="docs/#install">The full install</a> covers
+    folders, monorepos, updates and uninstalling.
+  </p>
+</section>
