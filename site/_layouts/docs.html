@@ -4,32 +4,8 @@ layout: default
 
 <article class="docs">
   <nav class="pages" aria-label="Docs">
-    <a
-      href="{{ page.root }}docs/"
-      {%
-      if
-      page.url=""
-      ="/docs/"
-      %}
-      aria-current="page"
-      {%
-      endif
-      %}
-      >Guide</a
-    >
-    <a
-      href="{{ page.root }}docs/comments-file.html"
-      {%
-      if
-      page.url=""
-      ="/docs/comments-file.html"
-      %}
-      aria-current="page"
-      {%
-      endif
-      %}
-      >The comments file</a
-    >
+    <a href="{{ page.root }}docs/"{% if page.url == "/docs/" %} aria-current="page"{% endif %}>Guide</a>
+    <a href="{{ page.root }}docs/comments-file.html"{% if page.url == "/docs/comments-file.html" %} aria-current="page"{% endif %}>The comments file</a>
   </nav>
   <h1>{{ page.title }}</h1>
   {{ content }}

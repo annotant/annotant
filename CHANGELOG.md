@@ -10,7 +10,7 @@ released to the `stable` branch.
 ### Added
 
 - **A website**, at <https://neolitec.github.io/code-buddy/>: a landing page
-  and the docs, built from the README and `docs/` on every change on `main`.
+  and the docs, built from the README and `docs/` whenever they change on `main`.
   (#182)
 
 ### Changed

@@ -28,8 +28,8 @@ browser, and one background agent per comment makes the change. See the
 - `docs/comments-file.md`: the comments file and the step files, their
   schemas and the comments' states; `scripts/lib/format.mjs` is its code.
 - `site/`: the website on GitHub Pages (Jekyll), its landing page and
-  layouts; `.github/scripts/site.mjs` builds its docs pages from `README.md`
-  and `docs/` (no copy), and `.github/workflows/pages.yml` publishes it.
+  layouts; `.github/scripts/site.mjs` builds its docs pages from the Markdown
+  files its `PAGES` lists (no copy), and `.github/workflows/pages.yml` publishes it.
 - `playground/`: a fake app with Code Buddy installed, to try changes on.
   `/playground` (`.claude/skills/playground/`) runs it from `.playground/`, a
   git-ignored copy the agents edit.

@@ -1,7 +1,16 @@
 name: Pages
 
 # The website: site/ and the docs pages built from README.md and docs/.
+# A pull request builds it, so a broken page shows before main; main deploys it.
 on:
+  pull_request:
+    paths:
+      - README.md
+      - docs/**
+      - site/**
+      - .github/assets/**
+      - .github/scripts/site.mjs
+      - .github/workflows/pages.yml
   push:
     branches: [main]
     paths:
@@ -16,8 +25,8 @@ on:
 permissions: {}
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -52,6 +61,7 @@ jobs:
   deploy:
     name: Deploy
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

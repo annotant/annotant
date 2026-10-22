@@ -7,6 +7,7 @@ kramdown:
   input: GFM
   hard_wrap: false
   toc_levels: 2..3
-# The links between pages are relative, so the site works at any address.
+# site.mjs already points the links at the pages, relatively so the site works
+# at any address: the plugin would redo it.
 relative_links:
   enabled: false

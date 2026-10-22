@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // site.mjs <out-dir>
 // Stages the website's sources in <out-dir> for Jekyll: site/ as it is, the
-// mascot, and the docs pages built from the repository's Markdown (README.md
-// and docs/), so the site never holds a copy of them. Run from the repository
-// root; the Pages workflow builds <out-dir> with Jekyll.
+// mascot, and the docs pages built from the Markdown files PAGES lists, so the
+// site never holds a copy of them. Run from the repository root; the Pages
+// workflow builds <out-dir> with Jekyll. Fails on what would break a page.
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,7 +32,8 @@ export const PAGES = [
 ]
 
 /**
- * GitHub's id for a heading: lowercase, punctuation dropped, spaces to dashes.
+ * GitHub's id for a heading: lowercase, punctuation but `_` and `-` dropped,
+ * spaces to dashes.
  * @param {string} heading
  */
 export const slug = (heading) =>
@@ -49,8 +50,9 @@ export const slug = (heading) =>
 function lines(markdown) {
   let fence = ''
   return markdown.split('\n').map((text) => {
-    const marker = /^\s*(`{3,}|~{3,})/.exec(text)?.[1]
-    if (marker && (!fence || marker.startsWith(fence))) {
+    const [, marker, info] = /^\s*(`{3,}|~{3,})(.*)$/.exec(text) ?? []
+    // A closing fence is the opening one's character, as long, and nothing else.
+    if (marker && (!fence || (marker.startsWith(fence) && !info?.trim()))) {
       fence = fence ? '' : marker
       return { text, code: true }
     }
@@ -60,19 +62,26 @@ function lines(markdown) {
 
 /**
  * Keeps the `## ` sections named, in their order in the file, and drops what
- * comes before the first one (the README's header, made for GitHub).
+ * comes before the first one (the README's header, made for GitHub). Throws
+ * when one of them is not in the file: a renamed heading would drop it.
  * @param {string} markdown
  * @param {string[]} names
  */
 export function keepSections(markdown, names) {
   /** @type {string[]} */
   const kept = []
+  const found = new Set()
   let keep = false
   for (const { text, code } of lines(markdown)) {
-    const h2 = code ? undefined : /^## (.+)$/.exec(text)?.[1]
-    if (h2 !== undefined) keep = names.includes(h2.trim())
+    const h2 = code ? undefined : /^## (.+)$/.exec(text)?.[1]?.trim()
+    if (h2 !== undefined) {
+      keep = names.includes(h2)
+      if (keep) found.add(h2)
+    }
     if (keep) kept.push(text)
   }
+  const missing = names.filter((name) => !found.has(name))
+  if (missing.length) throw new Error(`no "## ${missing.join('", "## ')}" section`)
   return kept.join('\n').trim() + '\n'
 }
 
@@ -89,25 +98,36 @@ export const headingIds = (markdown) =>
   )
 
 /**
- * Points the page's links where they work on the site: a page of the site
- * stays on the site, an anchor of the page stays as it is, and anything else
- * goes to the file on GitHub.
+ * The headings of a docs page's source: all of them, and those its page keeps.
+ * @typedef {{ all: Set<string>, kept: Set<string> }} Ids
+ */
+
+/**
+ * Points the page's links where they work on the site: to a docs page when it
+ * keeps the heading linked to, else to the file on GitHub. Throws on a link to
+ * a heading its file does not have, or with a scheme but http(s) and mailto.
  * @param {string} markdown the page, as the site shows it
  * @param {string} source the page's file in the repository
  * @param {Page[]} pages
+ * @param {Map<string, Ids>} ids the headings of each page's source
  */
-export function rewriteLinks(markdown, source, pages) {
-  const ids = headingIds(markdown)
+export function rewriteLinks(markdown, source, pages, ids) {
   const site = new Map(pages.map((page) => [page.source, page.path]))
   const here = site.get(source) ?? source
   /** @param {string} target */
   const link = (target) => {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return target
+    if (/^(https?|mailto):/i.test(target)) return target
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target))
+      throw new Error(`${source}: link to ${target}`)
     const [path = '', hash = ''] = target.split('#')
     const file = path ? posix.normalize(posix.join(posix.dirname(source), path)) : source
     const anchor = hash ? `#${hash}` : ''
     const page = site.get(file)
-    if (page && (file !== source || !hash || ids.has(hash))) {
+    const headings = ids.get(file)
+    if (hash && headings && !headings.all.has(hash)) {
+      throw new Error(`${source}: link to ${target}, a heading ${file} does not have`)
+    }
+    if (page && (!hash || headings?.kept.has(hash))) {
       if (page === here) return anchor || '#'
       const html = posix
         .relative(posix.dirname(here), page)
@@ -124,9 +144,9 @@ export function rewriteLinks(markdown, source, pages) {
 }
 
 /**
- * The lines kramdown would read as raw HTML where GitHub reads text: a tag at
- * the start of a paragraph's line (`<file>` wrapped from a code span), which
- * swallows the rest of the page.
+ * The lines kramdown would read as raw HTML where GitHub reads text: a line
+ * inside a paragraph that starts with a tag (`<file>` wrapped from a code
+ * span), which swallows the rest of the page.
  * @param {string} markdown
  */
 export function htmlLines(markdown) {
@@ -137,22 +157,51 @@ export function htmlLines(markdown) {
 }
 
 /**
- * A docs page as Jekyll reads it: its front matter, a table of contents
- * (kramdown's), and the Markdown kept out of Liquid.
+ * The Markdown a docs page shows: the sections it keeps.
  * @param {Page} page
  * @param {string} markdown the source file's content
- * @param {Page[]} pages
  */
-export function toPage(page, markdown, pages) {
-  const kept = page.sections ? keepSections(markdown, page.sections) : markdown
+const shown = (page, markdown) =>
+  page.sections ? keepSections(markdown, page.sections) : markdown
+
+/**
+ * The headings of each page's source.
+ * @param {Page[]} pages
+ * @param {Map<string, string>} sources each page's source file's content
+ * @returns {Map<string, Ids>}
+ */
+export const pageIds = (pages, sources) =>
+  new Map(
+    pages.map((page) => {
+      const markdown = sources.get(page.source) ?? ''
+      return [
+        page.source,
+        { all: headingIds(markdown), kept: headingIds(shown(page, markdown)) },
+      ]
+    }),
+  )
+
+/**
+ * A docs page as Jekyll reads it: its front matter, a table of contents
+ * (kramdown's), and its sections with their links rewritten, without its H1
+ * (the layout's title) and kept out of Liquid. Throws on what would break it.
+ * @param {Page} page
+ * @param {Page[]} pages
+ * @param {Map<string, string>} sources each page's source file's content
+ */
+export function toPage(page, pages, sources) {
+  const kept = shown(page, sources.get(page.source) ?? '')
   const html = htmlLines(kept)
   if (html.length) {
     throw new Error(
       `${page.source}: rewrap the lines that start with a tag: ${html.join(' | ')}`,
     )
   }
-  // The page's own H1 is the layout's title.
-  const body = rewriteLinks(kept, page.source, pages).replace(/^# .+\n+/, '')
+  if (/\{%-?\s*endraw/.test(kept)) throw new Error(`${page.source}: holds an endraw tag`)
+  const body = rewriteLinks(kept, page.source, pages, pageIds(pages, sources)).replace(
+    /^# .+\n+/,
+    '',
+  )
   const root = '../'.repeat(page.path.split('/').length - 1)
   return [
     '---',
@@ -180,9 +229,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   cpSync('site', out, { recursive: true })
   cpSync('.github/assets/buddy.png', join(out, 'assets/buddy.png'))
+  const sources = new Map(
+    PAGES.map((page) => [page.source, readFileSync(page.source, 'utf8')]),
+  )
   for (const page of PAGES) {
     const file = join(out, page.path)
     mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, toPage(page, readFileSync(page.source, 'utf8'), PAGES))
+    writeFileSync(file, toPage(page, PAGES, sources))
   }
 }
