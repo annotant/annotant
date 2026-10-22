@@ -136,7 +136,9 @@ It runs, in order:
 | `npm test`             | [`node:test`](https://nodejs.org/api/test.html) suites in `test/`: file locks, store, server, widget wording, playground; then the widget's component tests in `widget/test/`: [Vitest](https://vitest.dev) with [happy-dom](https://github.com/capricorn86/happy-dom) and [Testing Library](https://testing-library.com/docs/react-testing-library/intro) |
 
 `npm run test:hooks` checks the hooks module with Claude Code itself
-(`claude plugin validate`, then `claude plugin test` on `test/hooks.test.ts`).
+(`claude plugin validate`, then `claude plugin test`, which runs every
+`*.test.ts` and `*.test.tsx` in the plugin: `test/hooks.test.ts` only, since the
+widget's Vitest suites are named `*.spec.tsx`).
 It needs Claude Code 2.1.287 or later, which CI does not install: run it
 whenever you change `hooks/` or `types/`. In a real session, `/code-buddy-debug on`
 logs every decision the hooks make (README, Troubleshooting); log a new

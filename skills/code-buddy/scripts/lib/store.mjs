@@ -322,7 +322,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
 
   /**
    * @param {string} id
-   * @param {string} at When the reader stopped it: the `stopped` event's time.
+   * @param {string} at When the reader or its agent stopped it: the `stopped` event's time.
    * @param {string} [run]
    * @returns {Promise<import('./format.mjs').Cancellation>}
    */
@@ -346,6 +346,26 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
 
   return {
     readAll,
+
+    /**
+     * The comment's agent ended its turn with the comment still `working`,
+     * neither answered nor asked about: it stops (`by: 'agent'`), with what
+     * the run had done, so the reader can send it again. Only the run
+     * `agent` claimed, or one that names no agent.
+     * @param {string} id
+     * @param {string} agent
+     * @returns {Promise<CommentV2 | undefined>} The comment, when it stopped.
+     */
+    abandon(id, agent) {
+      return changeOne(id, async (comment) => {
+        const run = currentRun(comment)
+        const claimed = comment.events.at(-1)?.agent
+        if (!run || (claimed && claimed !== agent)) return undefined
+        const at = move(comment, 'stopped', { by: 'agent', run })
+        comment.cancellation = await cancellationOf(id, at, run)
+        return comment
+      })
+    },
 
     /**
      * An agent starts working on the comment: a new run, which records the

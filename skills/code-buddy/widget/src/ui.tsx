@@ -94,12 +94,15 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconName
   label: string
   danger?: boolean
+  /** The keyboard shortcut doing the same, shown in the tooltip. */
+  keys?: string
 }
 
 export function IconButton({
   icon,
   label,
   danger,
+  keys,
   className = '',
   ...props
 }: IconButtonProps) {
@@ -107,11 +110,43 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={keys ? `${label} (${keys})` : label}
       className={`cb-icon-btn ${danger ? 'cb-icon-btn--danger' : ''} ${className}`}
       {...props}
     >
       <Icon name={icon} />
+    </button>
+  )
+}
+
+interface ToolButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  icon: IconName
+  label: string
+  /** In progress: the button says Cancel. */
+  active?: boolean
+}
+
+/**
+ * A tool of the dock: its icon alone, or Cancel while it is in progress. The
+ * same button either way, so it keeps the focus.
+ */
+export function ToolButton({
+  icon,
+  label,
+  active,
+  className = '',
+  ...props
+}: ToolButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={active ? undefined : label}
+      title={active ? undefined : label}
+      className={`cb-btn cb-btn--secondary cb-btn--sm cb-tool ${active ? '' : 'cb-tool--idle'} ${className}`}
+      {...props}
+    >
+      <Icon name={active ? 'x' : icon} />
+      {active && 'Cancel'}
     </button>
   )
 }
@@ -182,6 +217,7 @@ export function Composer({
   images,
   elements,
   picking = false,
+  pickKeys,
   onChange,
   onSubmit,
   onEscape,
@@ -202,6 +238,8 @@ export function Composer({
   elements?: ReactNode[]
   /** The page's elements are being picked for it. */
   picking?: boolean
+  /** The keyboard shortcut of the button picking them. */
+  pickKeys?: string
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
@@ -334,6 +372,7 @@ export function Composer({
         <IconButton
           icon="cursor"
           label={picking ? 'Stop picking' : 'Pick an element in the page'}
+          {...(pickKeys ? { keys: pickKeys } : {})}
           className="cb-pick"
           aria-pressed={picking}
           disabled={disabled}

@@ -1245,6 +1245,56 @@ async function answerMissed($: $, id: string, worker: Worker) {
   await dispatch($, watched, { ...last, kind: 'followup' })
 }
 
+/**
+ * The agent ended its turn with its comment still `working`, neither answered
+ * nor asked about (it gave up, ran out of turns, ended on a summary): nobody
+ * is on it any more, and the widget would show an agent at work for good.
+ * hook.mjs stops it, so the reader sees it stopped and can send it again.
+ */
+async function workAbandoned($: $, id: string, worker: Worker) {
+  const project = await loadProject($, worker.root).catch(() => undefined)
+  const comment = project && (await readComment($, project, id))
+  if (!project || !comment) {
+    await debug(
+      $,
+      worker.agent,
+      id,
+      'turn ended: could not read the comment, left as it is',
+    )
+    return
+  }
+  const claimed = comment.events?.at(-1)?.agent
+  if (comment.state !== 'working' || (claimed && claimed !== worker.agent)) return
+  // A message resumed it, or an agent starts on it, meanwhile.
+  if ((await read($, workers))[id]?.running || starting.has(id)) return
+  const ran = await $.process
+    .run(
+      [
+        'node',
+        `${skillDir($)}/scripts/hook.mjs`,
+        'ended',
+        '--comment',
+        id,
+        '--project',
+        worker.root,
+        '--lock-root',
+        project.lockRoot,
+        '--agent',
+        worker.agent,
+      ],
+      { stdin: '' },
+    )
+    .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: String(error) }))
+  await debug(
+    $,
+    worker.agent,
+    id,
+    ran.stdout.includes('STOPPED')
+      ? 'turn ended with the comment working: stopped it, the reader can send it again'
+      : `turn ended with the comment working, not stopped: ${short(ran.stderr.trim() || `exit ${ran.exitCode}`, 160)}`,
+  )
+}
+
 /** A comment's agent ended its run: its one line for the person, and the next in line. */
 async function workerDone($: $, agent: string, answer: string) {
   const done = await workerOf($, agent)
@@ -1253,6 +1303,7 @@ async function workerDone($: $, agent: string, answer: string) {
   const said = answer.trim().split('\n')[0] ?? ''
   await debug($, agent, done.id, `turn ended: ${short(said, 120)}`)
   await answerMissed($, done.id, done.worker)
+  await workAbandoned($, done.id, done.worker)
   if (said && said !== 'CANCELLED') {
     $.ui.log(`code-buddy ${tag(done.id)}: ${short(said, 300)}`)
     if (said.startsWith('QUESTION:'))

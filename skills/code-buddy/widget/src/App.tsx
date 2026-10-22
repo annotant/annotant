@@ -43,6 +43,7 @@ import {
   type ReviewProgress,
   type Status,
   answered,
+  gaveUp,
   gist,
   isActive,
   isAsking,
@@ -82,9 +83,21 @@ import {
   Textarea,
   Toasts,
   Toggle,
+  ToolButton,
   toast,
 } from './ui'
 import { activityOf, isOngoing, stepKey } from './activity'
+import {
+  SHORTCUT_LIST,
+  SHORTCUTS,
+  type KeyboardLayout,
+  type Shortcut,
+  ariaShortcut,
+  fieldOf,
+  readKeyboard,
+  shortcutLabel,
+  shortcutOf,
+} from './shortcuts'
 import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
 import buddy from './assets/buddy.webp'
 import buddyThinking from './assets/buddy-thinking.webp'
@@ -108,6 +121,11 @@ const PENDING_CENTER_MS = 5000
 const FLASH_MS = 1500
 const UI_KEY = 'code-buddy:ui'
 const CENTER_KEY = 'code-buddy:center'
+
+/** Where the shortcuts moving through the page's comments go, in the panel's order. */
+const STEPS = { next: 1, previous: -1 } as const satisfies Partial<
+  Record<Shortcut, number>
+>
 
 type View = 'page' | 'all'
 type StatusFilter = 'all' | 'open' | 'resolved'
@@ -617,11 +635,22 @@ export default function App({ root }: { root: Element }) {
   const panel = useRef<HTMLElement>(null)
   const title = useRef<HTMLHeadingElement>(null)
   const [toTitle, setToTitle] = useState(0)
+  const widget = useRef<HTMLDivElement>(null)
+  // The list of the keyboard shortcuts, in the panel.
+  const [showKeys, setShowKeys] = useState(false)
 
   const openPanel = useCallback(() => {
     if (!layout.current.open) opener.current = focusedElement()
     setOpen(true)
   }, [])
+
+  // Once the browser says what the keys type, the shortcuts' labels name them so.
+  const [keyboard, setKeyboard] = useState<KeyboardLayout>()
+  useEffect(() => {
+    void readKeyboard().then(setKeyboard)
+  }, [])
+  const keysOf = (shortcut: Shortcut) => shortcutLabel(shortcut, { keyboard })
+  const ariaKeysOf = (shortcut: Shortcut) => ariaShortcut(shortcut, { keyboard })
 
   const page = useComments(route)
   const comments = page.comments
@@ -1091,6 +1120,89 @@ export default function App({ root }: { root: Element }) {
       </div>
     ))
 
+  /** What each keyboard shortcut does, with the state of this render. */
+  const onShortcut = useRef<(shortcut: Shortcut) => void>(undefined)
+  useLayoutEffect(() => {
+    // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
+    const showDraft = () => {
+      setDrawing(false)
+      setView('page')
+      setThreadId(undefined)
+      openPanel()
+    }
+    onShortcut.current = (shortcut) => {
+      if (shortcut === 'comment') {
+        if (draft && written(draft)) showDraft()
+        else if (selectionButton && pendingAnchor.current)
+          startDraft(pendingAnchor.current)
+        else startDraft(PAGE_LEVEL)
+      } else if (shortcut === 'pick') {
+        // While the reader writes, the element goes into their message, as with its button.
+        if (open && writingIn) {
+          setDrawing(false)
+          setAttachingTo(picksFor ? undefined : writingIn)
+          return
+        }
+        setDrawing(false)
+        setPicking((value) => !value)
+      } else if (shortcut === 'panel') {
+        if (open) {
+          close()
+          return
+        }
+        openPanel()
+        setToTitle((times) => times + 1)
+      } else {
+        if (draft && written(draft)) {
+          showDraft()
+          return
+        }
+        // Not loaded yet, or not there to load: no list to move through.
+        if (!page.loaded) return
+        if (!page.reachable) {
+          toast('No Claude session is watching. Run /code-buddy:code-buddy.', true)
+          return
+        }
+        // In the panel's order, newest first, around from one end to the other.
+        const listed = comments.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+        if (!listed.length) {
+          toast('No comments on this page')
+          return
+        }
+        const at =
+          view === 'page' && !drafting
+            ? listed.findIndex(({ id }) => id === threadId)
+            : -1
+        const step = STEPS[shortcut]
+        const index =
+          at < 0
+            ? step > 0
+              ? 0
+              : listed.length - 1
+            : (at + step + listed.length) % listed.length
+        const to = listed[index]
+        if (to) openFromPage(to)
+      }
+    }
+  })
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      // The page's own handler took the keys first.
+      if (event.defaultPrevented || event.repeat) return
+      const shortcut = shortcutOf(event)
+      if (!shortcut) return
+      // The page's fields keep their keys; in the widget's, the arrows select text.
+      const field = fieldOf(event, widget.current)
+      if (field === 'page' || (field && (shortcut === 'next' || shortcut === 'previous')))
+        return
+      event.preventDefault()
+      onShortcut.current?.(shortcut)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
   const cancelAttach = useCallback(() => setAttachingTo(undefined), [])
   const asked = replying && isAsking(replying) ? replying.messages.at(-1) : undefined
   const offered = !!asked?.options?.length
@@ -1500,7 +1612,11 @@ export default function App({ root }: { root: Element }) {
         ))}
       {paused(comment) && (
         <div className="cb-stopped" data-testid="cb-cancelled">
-          <strong>Claude was stopped.</strong>{' '}
+          <strong>
+            {gaveUp(comment)
+              ? 'Claude stopped without finishing.'
+              : 'Claude was stopped.'}
+          </strong>{' '}
           {comment.cancellation?.changed.length ? (
             <>
               It had already changed{' '}
@@ -1679,6 +1795,7 @@ export default function App({ root }: { root: Element }) {
 
   return (
     <div
+      ref={widget}
       className="cb"
       // Not the ups: the area drawer and the panel's resize end on the page's.
       onPointerDown={keepPress}
@@ -1709,6 +1826,8 @@ export default function App({ root }: { root: Element }) {
           icon="chat"
           className="cb-selection cb-live"
           data-testid="cb-selection"
+          title={`Comment on the selected text (${keysOf('comment')})`}
+          aria-keyshortcuts={ariaKeysOf('comment')}
           style={{ top: selectionButton.top, left: selectionButton.left }}
           onClick={() => pendingAnchor.current && startDraft(pendingAnchor.current)}
         >
@@ -1723,37 +1842,47 @@ export default function App({ root }: { root: Element }) {
       )}
       {drawing === 'sketch' && <SketchDrawer onDraw={drawSketch} onCancel={cancelDraw} />}
       {!open && (
-        <div ref={dock} className="cb-dock cb-live">
-          <Button variant="secondary" icon="chat" onClick={() => startDraft(PAGE_LEVEL)}>
-            Comment
-          </Button>
-          <Button
-            variant="secondary"
-            icon={drawing === 'area' ? 'x' : 'frame'}
+        // Icons only, their names in the tooltips: a tool in progress shows its Cancel.
+        <div
+          ref={dock}
+          role="group"
+          aria-label="Code Buddy tools"
+          className="cb-dock cb-live"
+        >
+          <ToolButton
+            icon="chat"
+            label="Comment"
+            title={`Comment on the page (${keysOf('comment')})`}
+            aria-keyshortcuts={ariaKeysOf('comment')}
+            onClick={() => startDraft(PAGE_LEVEL)}
+          />
+          <ToolButton
+            icon="frame"
+            label="Draw area"
+            active={drawing === 'area'}
             onClick={() =>
               drawing === 'area' ? setDrawing(false) : startDrawing('area')
             }
-          >
-            {drawing === 'area' ? 'Cancel' : 'Draw area'}
-          </Button>
-          <Button
-            variant="secondary"
-            icon={drawing === 'sketch' ? 'x' : 'pencil'}
+          />
+          <ToolButton
+            icon="pencil"
+            label="Draw"
+            active={drawing === 'sketch'}
             onClick={() =>
               drawing === 'sketch' ? setDrawing(false) : startDrawing('sketch')
             }
-          >
-            {drawing === 'sketch' ? 'Cancel' : 'Draw'}
-          </Button>
-          <Button
-            icon={picking ? 'x' : 'cursor'}
+          />
+          <ToolButton
+            icon="cursor"
+            label="Point at element"
+            active={picking}
+            title={`${picking ? 'Stop pointing' : 'Point at an element'} (${keysOf('pick')})`}
+            aria-keyshortcuts={ariaKeysOf('pick')}
             onClick={() => {
               setDrawing(false)
               setPicking((value) => !value)
             }}
-          >
-            {picking ? 'Cancel' : 'Point at element'}
-          </Button>
+          />
         </div>
       )}
 
@@ -1768,11 +1897,24 @@ export default function App({ root }: { root: Element }) {
           inert={!open || !!drawing}
           aria-label="Code Buddy"
           data-testid="code-buddy-panel"
+          onKeyDownCapture={(event) => {
+            // The list of shortcuts goes first, before the message box's Escape. The
+            // picker's comes before both: its own listener, on the document, hears it after.
+            if (event.nativeEvent.isComposing) return
+            if (event.key !== 'Escape' || !showKeys || picksFor || picking) return
+            event.preventDefault()
+            event.stopPropagation()
+            setShowKeys(false)
+          }}
           onKeyDown={(event) => {
-            // After the message box's Escape, and the picker's: its own listener, on
-            // the document, hears it once this one has.
-            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
-            if (event.defaultPrevented || picksFor) return
+            if (event.nativeEvent.isComposing || event.defaultPrevented) return
+            if (event.key === '?' && !fieldOf(event.nativeEvent)) {
+              event.preventDefault()
+              setShowKeys((shown) => !shown)
+              return
+            }
+            // After the message box's Escape, and the picker's (see above).
+            if (event.key !== 'Escape' || picksFor || picking) return
             close()
           }}
         >
@@ -1827,10 +1969,58 @@ export default function App({ root }: { root: Element }) {
                 label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
                 onClick={toggleDocked}
               />
-              <IconButton icon="x" label="Close" onClick={close} />
+              <IconButton
+                icon="x"
+                label="Close"
+                keys={keysOf('panel')}
+                aria-keyshortcuts={ariaKeysOf('panel')}
+                onClick={close}
+              />
             </div>
           </header>
           <div className="cb-body" ref={setScroller}>
+            {showKeys && (
+              <section
+                className="cb-keys"
+                aria-label="Keyboard shortcuts"
+                data-testid="cb-keys"
+              >
+                <dl>
+                  {SHORTCUT_LIST.map((shortcut) => (
+                    <Fragment key={shortcut}>
+                      <dt>
+                        <kbd>{keysOf(shortcut)}</kbd>
+                      </dt>
+                      <dd>{SHORTCUTS[shortcut].does}</dd>
+                    </Fragment>
+                  ))}
+                  <dt>
+                    <kbd>↑ ↓ ← →</kbd>
+                  </dt>
+                  <dd>
+                    Pointing at an element, out of a text box: to its parent, first child
+                    or siblings
+                  </dd>
+                  <dt>
+                    <kbd>Enter</kbd>
+                  </dt>
+                  <dd>
+                    Pointing at an element, out of a text box: pick the one outlined
+                  </dd>
+                  <dt>
+                    <kbd>Escape</kbd>
+                  </dt>
+                  <dd>
+                    Stop pointing or drawing; else close this list; else leave an empty
+                    message; else close the panel
+                  </dd>
+                  <dt>
+                    <kbd>?</kbd>
+                  </dt>
+                  <dd>Show or hide this list</dd>
+                </dl>
+              </section>
+            )}
             <Boundary
               // Somewhere else in the panel, it draws again.
               key={`${view} ${threadId ?? ''} ${drafting}`}
@@ -1945,6 +2135,7 @@ export default function App({ root }: { root: Element }) {
                     ),
                   )}
                   picking={!!picksFor}
+                  pickKeys={keysOf('pick')}
                   onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
                   placeholder="What should change?"
                   sendLabel="Save"
@@ -1968,7 +2159,8 @@ export default function App({ root }: { root: Element }) {
                     )
                   }
                   onSubmit={() => void save()}
-                  onEscape={() => !written(draft) && backToList()}
+                  // While it picks an element, Escape is the picker's alone.
+                  onEscape={() => !picksFor && !written(draft) && backToList()}
                 />
               )}
               {replying && (
@@ -1986,6 +2178,7 @@ export default function App({ root }: { root: Element }) {
                     ),
                   )}
                   picking={!!picksFor}
+                  pickKeys={keysOf('pick')}
                   onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
                   placeholder={
                     offered
@@ -2028,7 +2221,11 @@ export default function App({ root }: { root: Element }) {
                   }
                   // Like a new comment's: never at the cost of what the reader wrote.
                   onEscape={() =>
-                    !reply && !replyImages.length && !replyElements.length && backToList()
+                    !picksFor &&
+                    !reply &&
+                    !replyImages.length &&
+                    !replyElements.length &&
+                    backToList()
                   }
                 />
               )}
