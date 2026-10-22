@@ -29,7 +29,8 @@ import {
   wasResolved,
 } from './domain'
 import { setInlineStyle } from './inline'
-import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION } from './styles'
+import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
+import { fieldOf } from './shortcuts'
 import { Icon } from './ui'
 
 const WIDGET = '[data-code-buddy]'
@@ -729,13 +730,55 @@ const PRESSES = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'] as
 /** How long the pointer stays on an element before the outline moves to it. */
 export const HOVER_DWELL_MS = 50
 
+/** What the picker's arrow keys skip, besides the widget: elements that draw nothing. */
+const UNPICKABLE = 'script, style, template, noscript, link, meta'
+
+/** A wrapper drawing no box of its own: the keys go through it, to its children. */
+const wraps = (element: Element) => getComputedStyle(element).display === 'contents'
+
+/**
+ * The elements under `parent` the keys stop on: its children, those of its
+ * wrappers, and none drawing nothing (`hidden`, `display: none`).
+ */
+function childrenOf(parent: Element): Element[] {
+  return Array.from(parent.children).flatMap((child) => {
+    if (child.matches(UNPICKABLE) || child.closest(WIDGET)) return []
+    if (wraps(child)) return childrenOf(child)
+    return child.getClientRects().length > 0 ? [child] : []
+  })
+}
+
+/** What `element` is one of the children of, for the keys: past its wrappers, up to `root`. */
+function parentOf(root: Element, element: Element) {
+  let parent = element.parentElement
+  while (parent && parent !== root && wraps(parent)) parent = parent.parentElement
+  return parent
+}
+
+/** The element an arrow key moves the outline to from `from`, within `root`. */
+function stepFrom(root: Element, from: Element | undefined, key: string) {
+  if (!from?.isConnected || !root.contains(from) || from === root) {
+    return childrenOf(root)[0]
+  }
+  const parent = parentOf(root, from)
+  if (key === 'ArrowUp') return parent === root ? undefined : (parent ?? undefined)
+  if (key === 'ArrowDown') return childrenOf(from)[0]
+  const siblings = parent ? childrenOf(parent) : []
+  return siblings[siblings.indexOf(from) + (key === 'ArrowRight' ? 1 : -1)]
+}
+
+const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+
 /**
  * Dashed outline follows the pointer, gliding from one element to the next
  * once the pointer stays on it; a click picks the element, Escape cancels.
+ * The arrow keys move it too, to the parent (up), the first child (down) or a
+ * sibling (left, right), and Enter picks the element outlined: one hard to
+ * hover can still be chosen.
  */
 export function ElementPicker({
   root,
-  hint = 'Click an element to comment on it. Escape cancels.',
+  hint = 'Click an element to comment on it, or move with the arrow keys and press Enter. Escape cancels.',
   onPick,
   onCancel,
 }: {
@@ -756,6 +799,12 @@ export function ElementPicker({
     // The element the pointer is on, until it has stayed there long enough.
     let next: Element | undefined
     let dwell = 0
+    // The element outlined, for Enter and the arrow keys: none off an element.
+    let outlined: Element | undefined
+    // Moved there with the arrow keys since the focus or the pointer last moved:
+    // Enter picks it, even with the focus on a button (the picker's own, clicked to
+    // start it).
+    let byKeys = false
     const target = (event: MouseEvent) => {
       const element = document.elementFromPoint(event.clientX, event.clientY)
       return element &&
@@ -771,6 +820,8 @@ export function ElementPicker({
       next = element
       clearTimeout(dwell)
       dwell = window.setTimeout(() => {
+        outlined = element
+        byKeys = false
         if (element) setHovered(element)
         setOver(!!element)
         setScrolled(false)
@@ -779,6 +830,10 @@ export function ElementPicker({
     // The page gets no press on the element being picked, nor its default
     // (focus, a menu opening on pointerdown, a drag): the click only picks.
     const onPress = (event: MouseEvent) => {
+      // A click with no press of the pointer (`detail` 0) is the one the browser makes of
+      // Enter or Space on a control, and the control's: its point, 0, 0, would pick the
+      // page's top-left element.
+      if (event.type === 'click' && event.detail === 0) return
       const element = target(event)
       if (!element) return
       event.preventDefault()
@@ -786,7 +841,36 @@ export function ElementPicker({
       if (event.type === 'click') onPick(element)
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel()
+      if (event.key === 'Escape') return onCancel()
+      // Fields keep their keys, and the browser its shortcuts.
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (event.defaultPrevented || fieldOf(event)) return
+      if (event.key === 'Enter') {
+        // What has the focus keeps its Enter, the dock's Cancel among them, unless the
+        // arrows moved the outline since the focus came to it.
+        const [focused] = event.composedPath()
+        if (!byKeys && focused instanceof Element && focused !== document.body) return
+        const element = outlined
+        if (!element?.isConnected) return
+        event.preventDefault()
+        onPick(element)
+        return
+      }
+      if (!ARROWS.has(event.key)) return
+      event.preventDefault()
+      const element = stepFrom(root, outlined, event.key)
+      if (!element) return
+      clearTimeout(dwell)
+      next = undefined
+      outlined = element
+      byKeys = true
+      element.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() })
+      setHovered(element)
+      setOver(true)
+      setScrolled(false)
+    }
+    const onFocus = () => {
+      byKeys = false
     }
     const onScroll = () => {
       setScrolled(true)
@@ -795,6 +879,7 @@ export function ElementPicker({
     document.addEventListener('mousemove', onMove)
     for (const type of PRESSES) window.addEventListener(type, onPress, true)
     document.addEventListener('keydown', onKey)
+    document.addEventListener('focusin', onFocus)
     document.addEventListener('scroll', onScroll, true)
     const restoreCursor = setInlineStyle(document.documentElement, 'cursor', 'crosshair')
     return () => {
@@ -802,6 +887,7 @@ export function ElementPicker({
       document.removeEventListener('mousemove', onMove)
       for (const type of PRESSES) window.removeEventListener(type, onPress, true)
       document.removeEventListener('keydown', onKey)
+      document.removeEventListener('focusin', onFocus)
       document.removeEventListener('scroll', onScroll, true)
       restoreCursor()
     }

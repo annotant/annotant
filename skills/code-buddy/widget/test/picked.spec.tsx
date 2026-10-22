@@ -41,7 +41,7 @@ test('an element picked in the page goes with the reply, the thread still open',
 
   fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
   expect(screen.getByText(/Click an element to add it to your message/)).toBeTruthy()
-  fireEvent.click(title, { clientX: 50, clientY: 20 })
+  fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
 
   // Picked once: the picker stops, and the element waits above the text.
   expect(screen.queryByText(/Click an element to add it/)).toBeNull()
@@ -68,7 +68,7 @@ test('an element alone is a reply, and the reader may remove it before sending',
 
   for (const _ of [1, 2]) {
     fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
-    fireEvent.click(title, { clientX: 50, clientY: 20 })
+    fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   }
   // The same element twice is one.
   expect(screen.getAllByRole('button', { name: /Remove the element/ })).toHaveLength(1)
@@ -77,7 +77,7 @@ test('an element alone is a reply, and the reader may remove it before sending',
   expect(send.disabled).toBe(true)
 
   fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
-  fireEvent.click(title, { clientX: 50, clientY: 20 })
+  fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   expect(send.disabled).toBe(false)
   fireEvent.click(send)
   await waitFor(() =>
@@ -130,7 +130,7 @@ test("the reader's message shows its elements: a click scrolls to one", async ()
 function pickTitle(title: Element, times = 1) {
   for (let left = times; left > 0; left -= 1) {
     fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
-    fireEvent.click(title, { clientX: 50, clientY: 20 })
+    fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   }
 }
 
@@ -179,7 +179,7 @@ test('a message holds one element: another picked takes its place', async () => 
   for (const paragraph of page.querySelectorAll('p')) {
     pointed.mockReturnValue(paragraph)
     fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
-    fireEvent.click(paragraph, { clientX: 5, clientY: 5 })
+    fireEvent.click(paragraph, { clientX: 5, clientY: 5, detail: 1 })
   }
 
   expect(screen.getAllByRole('button', { name: /Remove the element/ })).toHaveLength(1)
@@ -224,7 +224,7 @@ test('pointing at an element starts a comment whose message box holds it', async
   const title = pointAtTitle()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
-  fireEvent.click(title, { clientX: 50, clientY: 20 })
+  fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
 
   // A comment about the page, as one started otherwise: the element is in the box.
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
@@ -276,7 +276,7 @@ test('pointing at an element with a comment under way adds it to that comment', 
   const title = pointAtTitle()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
-  fireEvent.click(title, { clientX: 50, clientY: 20 })
+  fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
 
   const box = await screen.findByRole<HTMLTextAreaElement>('textbox', {
     name: 'What should change?',

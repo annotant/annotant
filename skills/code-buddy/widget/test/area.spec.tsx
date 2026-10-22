@@ -393,7 +393,7 @@ test('an area drawn after pointing at an element keeps the element and the words
   const pointed = vi.spyOn(document, 'elementFromPoint').mockReturnValue(title)
   onTestFinished(() => pointed.mockRestore())
   fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
-  fireEvent.click(title, { clientX: 50, clientY: 20 })
+  fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   fireEvent.change(await screen.findByRole('textbox', { name: 'What should change?' }), {
     target: { value: 'Bigger title' },
   })
