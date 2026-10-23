@@ -225,6 +225,8 @@ released to the `stable` branch.
 
 ### Fixed
 
+- The panel's footer shows the ant, Annotant's mascot, instead of Code
+  Buddy's caterpillar: at rest, and looking up while agents work. (#193)
 - **A comment in progress survives a reload of the page**, as the app's dev
   server reloads it after another comment's agent edits it: the draft (what
   the reader wrote, its area, drawing or selected text, its elements, and its

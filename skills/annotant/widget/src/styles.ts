@@ -189,8 +189,8 @@ code { font-family: var(--cb-mono); }
 /* Away from its box, the hint would only be noise: shown while the box has the focus. */
 .an-panel:not(:has(.an-composer-box:focus-within)) .an-panel-foot-hint .an-send-hint { visibility: hidden; }
 .an-composer-brand { display: inline-flex; align-items: center; gap: 8px; }
-/* The mascot's head: the image is cropped to its top. */
-.an-composer-brand img { width: 18px; height: 22px; object-fit: cover; object-position: 50% 0; }
+/* The mascot's head: the images are cropped to it. */
+.an-composer-brand img { width: 24px; height: 22px; }
 .an-composer-brand a { color: inherit; text-decoration: none; }
 .an-composer-brand a:hover { color: var(--cb-accent); }
 /* Shown until the reader reaches the end of the body, just above the message box. */
