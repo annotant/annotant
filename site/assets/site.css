@@ -6,7 +6,6 @@
   --border: #d9e0ea;
   --accent: #1f6fd1;
   --accent-text: #ffffff;
-  --mark: #fde68a;
   --code-bg: #eef2f7;
   --radius: 10px;
   --width: 72rem;
@@ -23,7 +22,6 @@
     --border: #2a3442;
     --accent: #6aa8f5;
     --accent-text: #0b1220;
-    --mark: #6b5410;
     --code-bg: #1c2430;
     color-scheme: dark;
   }
@@ -37,7 +35,6 @@
   --border: #2a3442;
   --accent: #6aa8f5;
   --accent-text: #0b1220;
-  --mark: #6b5410;
   --code-bg: #1c2430;
   color-scheme: dark;
 }
@@ -284,7 +281,7 @@ main,
 }
 
 .demo {
-  max-width: 40rem;
+  max-width: 56rem;
   margin: 1rem auto 3rem;
 }
 
@@ -310,48 +307,12 @@ main,
   background: var(--border);
 }
 
-.page-body {
-  padding: 1.5rem;
-}
-
-.page-title {
-  margin: 0 0 1rem;
-  font-size: 1.375rem;
-  font-weight: 700;
-}
-
-.page-title mark {
-  background: var(--mark);
-  color: inherit;
-  border-radius: 3px;
-}
-
-.thread {
-  max-width: 22rem;
-  margin-left: auto;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.page-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1280 / 800;
   background: var(--bg);
-  font-size: 0.9rem;
-}
-
-.thread p {
-  margin: 0 0 0.5rem;
-}
-
-.thread .who {
-  margin-bottom: 0.1rem;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.steps {
-  margin: 0 0 0.75rem;
-  padding-left: 1.2rem;
-  color: var(--muted);
-  font-size: 0.85rem;
 }
 
 .page figcaption {

@@ -34,6 +34,9 @@ browser, and one background agent per comment makes the change. See the
 - `playground/`: a fake app with Annotant installed, to try changes on.
   `/playground` (`.claude/skills/playground/`) runs it from `.playground/`, a
   git-ignored copy the agents edit.
+- `demo/`: a made-up app, built to film the video on the website
+  (`site/assets/demo.*`); `/playground demo` runs it from `.demo/`.
+  `demo/README.md` tells how to shoot the video again.
 
 ## Commands
 

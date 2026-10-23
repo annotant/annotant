@@ -72,6 +72,10 @@ changes made to it. To change the playground itself (a page for a new
 feature), edit `playground/` and commit it like the rest. `npm run playground`
 serves the committed app alone, without Annotant.
 
+`/playground demo` does the same with `demo/`, a made-up plant care app on
+<http://localhost:5191>, run from `.demo/`: the website's video is shot on it.
+[`demo/README.md`](demo/README.md) tells how to shoot it again.
+
 The dev build (`npm run build:dev`) adds a **debug panel** to the widget: the
 wrench in the panel's header, or Alt+Shift+D, shows every comment as the widget
 holds it, its fields, its conversation in order (messages, every move of the
@@ -132,6 +136,7 @@ see it.
 | `skills/annotant/widget/src/`       | The browser widget (React, TypeScript)                              |
 | `skills/annotant/widget/dist/`      | The built widget: `npm run build`; never committed on `main`        |
 | `playground/`                         | A fake app to try Annotant on, launched by `/playground`          |
+| `demo/`                               | The app the website's video is shot on, launched by `/playground demo` |
 | `.claude/skills/playground/`          | The `/playground` skill of this repository                          |
 | `.claude/skills/annotant`           | A link to the root: Claude Code loads the plugin from the clone     |
 
