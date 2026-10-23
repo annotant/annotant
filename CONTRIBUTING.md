@@ -96,6 +96,20 @@ usual.
 What to do after a change, in a running session, is in the README's
 [Development](README.md#development) section.
 
+### The website
+
+`npm run site` previews the website on <http://localhost:4000>: it stages
+`site/` and the docs pages with `.github/scripts/site.mjs` in `_site-src/`,
+builds them in `_site/` (both git-ignored) with the Jekyll of GitHub Pages, and
+serves the result. A change to `site/`, `README.md`, `docs/`,
+`.github/assets/` or `site.mjs` rebuilds it and reloads the open page; a build
+that fails prints why and keeps the last one, if any. It needs
+[Docker](https://www.docker.com), running: it builds with the image the Pages
+workflow uses (`ghcr.io/actions/jekyll-build-pages`), so the preview has the
+same Jekyll and plugins as GitHub Pages. Without Docker, it uses a `jekyll` on
+your `PATH` instead, which needs the `github-pages` gem (or at least
+`kramdown-parser-gfm`) and may still differ from GitHub's.
+
 ## Layout
 
 | Path                                  | What                                                                |
@@ -108,7 +122,7 @@ What to do after a change, in a running session, is in the README's
 | `skills/annotant/scripts/`          | Node.js scripts (ES modules, JSDoc types), run by the skill         |
 | `skills/annotant/scripts/lib/format.mjs` | The comments file's format: its version, states, moves and types; the reference for every part that reads it |
 | `docs/comments-file.md` | The comments file and the step files: where they live, their schemas, the states diagram |
-| `site/`                               | The website's landing page and layouts; `.github/scripts/site.mjs` adds the docs pages from the Markdown files its `PAGES` lists (`README.md`, `docs/`); the Pages workflow builds it on pull requests and publishes it from `main` |
+| `site/`                               | The website's landing page and layouts; `.github/scripts/site.mjs` adds the docs pages from the Markdown files its `PAGES` lists (`README.md`, `docs/`); the Pages workflow builds it on pull requests and publishes it from `main`; `npm run site` previews it (`.github/scripts/site-preview.mjs`) |
 | `skills/annotant/widget/src/`       | The browser widget (React, TypeScript)                              |
 | `skills/annotant/widget/dist/`      | The built widget: `npm run build`; never committed on `main`        |
 | `playground/`                         | A fake app to try Annotant on, launched by `/playground`          |

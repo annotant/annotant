@@ -30,6 +30,7 @@ browser, and one background agent per comment makes the change. See the
 - `site/`: the website on GitHub Pages (Jekyll), its landing page and
   layouts; `.github/scripts/site.mjs` builds its docs pages from the Markdown
   files its `PAGES` lists (no copy), and `.github/workflows/pages.yml` publishes it.
+  `npm run site` (`.github/scripts/site-preview.mjs`) previews it.
 - `playground/`: a fake app with Annotant installed, to try changes on.
   `/playground` (`.claude/skills/playground/`) runs it from `.playground/`, a
   git-ignored copy the agents edit.
@@ -50,6 +51,8 @@ browser, and one background agent per comment makes the change. See the
   behind `ANNOTANT_DEBUG`, which `/playground` builds. `npm run watch`: the
   dev build on every change, with `tsc --watch`; the server reloads the page
   (`/playground` runs it).
+- `npm run site`: preview the website on http://localhost:4000 (Docker, or a
+  local `jekyll`), rebuilt and reloaded on every change.
 - `/playground`: try Annotant on the playground. A session started here
   loads the plugin from the clone (`.claude/skills/annotant` links to the
   root; `.claude/settings.json` disables the installed one): no `--plugin-dir`.
