@@ -88,17 +88,148 @@ root: ''
   </div>
 </section>
 
-<section class="install" id="install">
-  <h2>Install</h2>
-  <p>
-    With Claude Code 2.1.287 or later and Node.js 22 or later, in your frontend project:
-  </p>
-  <pre><code>claude plugin marketplace add annotant/annotant#stable
-claude plugin install annotant@annotant
-claude "/annotant:annotant init"</code></pre>
-  <p>
-    Then run <code>/annotant</code> in the session, open your dev app and click the
-    <strong>Comment</strong> icon. <a href="docs/#install">The full install</a> covers
-    folders, monorepos, updates and uninstalling.
+<section class="guide" id="install" aria-labelledby="install-title">
+  <h2 id="install-title">Get started</h2>
+  <p class="guide-lede">From nothing to a first comment on your app, in four steps.</p>
+
+  <ol class="steps-list">
+    <li>
+      <h3>Check the requirements</h3>
+      <ul>
+        <li>
+          <strong>Claude Code 2.1.287 or later</strong>: <code>claude --version</code>,
+          and <code>claude update</code> when it is older.
+        </li>
+        <li><strong>Node.js 22 or later</strong>: <code>node --version</code>.</li>
+        <li>
+          <strong>A web frontend served by a dev server</strong>: Next.js, Vite, CRA,
+          Astro, SvelteKit, Angular, or a plain <code>index.html</code>.
+        </li>
+      </ul>
+    </li>
+    <li>
+      <h3>Install the plugin</h3>
+      <p>Straight from GitHub, no clone needed:</p>
+      <pre><code>claude plugin marketplace add annotant/annotant#stable
+claude plugin install annotant@annotant</code></pre>
+    </li>
+    <li>
+      <h3>Set it up in your project</h3>
+      <p>Start Claude Code in your frontend project, and run:</p>
+      <pre><code>/annotant:annotant init</code></pre>
+      <p>
+        It detects the framework, the dev URL, the checks and the folders agents may edit,
+        and asks only what it could not find. It adds a dev-only loader snippet and
+        <code>.annotant.json</code>, then builds your app to prove the widget stays out of
+        production. In a folder of a monorepo: <code>/annotant:annotant init web</code>.
+      </p>
+    </li>
+    <li>
+      <h3>Start commenting</h3>
+      <pre><code>/annotant</code></pre>
+      <p>
+        Open your dev app, its dev server running as usual: a strip of icons shows in the
+        bottom right corner. Click <strong>Comment</strong>, write what to change, and
+        send it. No icons?
+        <a href="docs/#the-widget-does-not-show">The widget does not show</a>.
+      </p>
+    </li>
+  </ol>
+</section>
+
+<section class="guide" id="use" aria-labelledby="use-title">
+  <h2 id="use-title">Comment the way you would review</h2>
+
+  <ul class="tools">
+    <li>
+      <h3>Select text</h3>
+      <p>Then <em>Comment</em>: a typo, a label, a sentence to rewrite.</p>
+    </li>
+    <li>
+      <h3>Point at an element</h3>
+      <p>A button, a card, a section: the agent gets its selector and its HTML.</p>
+    </li>
+    <li>
+      <h3>Draw an area</h3>
+      <p>The gap between two blocks, a misaligned group, empty space.</p>
+    </li>
+    <li>
+      <h3>Draw freehand</h3>
+      <p>An arrow to where a block should go, a circle around a detail.</p>
+    </li>
+    <li>
+      <h3>Paste an image</h3>
+      <p>A screenshot or a mockup, in any comment or reply.</p>
+    </li>
+    <li>
+      <h3>Comment the page</h3>
+      <p>Or the whole app, when the change is not about one spot.</p>
+    </li>
+  </ul>
+
+  <h3 class="guide-sub">Then let Claude work</h3>
+  <ul class="flow">
+    <li>
+      <strong>One agent per comment</strong>, in the background, on a model that fits it:
+      send several, they work in parallel, with file locks between them.
+    </li>
+    <li>
+      <strong>Its steps show live</strong> under your comment (files read and edited,
+      commands), with <em>Cancel</em> at hand.
+    </li>
+    <li>
+      <strong>It answers in the thread</strong>, or asks when the comment is unclear.
+      Reply to follow up: the same agent picks it up, with its context.
+    </li>
+    <li>
+      <strong>Your session stays yours</strong>: comments go straight to their agents,
+      never through your conversation.
+    </li>
+  </ul>
+
+  <h3 class="guide-sub">Commands</h3>
+  <dl class="commands">
+    <dt><code>/annotant</code></dt>
+    <dd>Watch the app; <code>/annotant web</code> for a folder.</dd>
+    <dt><code>/annotant status</code></dt>
+    <dd>The server, the agents at work and the comments waiting.</dd>
+    <dt><code>/annotant stop</code></dt>
+    <dd>Stop watching. Closing the session stops it too; nothing is lost.</dd>
+    <dt><code>/annotant:annotant update</code></dt>
+    <dd>
+      Migrate a project after an update (<code
+        >claude plugin marketplace update annotant</code
+      >).
+    </dd>
+    <dt><code>/annotant:annotant uninstall</code></dt>
+    <dd>Remove the loader and the config; it asks before deleting comments.</dd>
+  </dl>
+
+  <p class="guide-more">
+    Keyboard shortcuts, monorepos, worktrees and troubleshooting:
+    <a href="docs/">the full guide</a>.
   </p>
 </section>
+
+<script>
+  // A copy button on each command block.
+  for (const pre of document.querySelectorAll('.guide pre')) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'copy'
+    button.textContent = 'Copy'
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.querySelector('code').textContent)
+        button.textContent = 'Copied'
+      } catch {
+        button.textContent = 'Select and copy'
+      }
+      setTimeout(() => (button.textContent = 'Copy'), 1500)
+    })
+    const block = document.createElement('div')
+    block.className = 'code-block'
+    pre.replaceWith(block)
+    block.append(pre, button)
+  }
+</script>
