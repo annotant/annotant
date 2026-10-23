@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// launch.mjs prepare [keep] | open
+// launch.mjs prepare [keep] [demo] | open [demo]
+// The app is playground/, or demo/ with `demo` (the app the website's video is
+// shot on), run from its working copy .playground/ or .demo/.
 // prepare: builds the widget with its debug panel (npm run build:dev) when the
 //   bundle is missing, a release build or older than its sources, then refreshes
-//   the working copy .playground/ from playground/ (kept as it is with `keep`).
+//   the working copy from the app (kept as it is with `keep`).
 //   PORT_BUSY lists what holds the ports: HOLDER <pid> <command>, one per process.
 // open: waits for the app and its Annotant server, then opens the app in the browser.
 import { spawn, spawnSync } from 'node:child_process'
@@ -11,8 +13,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..')
-const SOURCE = path.join(REPO, 'playground')
-const COPY = path.join(REPO, '.playground')
+const [mode, ...options] = process.argv.slice(2)
+const APP = options.includes('demo') ? 'demo' : 'playground'
+const SOURCE = path.join(REPO, APP)
+const COPY = path.join(REPO, `.${APP}`)
 const WIDGET = path.join(REPO, 'skills/annotant/widget')
 // Top-level folders never copied: installed packages, the build, and earlier comments.
 const SKIPPED = new Set(['node_modules', 'dist', '.annotant'])
@@ -127,10 +131,15 @@ async function open() {
   console.log(`OPENED ${config.devUrl}`)
 }
 
-const [mode, option] = process.argv.slice(2)
-if (mode === 'prepare') await prepare(option === 'keep')
+const allowed = mode === 'prepare' ? ['keep', 'demo'] : ['demo']
+if (options.some((option) => !allowed.includes(option))) {
+  // A typo would refresh the working copy (`kep`) or run the other app (`dmeo`).
+  console.error('usage: launch.mjs prepare [keep] [demo] | open [demo]')
+  process.exit(2)
+}
+if (mode === 'prepare') await prepare(options.includes('keep'))
 else if (mode === 'open') await open()
 else {
-  console.error('usage: launch.mjs prepare [keep] | open')
+  console.error('usage: launch.mjs prepare [keep] [demo] | open [demo]')
   process.exit(2)
 }
