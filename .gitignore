@@ -19,3 +19,7 @@ skills/annotant/widget/dist/
 # The playground's working copy, which /playground runs and agents edit, and its build.
 /.playground/
 /playground/dist/
+
+# The website, staged and built by `npm run site`.
+/_site-src/
+/_site/
