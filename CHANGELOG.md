@@ -1,11 +1,404 @@
 # Changelog
 
-Notable changes to Code Buddy. The format follows
+Notable changes to Annotant (Code Buddy until its rename). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org). Users receive a change when it is
 released to the `stable` branch.
 
 ## Unreleased
+
+## 0.2.0 - 2026-10-23
+
+### Added
+
+- **A website**, at <https://annotant.keveun.net/>: a landing page
+  and the docs, built from the README and `docs/` whenever they change on `main`.
+  (#182)
+
+- **Keyboard shortcuts in the widget.** ⌘⇧ on macOS, Ctrl+Shift elsewhere:
+  `,` comments on the selected text (or the page), `.` points at an element,
+  `Enter` opens or closes the panel, `↓`/`↑` go through the page's comments.
+  While pointing, the arrow keys move the outline and Enter picks. `?` in the
+  panel lists them; the buttons' tooltips name them, as the reader's keyboard
+  types them where the browser says (`;` for `,` on AZERTY, in Chromium). The page's own fields
+  keep their keys, and a message box its arrows. (#47)
+- **`/code-buddy status`.** For each project watched, the server's state and
+  address or why it stopped, the agents at work (comment, agent, model, for
+  how long), the comments waiting for a free agent in order, and the server's
+  last error line. The skill asks the same through its tool, and the status
+  line counts the comments waiting. (#131)
+
+- **Draw freehand on the page** (_Draw_, or _Draw on the page_ in a
+  page-level comment): arrows, circles, a sketch, with the mouse, a pen or a
+  finger, with _Undo_ and _Clear_. The drawing is an area, the box of its
+  lines: it stays drawn while the comment is written, its lines in the
+  rainbow until Claude resolves the thread, and its chip
+  (`2 lines · points at <h3> Pricing`) shows it again or scrolls to it.
+  Claude gets the area's fields, the elements around the lines and not only
+  in their box, so what an arrow points at past its tip is in; the lines
+  (`anchor.area.strokes`, `strokes=2` on the hooks' line); the element the
+  longest points at (`anchor.area.pointsAt`, `points-at=`), under its end or,
+  when it ends in a gap, the next one along it, never a container the whole
+  drawing is in; and a picture of them over the page, its colours and text
+  where they are, attached to the reader's comment. (#38, #158, #160)
+
+- **An element picked in a message.** Every message box, a new comment's or a
+  reply's, has a button that starts the element picker while the panel stays
+  open: the element picked shows as a chip above the text and goes with the
+  message, alone or with words; one per message, another picked takes its
+  place. Its bubble shows it; the chip outlines the element when hovered, and
+  scrolls to it and flashes it when clicked, on its own page. The agent reads
+  its selector, text, HTML and page. (#36)
+- **Images in a comment.** Paste an image (Cmd/Ctrl+V) or drop one in the
+  message box, of a new comment or a reply: it shows as a thumbnail, goes
+  with the message and shows in its bubble; an image alone is a message too.
+  Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each: a request may now
+  hold them on top of its 100,000 characters of text. The server keeps them
+  beside the comments file (`.code-buddy/images/<id>/`), deleted with the
+  comment, and the comment's agent opens them with Read.
+- **Each comment gets a model that fits it.** Before a comment's agent
+  starts, the hooks ask Claude Code's small fast model to sort the comment:
+  `trivial` (copy, spacing, colour, one element), `standard` (a component's
+  behaviour, a new element, a small feature) or `hard` (several components or
+  pages, data or API changes, a product decision). `models` in
+  `.code-buddy.json` maps each label to a model, by default
+  `{ "trivial": "haiku", "standard": "inherit", "hard": "opus" }`; `inherit`
+  keeps the managing session's model, and `{ "trivial": "inherit" }` turns
+  routing off. A failed classifier never holds a comment back: its agent
+  starts on the session's model. A comment of images alone, which the
+  classifier cannot read, starts on the session's model at a medium effort,
+  unlabelled, routing on or off. A follow-up keeps the thread's model.
+- **The widget names the model.** A thread and its line in the list show the
+  model its agent works on and the classifier's label ("haiku · trivial"),
+  and its Started step says "Started on haiku". The comments file records
+  them on the run's `working` event (`model`, `complexity`).
+- **The widget says when Claude is busy.** A comment the managing session has
+  had for 15 seconds without an agent claiming it now reads "Claude has your
+  comment but is busy…" instead of "Waiting for Claude…": that session only
+  hears of a comment between two of its turns. `/code-buddy:code-buddy` now
+  tells you to keep its session for Code Buddy and work in another one.
+- **The widget says where a new comment stands.** "Waiting for Claude…" is
+  gone: a comment reads "Sent…" until the server hands it over to the managing
+  session, "Claude has your comment, an agent is starting…" once it has, and
+  "No agent has started. Is the /code-buddy session busy?" when no agent has
+  claimed it a minute later. The reader's reply in the thread (an answer or
+  a follow-up) says "Claude has your reply, an agent is picking it up…"
+  instead: the manager hands it to the thread's agent when it still has one.
+  The debug panel marks each hand-over and how long the claim took after it.
+- **Draw an area on the page** (_Draw area_, or _Draw an area_ in a page-level
+  comment) when the feedback is about a part of the page no single element
+  holds. The page dims around the rectangle, the elements it covers are
+  outlined as it grows, and scrolling the page stretches it. It stays outlined
+  while the comment is written, turns into a rainbow frame with a bubble until
+  Claude resolves the thread, and its chip in the thread shows it again (hover)
+  or scrolls to it (click). Claude gets its box, the window size and scroll,
+  the element it lies in, the elements it covers and those it cuts through,
+  down to the innermost (the two buttons around a gap); the area is kept relative to that
+  element, so it is found again on another window size.
+- **The hook log**, to check what the plugin's hooks do in a real session:
+  `/code-buddy-debug on` turns it on in every session, `tail -f
+  ~/.cache/code-buddy/hook.log` follows it, `/code-buddy-debug` shows its last
+  lines. See [Troubleshooting](README.md#troubleshooting).
+- **A debug panel in the widget**, for contributors: in the dev build that
+  `/playground` uses (`npm run build:dev`), the wrench in the panel's header or
+  Alt+Shift+D shows each comment as the widget holds it, its conversation in
+  order, every tool call of every run, and its raw JSON, live. The released
+  widget does not contain it, and keeps no steps once a run ends.
+- The debug panel shows what each agent was told: the lines the server
+  printed for the managing session, and on each agent's first run its
+  instructions and its first message, exactly as it was sent.
+
+- Claude can ask the reader a question in the thread (`ask.mjs`) instead of
+  guessing; the comment waits on the reader's answer.
+- A question can offer choices (`ask.mjs --option "<label>: <description>"`,
+  `--multiple` to allow several): the thread shows one button per option, the
+  reader can still answer in their own words, and the thread keeps what they
+  chose. An agent working on a comment that calls `AskUserQuestion`, which
+  only reaches the manager's terminal, is told to ask in the thread instead.
+
+- A bubble above the start of each open comment's text, where its *Comment*
+  button was: clicking it opens the comment's thread. While a comment on a
+  text is being written, the text stays highlighted on the page.
+
+- The widget shows what the agent is doing now ("Reading `App.tsx`…",
+  "Thinking…") and a fuller trail: tools as they start, end or fail, the
+  agent's messages, and its thinking (a summary when Claude Code provides one).
+
+### Changed
+
+- **Breaking: Code Buddy is now Annotant.** The plugin is
+  `annotant@annotant`, from the `annotant/annotant` marketplace
+  (`claude plugin marketplace add annotant/annotant#stable`); the commands
+  are `/annotant`, `/annotant:annotant` and `/annotant-debug`; a project's
+  config and comments are `.annotant.json` and `.annotant/`; the environment
+  variables are `ANNOTANT_*`, and the hook log lives in
+  `~/.cache/annotant/`. `/annotant:annotant update` moves a project installed
+  as Code Buddy (its config, comments, loader marker and `.gitignore` entry);
+  uninstall the `code-buddy` plugin and its marketplace by hand.
+
+- **The README's Install section is four numbered steps**, from the
+  requirements to a first comment, then the commands, updating and
+  uninstalling; Troubleshooting says what to check when the widget does not
+  show. `init` now ends by suggesting `/code-buddy` and where the widget
+  appears. (#181)
+- **The tools take a small strip of icons, not four buttons.** While the
+  panel is closed, Comment, Draw area, Draw and Point at element are icons in
+  the bottom right corner, their names and shortcuts in the tooltips; a tool
+  in progress shows its Cancel there. (#179)
+- **Point at element starts a comment about the page, the element in its
+  message box.** The element is no longer the comment's anchor: it goes with
+  the message, as an image does. The page still marks it until the thread is first resolved; a reply that picks an
+  element afterwards moves the mark to it, in place of the comment's text,
+  area or element. (#36)
+- **Breaking: comments no longer wait on a managing session.** `/code-buddy`
+  is now a command of the plugin's hooks: it starts the server for the
+  session's life, and every comment starts its agent at once, in the
+  background, with no model turn, even while Claude answers something else in
+  the same session. No session needs keeping for Code Buddy any more.
+  Follow-ups and edits go to the comment's agent, a stopped comment stops it,
+  three run at a time; an agent's one-line answer shows in the transcript, its
+  question as a notification too. `/code-buddy stop` ends the watch;
+  `/code-buddy:code-buddy` without a mode starts it through the skill, whose
+  dispatch instructions are gone. A busy comment now reads "waiting for a
+  free agent". (#103)
+- **A comment's agent reads only its comment.** `claim.mjs` prints the
+  comment's thread as JSON, capped to the reader's comment and the 19 latest
+  messages, and the agent is told never to open the comments file, with every
+  other thread in it: fewer tokens, and no feedback that is not its own. (#123)
+- **The reader's words and the page's text reach agents fenced as data.**
+  The thread `claim.mjs` prints and the server line in an agent's prompt, its
+  follow-ups and edits sit behind a header naming a marker made for them, on
+  each line: text the app renders, or a comment, cannot pass for instructions
+  to the agent, nor widen its task beyond `editable`. (#124)
+- **Changes show in the widget at once.** The server watches the comments
+  file's and the step files' folders, and pushes each change to the widget on
+  `GET /api/events` (server-sent events): a new step, state or answer shows in
+  well under a second, and the widget sends no request while nothing changes,
+  instead of asking every 3 seconds. A slow re-read stays behind both, for a
+  dropped stream or a mount whose writes the watches miss.
+- **A new comment's agent starts sooner.** Its steps and rules now ship as a
+  plugin agent, `code-buddy:worker` (`agents/worker.md`), which reads
+  `.code-buddy.json` itself: the managing session passes it the comment id,
+  the server line and two paths instead of writing a ~2,500-character prompt
+  for every new agent.
+- **A new comments file format (version 2).** `.code-buddy/comments.json` is
+  now `{ "version": 2, "comments": [...] }`: each comment has an explicit
+  `state` (`open`, `working`, `asking`, `answered`, `stopped`, `resolved`) and an `events`
+  log of every move, never overwritten; `messages` holds the whole thread, the
+  reader's comment first, each message with an `id`, and each of Claude's with
+  the `run` (`r1`, `r2`…) that wrote it, as the agent's steps are; the anchor
+  is grouped under `anchor`. A move outside the state graph is refused, and the
+  widget shows why. Nothing is converted: **delete an existing
+  `.code-buddy/comments.json`** before updating; the server refuses the old
+  format (`COMMENTS_REFUSED`) and says so.
+- The debug panel's timeline shows every move of a comment (a thread that
+  asked twice shows two `asking`), and a run's id shows that run alone.
+- **Only the reader closes a thread they followed up on.** Claude's first
+  answer resolves a comment; once resolved, its answers to later follow-ups
+  leave it `answered` (the server prints `ANSWERED`), and the reader follows
+  up again or resolves it.
+- **The page stops marking a comment once it is first resolved**: a
+  follow-up, often about something else, no longer brings back its outline
+  or its rainbow.
+
+- **The page shows where each comment stands.** Blue while the reader picks
+  an element or text, and while the comment on it is written (the picked
+  element stays outlined); a rainbow while its thread is open, turning around
+  an element, flowing behind a text; nothing once it is resolved. The red
+  outline and orange highlight of the active comment are gone. The number on
+  an element is now a bubble, as on a text, and opens its thread; a text's
+  bubble sits closer to it.
+- **Code Buddy now needs Claude Code 2.1.287 or later.** Its hooks are a
+  Claude Code mod, loaded once per session: they start no process per tool
+  call, where the shell hooks started Node twice for each tool call of an
+  agent working on a comment. On an older Claude Code, `/code-buddy:code-buddy`
+  says so and does not start (the server prints `HOOKS_MISSING`).
+- The file locks live in the session, as the agents do: `lock.mjs` is gone.
+  An agent waits up to 6 seconds for a file another comment's agent holds,
+  then releases its locks and retries, as before.
+- **An agent starts once per message the reader sends.** The comments file
+  dates each message that opens a comment (`sentAt`) and its hand-over to
+  the hooks (`notifiedAt`), and the server's line names it: a server restart
+  or a reload no longer starts a second agent on the same message, and
+  "Sent…" no longer resets on a restart. A re-send is a message of its own.
+  (#127)
+
+### Fixed
+
+- **An agent claims its comment by the comment's id.** The marker that
+  fences the reader's line in an agent's prompt was `an-…`, the shape of an
+  agent's name, and an agent took it for the comment's id: its claim failed
+  and the comment stayed open with nothing shown. The marker is now
+  `reader-…`, and an agent that ends its turn without claiming its new
+  comment gets it again, once, by its id; a second miss tells the person.
+  (#190)
+
+- The panel's footer shows the ant, Annotant's mascot, instead of Code
+  Buddy's caterpillar: at rest, and looking up while agents work. (#193)
+- **A comment in progress survives a reload of the page**, as the app's dev
+  server reloads it after another comment's agent edits it: the draft (what
+  the reader wrote, its area, drawing or selected text, its elements, and its
+  images when the tab has room for them) comes back once what it is on is on
+  the page again, and so does the tool in use (an area being drawn, a drawing
+  with its lines so far, an element being pointed at). A draft whose selected
+  text or area is gone comes back as a comment on the page, with what the
+  reader wrote. (#191)
+- **A comment its agent leaves unfinished no longer shows an agent at work
+  for good.** An agent that ends its turn without answering or asking stops
+  its comment: the thread says "Claude stopped without finishing", with what
+  it had changed, and the reader sends it again. (#171)
+- An element chip that opened a page the app then redirected (a trailing
+  slash, a basename, a locale) left its jump pending: a later visit to that
+  page scrolled to the element and flashed it, out of nowhere. The jump is now
+  only for the page that loads right after the click. (#71)
+- The panel left the keyboard's focus where it was: a thread opened from a
+  bubble kept it on the page, and closing the panel dropped it on the page's
+  body. Escape did not close it, and screen readers had no name for it.
+  Opening a thread from a bubble now focuses the panel's heading, closing it
+  gives the focus back to what opened it (or the dock), Escape closes it once
+  the message box and the element picker have had theirs, and the panel is
+  named Code Buddy. A message box with text keeps Escape for itself; an empty
+  one goes back to the list. (#68)
+- The status filter of All comments had no name for screen readers, and each
+  of its radios was a Tab stop the arrow keys did nothing in. It is now named
+  Filter by status, one Tab stop, and the arrow keys, Home and End move
+  through it. (#79)
+- Options ticked under a multiple-choice question, but not sent, stayed
+  ticked once the thread left the question another way (resolved, stopped):
+  Claude's next question in the thread showed an option of the same label
+  ticked, and sent it. Each question now starts with none ticked. (#73)
+- Comment marks stayed where the text was before the docked panel squeezed
+  the page, or before an image or a font moved it, until the next scroll or
+  poll. They now follow their text whenever the layout changes. (#62)
+- A panel width saved in a wider window came back as is after a reload: the
+  docked panel and the page's margin overflowed the window. The panel now
+  fits a narrower window, and gets its width back once the window is wide
+  again. (#70)
+- Screen readers never announced the widget's toasts ("Request failed",
+  "Comment saved"). They now appear in live regions that are always present:
+  information is polite, and errors interrupt as alerts. (#67)
+- The panel's muted text (labels, times, quotes), its red notices and the
+  composer's placeholder fell below the 4.5:1 contrast WCAG AA asks of text.
+  Its muted and red colors are darker, and the placeholders use the muted
+  one. (#69)
+- A comment on a text the page shows several times (the third "Add to cart")
+  moved to its first copy once its own was rewritten or removed. A quote now
+  keeps the text around it and how many copies the page had: it is found on
+  the copy that text still surrounds, or at its place while the page has as
+  many copies, and is otherwise shown as detached, never on another copy.
+  (#61)
+- Comment cards and the element and area chips could only be used with the
+  mouse. Tab now stops on each of them, Enter or Space opens the thread or
+  centres the page on the element, and a focused chip outlines it as a hovered
+  one does. A thread opened from the keyboard takes the focus. (#66)
+- A comment kept the page's secrets: its url held the query and the hash,
+  where a sign-in leaves its token (`#access_token=…`, `?token=…`), and its
+  element's html a hidden field's value (a CSRF token). The url now has no
+  hash or credentials and its secret-looking parameters are redacted, in its
+  query or its path; the
+  html loses its `value`, `content` and secret-looking attributes, and its
+  links (`srcset` and `data-*` ones too) their secret-looking parameters. (#76)
+- An item of an open dropdown could not be picked: pressing "Point at
+  element" reached the page, and a menu closing on a press outside it (Radix,
+  MUI) closed first. Presses on the widget now stay in it, and its buttons
+  leave the focus where it is. (#97)
+- A comment on an element with a generated id (React's `useId`, MUI, Ember,
+  Headless UI, Vue, Angular Material…), or inside one, lost its element after
+  a reload: its selector named the id, which the next load changes. Such ids
+  are now skipped, and the selector climbs to a written id or the element's
+  position.
+- Opening, closing or resizing the panel wiped the host page's own inline
+  styles: the `body` padding a MUI or Bootstrap modal sets for its hidden
+  scrollbar, which left the page shifted after the modal closed, and the
+  page's cursor and `user-select`. The docked panel now squeezes the page
+  through `html`'s padding, and the widget puts back every inline value it
+  changes. (#65)
+- The hook log lost lines when several processes wrote it at once (other
+  sessions, the agents' own hooks): each line rewrote the whole log, dropping
+  what was appended in between. Each line is now appended.
+- An open conversation did not scroll when a message arrived: Claude's
+  answer, its steps or the reader's own message landed below the fold. Read
+  to its end, the conversation now follows what arrives; scrolled up, it keeps
+  its place and its button to the latest message; a message the reader sends
+  always brings it to the end.
+- A comment started on one page and saved after following an in-app link was
+  filed on the new page, with a quote or an element from the first: the agent
+  went to the wrong page and its mark showed nowhere. A comment is now filed
+  on the page it was started on, and its quote and element are marked only
+  there.
+- A commented text or element scrolled out of a scrolling box (an
+  `overflow: auto` sidebar, a list) kept its rainbow or frame and its bubble,
+  drawn outside the box over the rest of the page. A mark now shows only where
+  its text or element does, cut at the box's edges; its bubble sits on the
+  part that shows.
+- While pointing at an element, a press on it also reached the page: a menu
+  that opens on `pointerdown` opened, a popover's click-outside handler closed
+  it, a drag handle started dragging, an input took the focus. The page now
+  gets no `pointerdown`, `mousedown`, `pointerup`, `mouseup` or `click` on the
+  element being picked; the click only picks.
+- Pointing at one of several elements that share a `data-testid` or an `id`
+  (the items of a list) anchored the comment to the first of them: its
+  outline, *center on element* and the agent's selector. The selector now
+  stops at a test id or id only when it names the element alone, and climbs
+  on by position otherwise; a test id holding a quote is escaped. A comment
+  saved before this fix finds the element with its saved text, or none rather
+  than a wrong one.
+- A comment whose `url` was not a full URL (a hand-edited comments file, or
+  another client) made the widget vanish as soon as the panel drew it, and it
+  stayed gone in that tab until the comment was deleted. The widget now shows
+  that comment's route; a comment it cannot draw says so, with its delete
+  button, next to the others; and the server keeps only `http` and `https`
+  URLs.
+- A text selection across several elements (two paragraphs, list items, table
+  cells) could not be commented on, and neither could text styled by CSS
+  (`text-transform`) or around hidden text, a `<select>` or a `<textarea>`:
+  no *Comment* button showed. The widget now quotes the page's own text. The
+  *Comment* button sits above the start of the selection, not at the left of
+  its whole box.
+- A reader's message with a line break split the server's event line, and
+  the manager read a truncated follow-up. The texts on an event line are now
+  JSON strings, their line breaks escaped.
+- After refusing a request body too large, the server kept the connection
+  open with the rest of the body unread: the next request on it hung. It now
+  closes it.
+- A long current step under a comment was cut off mid-word instead of ending
+  with an ellipsis, and its working dots were hidden; it now ends with one
+  ellipsis, and the dots show whenever the step fits.
+- An agent that claimed its comment with a relative `--project` (`--project .`
+  after a `cd`) worked with no locks and no progress: the hooks now bind it to
+  the project `claim.mjs` found, which it prints.
+- Files outside the project (an `editable` folder such as `../api`) were
+  never locked: the locks now cover the whole git repository the project is
+  in, and the widget shows those files as `../api/…`.
+- An agent could write files from Bash (`sed -i`, an inline Python or Node
+  script, `cat >`, `tee`), where no lock covers them: agents edited the same
+  file at once. The hooks now refuse those commands to an agent working on a
+  comment and ask for Edit or Write, and the agent's prompt says so. A
+  command whose files are all visibly outside the repository (a scratch file
+  in `/tmp`) still runs.
+- The file locks and the progress never worked in the agents: the hooks were
+  declared in the skill, and a skill's hooks do not fire in subagents. The
+  plugin now declares them, and they skip Node unless an agent works on a
+  comment.
+- A build that failed kept its build lock until the agent stopped.
+- An agent still working after the reader stopped it recorded steps that then
+  showed under the next run.
+- Tools called in parallel recorded the agent's thinking and messages twice.
+- A claim or an answer chained with a command that failed was ignored: the
+  agent worked without file locks, or kept its locks after answering.
+- A binding left by a killed agent made every Claude Code session start Node
+  for each tool call; bindings silent for two hours are now ignored and pruned.
+- Two processes could break the same abandoned lock on the comments file and
+  both write it, losing one change.
+- Claude's answers no longer carry the run's steps in `comments.json`.
+
+### Security
+
+- **The server refuses changes from other origins.** A request that would
+  change comments (`POST`, `PATCH`, `DELETE`) from a page whose origin the
+  server does not let in gets 403: a page of another site could otherwise
+  write comments and images, and start agents, without reading the answer.
+  Requests with no origin (scripts, curl) still pass.
 
 ## 0.1.0 - 2026-09-29
 
@@ -14,7 +407,7 @@ First release.
 ### Added
 
 - Install as a Claude Code plugin, straight from GitHub:
-  `claude plugin marketplace add neolitec/code-buddy#stable`. The `stable`
+  `claude plugin marketplace add annotant/annotant#stable`. The `stable`
   branch holds the released versions, with the built widget; `main` is where
   development happens.
 - `/code-buddy:code-buddy [dir]` and `init [dir]` target a folder of the

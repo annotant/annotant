@@ -1,0 +1,235 @@
+---
+layout: default
+root: ''
+---
+
+<section class="hero">
+  <div class="mascot-wrap">
+    <img
+      class="mascot"
+      src="assets/annotant.png"
+      alt="Annotant's mascot, a small blue ant"
+      width="241"
+      height="180"
+    />
+  </div>
+  <h1>Comment on your running app.<br />Claude makes the change.</h1>
+  <p class="lede">
+    Annotant is a <a href="https://claude.com/claude-code">Claude Code</a> plugin: select
+    text, point at an element or draw on your dev app in the browser, write what to
+    change, and a background agent makes the change and answers in the same thread. No
+    mockup, no artifact: the change lands in your code.
+  </p>
+  <p class="actions">
+    <a class="button" href="#install">Install</a>
+    <a class="button secondary" href="docs/">Read the docs</a>
+    <a class="button secondary" href="https://github.com/annotant/annotant">GitHub</a>
+  </p>
+</section>
+
+<script>
+  // The mascot's halo leans toward the pointer: --mx and --my run from -1 to 1.
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    addEventListener(
+      'pointermove',
+      (event) => {
+        const root = document.documentElement.style
+        root.setProperty('--mx', (event.clientX / innerWidth) * 2 - 1)
+        root.setProperty('--my', (event.clientY / innerHeight) * 2 - 1)
+      },
+      { passive: true },
+    )
+  }
+</script>
+
+<section class="demo" aria-label="A comment turning into a change">
+  <figure class="page">
+    <div class="page-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="page-body">
+      <p class="page-title">Fresh roasts, <mark>shiped</mark> every Monday</p>
+      <div class="thread">
+        <p class="who">You</p>
+        <p>Typo: “shiped” → “shipped”.</p>
+        <ol class="steps">
+          <li>Reading <code>Hero.tsx</code></li>
+          <li>Edited <code>Hero.tsx</code></li>
+        </ol>
+        <p class="who">Claude · haiku · trivial</p>
+        <p>Fixed the typo in the hero’s title.</p>
+      </div>
+    </div>
+    <figcaption>
+      One comment, one agent: its steps show live under the comment, then its answer.
+    </figcaption>
+  </figure>
+</section>
+
+<section class="points" hidden>
+  <div>
+    <h2>Right on the page</h2>
+    <p>
+      Comment on selected text, an element, a drawn area or freehand lines, the page or
+      the whole app. Paste a screenshot or a mockup.
+    </p>
+  </div>
+  <div>
+    <h2>One agent per comment</h2>
+    <p>
+      Each comment gets its own background agent, on a model that fits it. File locks keep
+      parallel agents out of each other’s way.
+    </p>
+  </div>
+  <div>
+    <h2>Nothing in production</h2>
+    <p>
+      Your project only gets a dev-only loader snippet and a config file.
+      <code>init</code> checks the widget is not in your production build.
+    </p>
+  </div>
+</section>
+
+<section class="guide" id="install" aria-labelledby="install-title">
+  <h2 id="install-title">Get started</h2>
+  <p class="guide-lede">From nothing to a first comment on your app, in four steps.</p>
+
+  <ol class="steps-list">
+    <li>
+      <h3>Check the requirements</h3>
+      <ul>
+        <li>
+          <strong>Claude Code 2.1.287 or later</strong>: <code>claude --version</code>,
+          and <code>claude update</code> when it is older.
+        </li>
+        <li><strong>Node.js 22 or later</strong>: <code>node --version</code>.</li>
+        <li>
+          <strong>A web frontend served by a dev server</strong>: Next.js, Vite, CRA,
+          Astro, SvelteKit, Angular, or a plain <code>index.html</code>.
+        </li>
+      </ul>
+    </li>
+    <li>
+      <h3>Install the plugin</h3>
+      <p>Straight from GitHub, no clone needed:</p>
+      <pre><code>claude plugin marketplace add annotant/annotant#stable
+claude plugin install annotant@annotant</code></pre>
+    </li>
+    <li>
+      <h3>Set it up in your project</h3>
+      <p>Start Claude Code in your frontend project, and run:</p>
+      <pre><code>/annotant:annotant init</code></pre>
+      <p>
+        It detects the framework, the dev URL, the checks and the folders agents may edit,
+        and asks only what it could not find. It adds a dev-only loader snippet and
+        <code>.annotant.json</code>, then builds your app to prove the widget stays out of
+        production. In a folder of a monorepo: <code>/annotant:annotant init web</code>.
+      </p>
+    </li>
+    <li>
+      <h3>Start commenting</h3>
+      <pre><code>/annotant</code></pre>
+      <p>
+        Open your dev app, its dev server running as usual: a strip of icons shows in the
+        bottom right corner. Click <strong>Comment</strong>, write what to change, and
+        send it. No icons?
+        <a href="docs/#the-widget-does-not-show">The widget does not show</a>.
+      </p>
+    </li>
+  </ol>
+</section>
+
+<section class="guide" id="use" aria-labelledby="use-title">
+  <h2 id="use-title">Comment the way you would review</h2>
+
+  <ul class="tools">
+    <li>
+      <h3>Select text</h3>
+      <p>Then <em>Comment</em>: a typo, a label, a sentence to rewrite.</p>
+    </li>
+    <li>
+      <h3>Point at an element</h3>
+      <p>A button, a card, a section: the agent gets its selector and its HTML.</p>
+    </li>
+    <li>
+      <h3>Draw an area</h3>
+      <p>The gap between two blocks, a misaligned group, empty space.</p>
+    </li>
+    <li>
+      <h3>Draw freehand</h3>
+      <p>An arrow to where a block should go, a circle around a detail.</p>
+    </li>
+    <li>
+      <h3>Paste an image</h3>
+      <p>A screenshot or a mockup, in any comment or reply.</p>
+    </li>
+    <li>
+      <h3>Comment the page</h3>
+      <p>Or the whole app, when the change is not about one spot.</p>
+    </li>
+  </ul>
+
+  <h3 class="guide-sub">Then let Claude work</h3>
+  <ul class="flow">
+    <li>
+      <strong>One agent per comment</strong>, in the background, on a model that fits it:
+      send several, they work in parallel, with file locks between them.
+    </li>
+    <li>
+      <strong>Its steps show live</strong> under your comment (files read and edited,
+      commands), with <em>Cancel</em> at hand.
+    </li>
+    <li>
+      <strong>It answers in the thread</strong>, or asks when the comment is unclear.
+      Reply to follow up: the same agent picks it up, with its context.
+    </li>
+    <li>
+      <strong>Your session stays yours</strong>: comments go straight to their agents,
+      never through your conversation.
+    </li>
+  </ul>
+
+  <h3 class="guide-sub">Commands</h3>
+  <dl class="commands">
+    <dt><code>/annotant</code></dt>
+    <dd>Watch the app; <code>/annotant web</code> for a folder.</dd>
+    <dt><code>/annotant status</code></dt>
+    <dd>The server, the agents at work and the comments waiting.</dd>
+    <dt><code>/annotant stop</code></dt>
+    <dd>Stop watching. Closing the session stops it too; nothing is lost.</dd>
+    <dt><code>/annotant:annotant update</code></dt>
+    <dd>
+      Migrate a project after an update (<code
+        >claude plugin marketplace update annotant</code
+      >).
+    </dd>
+    <dt><code>/annotant:annotant uninstall</code></dt>
+    <dd>Remove the loader and the config; it asks before deleting comments.</dd>
+  </dl>
+
+  <p class="guide-more">
+    Keyboard shortcuts, monorepos, worktrees and troubleshooting:
+    <a href="docs/">the full guide</a>.
+  </p>
+</section>
+
+<script>
+  // A copy button on each command block.
+  for (const pre of document.querySelectorAll('.guide pre')) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'copy'
+    button.textContent = 'Copy'
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.querySelector('code').textContent)
+        button.textContent = 'Copied'
+      } catch {
+        button.textContent = 'Select and copy'
+      }
+      setTimeout(() => (button.textContent = 'Copy'), 1500)
+    })
+    const block = document.createElement('div')
+    block.className = 'code-block'
+    pre.replaceWith(block)
+    block.append(pre, button)
+  }
+</script>

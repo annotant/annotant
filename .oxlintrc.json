@@ -9,10 +9,14 @@
   "env": {
     "es2024": true
   },
-  "ignorePatterns": ["skills/code-buddy/widget/dist/**"],
+  "ignorePatterns": [
+    "skills/annotant/widget/dist/**",
+    ".playground/**",
+    "playground/dist/**"
+  ],
   "overrides": [
     {
-      "files": ["skills/code-buddy/scripts/**", "**/*.mjs"],
+      "files": ["skills/annotant/scripts/**", "**/*.mjs"],
       "env": {
         "node": true
       },
@@ -21,9 +25,21 @@
       }
     },
     {
-      "files": ["skills/code-buddy/widget/src/**"],
+      "files": ["hooks/**", "test/hooks.test.ts"],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": ["skills/annotant/widget/src/**", "playground/src/**"],
       "env": {
         "browser": true
+      }
+    },
+    {
+      "files": ["test/**"],
+      "rules": {
+        "typescript/no-floating-promises": "off"
       }
     }
   ],

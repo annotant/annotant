@@ -5,8 +5,21 @@ node_modules/
 
 # The built widget: `npm run build` locally, and the Release workflow for the
 # stable branch users install from.
-skills/code-buddy/widget/dist/
+skills/annotant/widget/dist/
 
-# Local state of a project using Code Buddy, and browser test output.
-.code-buddy/
+# The Claude Code API types and the tsconfig.json that reads them, written by
+# Claude Code when it loads the plugin from this folder.
+.claude-plugin/types/
+/tsconfig.json
+
+# Local state of a project using Annotant, and browser test output.
+.annotant/
 .playwright-mcp/
+
+# The playground's working copy, which /playground runs and agents edit, and its build.
+/.playground/
+/playground/dist/
+
+# The website, staged and built by `npm run site`.
+/_site-src/
+/_site/

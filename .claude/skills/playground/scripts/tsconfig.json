@@ -1,0 +1,3 @@
+{
+  "extends": "../../../../skills/annotant/scripts/tsconfig.json"
+}

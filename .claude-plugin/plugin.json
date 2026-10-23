@@ -1,13 +1,14 @@
 {
-  "name": "code-buddy",
-  "version": "0.1.0",
+  "name": "annotant",
+  "version": "0.2.0",
   "description": "Comment on your dev app in the browser; one background agent per comment makes the change and answers in the thread",
   "author": {
     "name": "Kevin Manson",
     "url": "https://github.com/neolitec"
   },
-  "repository": "https://github.com/neolitec/code-buddy",
-  "homepage": "https://github.com/neolitec/code-buddy#readme",
+  "repository": "https://github.com/annotant/annotant",
+  "homepage": "https://github.com/annotant/annotant#readme",
   "license": "MIT",
-  "keywords": ["feedback", "review", "frontend", "browser", "widget"]
+  "keywords": ["feedback", "review", "frontend", "browser", "widget"],
+  "types": "./types/index.d.ts"
 }

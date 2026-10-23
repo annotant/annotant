@@ -1,11 +1,11 @@
 name: Feature request
-description: Suggest a change to what Code Buddy does.
-labels: [enhancement]
+description: Suggest a change to what Annotant does.
+labels: [enhancement, needs triage]
 body:
   - type: markdown
     attributes:
       value: |
-        Code Buddy stays small on purpose. Describe the problem first: the best solution may not be a new feature.
+        Annotant stays small on purpose. Describe the problem first: the best solution may not be a new feature.
   - type: textarea
     id: problem
     attributes:
@@ -17,7 +17,7 @@ body:
     id: proposal
     attributes:
       label: What you suggest
-      description: How Code Buddy could solve it, from the user's point of view.
+      description: How Annotant could solve it, from the user's point of view.
     validations:
       required: true
   - type: textarea

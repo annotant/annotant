@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "annotant@annotant": false,
+    "code-buddy@code-buddy": false
+  }
+}

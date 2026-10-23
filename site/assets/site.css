@@ -1,0 +1,629 @@
+:root {
+  --bg: #ffffff;
+  --surface: #f4f7fb;
+  --text: #1b2330;
+  --muted: #566173;
+  --border: #d9e0ea;
+  --accent: #1f6fd1;
+  --accent-text: #ffffff;
+  --mark: #fde68a;
+  --code-bg: #eef2f7;
+  --radius: 10px;
+  --width: 72rem;
+  --prose: 46rem;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0f141b;
+    --surface: #161d27;
+    --text: #e4e9f0;
+    --muted: #9aa5b5;
+    --border: #2a3442;
+    --accent: #6aa8f5;
+    --accent-text: #0b1220;
+    --mark: #6b5410;
+    --code-bg: #1c2430;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0f141b;
+  --surface: #161d27;
+  --text: #e4e9f0;
+  --muted: #9aa5b5;
+  --border: #2a3442;
+  --accent: #6aa8f5;
+  --accent-text: #0b1220;
+  --mark: #6b5410;
+  --code-bg: #1c2430;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+@font-face {
+  font-family: 'Annotant Figtree';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(fonts/figtree-latin.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Annotant Figtree';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/figtree-latin-italic.woff2) format('woff2');
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    1rem/1.6 'Annotant Figtree',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  overflow-wrap: break-word;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+code {
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+.skip {
+  position: absolute;
+  left: -999px;
+}
+
+.skip:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 1;
+  background: var(--bg);
+  padding: 0.5rem 1rem;
+}
+
+.bar,
+main,
+.foot {
+  max-width: var(--width);
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.bar a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.bar a:hover {
+  color: var(--accent);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.brand-accent {
+  color: var(--accent);
+}
+
+.bar nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.foot {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  padding-bottom: 2rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* The landing page */
+
+.hero {
+  text-align: center;
+  padding: 3.5rem 0 2rem;
+}
+
+.mascot-wrap {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+}
+
+/* A soft blue halo behind the ant: it breathes slowly and leans a little toward the pointer. */
+.mascot-wrap::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* No wider than the screen, or it scrolls a phone's page sideways. */
+  width: min(26rem, 100vw);
+  height: min(26rem, 100vw);
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--accent) 28%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent) 65%,
+    transparent
+  );
+  transform: translate(-50%, -50%)
+    translate(calc(var(--mx, 0) * 24px), calc(var(--my, 0) * 16px));
+  transition: transform 1.5s ease-out;
+  animation: halo-breathe 8s ease-in-out infinite;
+}
+
+.mascot {
+  display: block;
+  width: 180px;
+  margin: 0 auto;
+  filter: drop-shadow(0 0 0.5rem color-mix(in srgb, var(--accent) 45%, transparent));
+}
+
+@keyframes halo-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    scale: 1;
+  }
+  50% {
+    opacity: 0.85;
+    scale: 1.05;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-wrap::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+.hero h1 {
+  font-size: clamp(1.75rem, 5vw, 3rem);
+  line-height: 1.15;
+  margin: 1rem 0;
+}
+
+.lede {
+  max-width: 40rem;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: 1.125rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.demo {
+  max-width: 40rem;
+  margin: 1rem auto 3rem;
+}
+
+.page {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.page-bar {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-bar span {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.page-body {
+  padding: 1.5rem;
+}
+
+.page-title {
+  margin: 0 0 1rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.page-title mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 3px;
+}
+
+.thread {
+  max-width: 22rem;
+  margin-left: auto;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 0.9rem;
+}
+
+.thread p {
+  margin: 0 0 0.5rem;
+}
+
+.thread .who {
+  margin-bottom: 0.1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.steps {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.page figcaption {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.points {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.5rem;
+}
+
+.points[hidden] {
+  display: none;
+}
+
+.points h2 {
+  font-size: 1.125rem;
+  margin-bottom: 0.25rem;
+}
+
+.points p {
+  margin-top: 0;
+  color: var(--muted);
+}
+
+.guide {
+  max-width: var(--prose);
+  margin: 4rem auto 0;
+}
+
+.guide h2 {
+  margin-bottom: 0.25rem;
+  font-size: 1.75rem;
+}
+
+.guide-lede,
+.guide-more {
+  color: var(--muted);
+}
+
+.guide-sub {
+  margin-top: 2.5rem;
+}
+
+/* The steps: numbered circles joined by a line. */
+.steps-list {
+  counter-reset: step;
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+}
+
+.steps-list > li {
+  counter-increment: step;
+  position: relative;
+  padding: 0 0 1.5rem 3rem;
+}
+
+.steps-list > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.steps-list > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(1rem - 1px);
+  top: 2.5rem;
+  bottom: 0.5rem;
+  width: 2px;
+  background: var(--border);
+}
+
+.steps-list h3 {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.steps-list p,
+.steps-list ul {
+  margin: 0 0 0.75rem;
+}
+
+.steps-list ul {
+  padding-left: 1.2rem;
+}
+
+/* The copy button sits on the block, not in it: it stays put as a long command scrolls. */
+.code-block {
+  position: relative;
+}
+
+.code-block pre {
+  padding-right: 4.5rem;
+}
+
+.steps-list ul code {
+  white-space: nowrap;
+}
+
+@media (max-width: 40rem) {
+  .steps-list > li {
+    padding-left: 2.5rem;
+  }
+}
+
+.copy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-family: 'Annotant Figtree', system-ui, sans-serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.copy:hover,
+.copy:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* The tools: a grid of small cards. */
+.tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tools li {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.tools h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.tools p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.925rem;
+}
+
+.flow {
+  padding-left: 1.2rem;
+}
+
+.flow li {
+  margin-bottom: 0.5rem;
+}
+
+.commands {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 0;
+}
+
+.commands dt {
+  white-space: nowrap;
+}
+
+.commands dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 40rem) {
+  .commands {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .commands dd {
+    margin-bottom: 0.6rem;
+  }
+}
+
+/* The docs */
+
+.docs {
+  max-width: var(--prose);
+  margin: 0 auto;
+  padding-top: 1.5rem;
+}
+
+.docs .pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.docs .pages a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.docs .pages a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.docs h2 {
+  margin-top: 2.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs h2,
+.docs h3 {
+  scroll-margin-top: 1rem;
+}
+
+#markdown-toc {
+  padding: 1rem 1rem 1rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+#markdown-toc ul {
+  padding-left: 1.25rem;
+}
+
+.docs table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.docs th,
+.docs td {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.docs th {
+  background: var(--surface);
+}
+
+.source {
+  margin-top: 3rem;
+  font-size: 0.875rem;
+}
