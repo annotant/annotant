@@ -12,11 +12,19 @@ export function readSession<T>(key: string): T | undefined {
   }
 }
 
-export function writeSession(key: string, value: unknown) {
+/** False when it could not be written: the key is then emptied, never left with an older value. */
+export function writeSession(key: string, value: unknown): boolean {
   try {
     if (value === undefined) sessionStorage.removeItem(key)
     else sessionStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
-    // Storage can be unavailable (private mode); the panel then just forgets.
+    // Storage can be unavailable (private mode) or full; the widget then just forgets.
+    try {
+      sessionStorage.removeItem(key)
+    } catch {
+      // Unavailable: nothing was kept either.
+    }
+    return false
   }
 }

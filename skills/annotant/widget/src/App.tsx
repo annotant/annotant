@@ -17,6 +17,7 @@ import {
   type DrawnPoint,
   elementFromAnchor,
   quoteFromSelection,
+  rangeFromAnchor,
   scrollToArea,
   startRect,
 } from './anchors'
@@ -99,8 +100,8 @@ import {
   shortcutOf,
 } from './shortcuts'
 import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
-import buddy from './assets/buddy.webp'
-import buddyThinking from './assets/buddy-thinking.webp'
+import ant from './assets/ant.webp'
+import antThinking from './assets/ant-thinking.webp'
 
 const REPOSITORY = 'https://github.com/annotant/annotant'
 
@@ -121,6 +122,12 @@ const PENDING_CENTER_MS = 5000
 const FLASH_MS = 1500
 const UI_KEY = 'annotant:ui'
 const CENTER_KEY = 'annotant:center'
+// What the reader had in progress when the page reloaded (the app's dev server
+// does, on an agent's edit): the comment being written, and the tool in use.
+const DRAFT_KEY = 'annotant:draft'
+// Its images and its drawing's picture, apart: written as they change, not on each key typed.
+const PICTURES_KEY = 'annotant:draft-pictures'
+const TOOL_KEY = 'annotant:tool'
 
 /** Where the shortcuts moving through the page's comments go, in the panel's order. */
 const STEPS = { next: 1, previous: -1 } as const satisfies Partial<
@@ -454,6 +461,70 @@ interface Draft extends ReviewAnchor {
   url: string
 }
 
+/** A draft as the tab keeps it: it gets a new key once it is back. */
+type SavedDraft = Omit<Draft, 'key'>
+
+/** The tool in use, with the lines of a drawing so far, on the page. */
+type SavedTool = { tool: 'area' | 'pick' } | { tool: 'sketch'; lines?: DrawnPoint[][] }
+
+// What the tab holds may come from another build of the widget (`npm run
+// watch` reloads the page on each), or from the page's own scripts: read in a
+// shape the widget cannot draw, it would take the widget down on each load.
+type Fields = Record<string, unknown>
+const isFields = (value: unknown): value is Fields =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+const isList = (value: unknown, item: (entry: unknown) => boolean) =>
+  Array.isArray(value) && value.every(item)
+const isText = (value: unknown) => typeof value === 'string'
+const isNumber = (value: unknown) => typeof value === 'number'
+const isImage = (value: unknown) =>
+  isFields(value) && isText(value['type']) && isText(value['data'])
+const isPoint = (value: unknown) =>
+  isFields(value) && isNumber(value['x']) && isNumber(value['y'])
+const isNode = (value: unknown) =>
+  isFields(value) && isText(value['selector']) && isText(value['tag'])
+const isPicked = (value: unknown) =>
+  isNode(value) && isFields(value) && isText(value['route'])
+const isArea = (value: unknown) =>
+  isFields(value) &&
+  ['top', 'left', 'width', 'height'].every((side) => isNumber(value[side])) &&
+  isList(value['covers'], isNode) &&
+  isList(value['crosses'], isNode) &&
+  isFields(value['viewport']) &&
+  (value['within'] === undefined || isNode(value['within'])) &&
+  (value['strokes'] === undefined || isList(value['strokes'], Array.isArray))
+
+function isSavedDraft(value: unknown): value is SavedDraft {
+  return (
+    isFields(value) &&
+    ['route', 'url', 'body', 'section', 'quote'].every((field) => isText(value[field])) &&
+    isNumber(value['occurrence']) &&
+    (value['elements'] === undefined || isList(value['elements'], isPicked)) &&
+    (value['area'] === undefined || isArea(value['area']))
+  )
+}
+
+const isSavedPictures = (value: unknown): value is Pick<Draft, 'images' | 'sketch'> =>
+  isFields(value) &&
+  (value['images'] === undefined || isList(value['images'], isImage)) &&
+  (value['sketch'] === undefined || isImage(value['sketch']))
+
+const isSavedTool = (value: unknown): value is SavedTool =>
+  isFields(value) &&
+  (value['tool'] === 'area' ||
+    value['tool'] === 'pick' ||
+    (value['tool'] === 'sketch' &&
+      (value['lines'] === undefined ||
+        isList(value['lines'], (line) => isList(line, isPoint)))))
+
+/** The draft the tab kept, with its pictures when they could be kept too. */
+function readDraft(): SavedDraft | undefined {
+  const draft = readSession<unknown>(DRAFT_KEY)
+  if (!isSavedDraft(draft)) return undefined
+  const pictures = readSession<unknown>(PICTURES_KEY)
+  return isSavedPictures(pictures) ? { ...draft, ...pictures } : draft
+}
+
 interface PendingCenter {
   anchor: ReviewAnchor
   path: string
@@ -470,6 +541,39 @@ interface UiState {
 }
 
 const PAGE_LEVEL: ReviewAnchor = { quote: '', occurrence: 0, section: '' }
+
+/**
+ * A draft kept before the page reloaded, as it comes back: once what it is on
+ * (its selected text, its area, the elements picked) is on the page again.
+ * `late`, past waiting for them, it comes back without the elements still
+ * missing, and as a comment on the page if its selected text or area is gone;
+ * `null` when nothing the reader wrote or attached is left. `undefined` while
+ * it waits. A draft of another page comes back as it was kept.
+ */
+function restoredDraft(
+  root: Element,
+  saved: SavedDraft,
+  late: boolean,
+): SavedDraft | null | undefined {
+  const here = window.location.pathname
+  if (saved.route !== here) return saved
+  const anchored = saved.area
+    ? areaReady(root, saved.area)
+    : !saved.quote || !!rangeFromAnchor(root, saved)
+  const found = (element: ReviewPickedElement) =>
+    element.route !== here || !!elementFromAnchor(root, { ...PAGE_LEVEL, element })
+  const elements = saved.elements ?? []
+  if (anchored && elements.every(found)) return saved
+  if (!late) return undefined
+  const { route, url, body, images } = saved
+  const base: SavedDraft = anchored
+    ? { ...saved }
+    : { ...PAGE_LEVEL, route, url, body, ...(images ? { images } : {}) }
+  delete base.elements
+  const left = elements.filter(found)
+  const back = left.length ? { ...base, elements: left } : base
+  return written(back) ? back : null
+}
 
 /** The model Claude worked on the comment with, and the classifier's label. */
 function ModelLabel({ comment }: { comment: ReviewComment }) {
@@ -576,16 +680,29 @@ export default function App({ root }: { root: Element }) {
   )
   const [dragging, setDragging] = useState(false)
   const [draft, setDraft] = useState<Draft>()
+  // The draft kept before the page reloaded, until it is back or given up.
+  const [restoring, setRestoring] = useState(readDraft)
+  const [savedTool] = useState(() => {
+    const tool = readSession<unknown>(TOOL_KEY)
+    return isSavedTool(tool) ? tool : undefined
+  })
   const [activeId, setActiveId] = useState<string>()
   const [selectionButton, setSelectionButton] = useState<{
     top: number
     left: number
   }>()
-  const [picking, setPicking] = useState(false)
+  const [picking, setPicking] = useState(savedTool?.tool === 'pick')
   // The thread whose reply an element in the page is being picked for, or the draft's (`DRAFT`).
   const [attachingTo, setAttachingTo] = useState<string>()
   // What the reader draws over the page: a rectangle, or freehand.
-  const [drawing, setDrawing] = useState<false | 'area' | 'sketch'>(false)
+  const [drawing, setDrawing] = useState<false | 'area' | 'sketch'>(
+    savedTool?.tool === 'area' || savedTool?.tool === 'sketch' ? savedTool.tool : false,
+  )
+  // The lines a drawing starts from: those drawn before the page reloaded, for
+  // the drawing it brings back only (a new one starts from none).
+  const [sketchFrom, setSketchFrom] = useState(
+    savedTool?.tool === 'sketch' ? savedTool.lines : undefined,
+  )
   const [target, setTarget] = useState<Element>()
   // A drawn area shown again: while its chip is hovered, or for a moment once it is clicked.
   const [targetArea, setTargetArea] = useState<ReviewArea>()
@@ -671,6 +788,61 @@ export default function App({ root }: { root: Element }) {
       statusFilter,
     })
   }, [open, docked, chosenWidth, view, threadId, statusFilter])
+
+  // Not while the draft kept is still to come back: it would be forgotten.
+  useEffect(() => {
+    if (restoring) return
+    if (!draft) {
+      writeSession(DRAFT_KEY, undefined)
+      return
+    }
+    const { key: _, images: __, sketch: ___, ...kept } = draft
+    writeSession(DRAFT_KEY, kept)
+  }, [draft, restoring])
+
+  // Too big for the tab's storage, the images are left out, then the drawing's
+  // picture: the draft comes back without them.
+  const draftImages = draft?.images
+  const draftSketch = draft?.sketch
+  useEffect(() => {
+    if (restoring) return
+    const pictures = {
+      ...(draftImages?.length ? { images: draftImages } : {}),
+      ...(draftSketch ? { sketch: draftSketch } : {}),
+    }
+    if (!draftImages?.length && !draftSketch) writeSession(PICTURES_KEY, undefined)
+    else if (!writeSession(PICTURES_KEY, pictures) && draftSketch)
+      writeSession(PICTURES_KEY, { sketch: draftSketch })
+  }, [draftImages, draftSketch, restoring])
+
+  // Back once its selected text, its area and its elements are on the page
+  // again, for 5 s at most: the app may render after the widget. Never over a
+  // draft started meanwhile.
+  useEffect(() => {
+    if (!restoring) return undefined
+    const deadline = Date.now() + PENDING_CENTER_MS
+    let frame = 0
+    const attempt = () => {
+      const back = restoredDraft(root, restoring, Date.now() > deadline)
+      if (back === undefined) {
+        frame = requestAnimationFrame(attempt)
+        return
+      }
+      if (back) setDraft((current) => current ?? { ...back, key: (drafts += 1) })
+      setRestoring(undefined)
+    }
+    attempt()
+    return () => cancelAnimationFrame(frame)
+  }, [root, restoring])
+
+  // A drawing keeps its lines as they change (`keepLines`), its tool with them.
+  useEffect(() => {
+    if (drawing === 'sketch') return
+    writeSession(
+      TOOL_KEY,
+      drawing ? { tool: drawing } : picking ? { tool: 'pick' } : undefined,
+    )
+  }, [drawing, picking])
 
   // The quote of the comment being written stays marked once the selection is gone,
   // on its own page only: the app may navigate before it is saved.
@@ -859,7 +1031,9 @@ export default function App({ root }: { root: Element }) {
 
   // The jump is for the page that loads right after the chip's click: whether this
   // is its page or the app sent the reader elsewhere, it must not wait for a later visit.
-  useEffect(() => writeSession(CENTER_KEY, undefined), [])
+  useEffect(() => {
+    writeSession(CENTER_KEY, undefined)
+  }, [])
   if (pendingCenter && route !== pendingCenter.path) setPendingCenter(undefined)
 
   useEffect(() => {
@@ -973,7 +1147,12 @@ export default function App({ root }: { root: Element }) {
 
   const cancelDraw = useCallback(() => setDrawing(false), [])
 
+  const keepLines = useCallback((lines: DrawnPoint[][]) => {
+    writeSession(TOOL_KEY, { tool: 'sketch', ...(lines.length ? { lines } : {}) })
+  }, [])
+
   const startDrawing = (tool: 'area' | 'sketch') => {
+    setSketchFrom(undefined)
     setPicking(false)
     setSelectionButton(undefined)
     setDrawing(tool)
@@ -1840,7 +2019,14 @@ export default function App({ root }: { root: Element }) {
       {drawing === 'area' && (
         <AreaDrawer root={root} onDraw={drawArea} onCancel={cancelDraw} />
       )}
-      {drawing === 'sketch' && <SketchDrawer onDraw={drawSketch} onCancel={cancelDraw} />}
+      {drawing === 'sketch' && (
+        <SketchDrawer
+          lines={sketchFrom}
+          onLines={keepLines}
+          onDraw={drawSketch}
+          onCancel={cancelDraw}
+        />
+      )}
       {!open && (
         // Icons only, their names in the tooltips: a tool in progress shows its Cancel.
         <div
@@ -2239,7 +2425,7 @@ export default function App({ root }: { root: Element }) {
           </div>
           <footer className="an-panel-foot">
             <span className="an-composer-brand">
-              <img src={working ? buddyThinking : buddy} alt="" draggable={false} />
+              <img src={working ? antThinking : ant} alt="" draggable={false} />
               <a href={REPOSITORY} target="_blank" rel="noopener noreferrer">
                 Annotant v{ANNOTANT_VERSION}
               </a>
