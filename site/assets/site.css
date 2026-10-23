@@ -48,12 +48,29 @@
   box-sizing: border-box;
 }
 
+@font-face {
+  font-family: 'Annotant Figtree';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(fonts/figtree-latin.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Annotant Figtree';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/figtree-latin-italic.woff2) format('woff2');
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font:
-    1rem/1.6 system-ui,
+    1rem/1.6 'Annotant Figtree',
+    system-ui,
     -apple-system,
     'Segoe UI',
     Roboto,
@@ -148,6 +165,10 @@ main,
   font-weight: 700;
 }
 
+.brand-accent {
+  color: var(--accent);
+}
+
 .bar nav {
   display: flex;
   gap: 1.25rem;
@@ -169,8 +190,59 @@ main,
   padding: 3.5rem 0 2rem;
 }
 
+.mascot-wrap {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+}
+
+/* A soft blue halo behind the ant: it breathes slowly and leans a little toward the pointer. */
+.mascot-wrap::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26rem;
+  height: 26rem;
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--accent) 28%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent) 65%,
+    transparent
+  );
+  transform: translate(-50%, -50%)
+    translate(calc(var(--mx, 0) * 24px), calc(var(--my, 0) * 16px));
+  transition: transform 1.5s ease-out;
+  animation: halo-breathe 8s ease-in-out infinite;
+}
+
 .mascot {
+  display: block;
   width: 180px;
+  margin: 0 auto;
+  filter: drop-shadow(0 0 0.5rem color-mix(in srgb, var(--accent) 45%, transparent));
+}
+
+@keyframes halo-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    scale: 1;
+  }
+  50% {
+    opacity: 0.85;
+    scale: 1.05;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-wrap::before {
+    animation: none;
+    transition: none;
+  }
 }
 
 .hero h1 {
@@ -292,6 +364,10 @@ main,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 1.5rem;
+}
+
+.points[hidden] {
+  display: none;
 }
 
 .points h2 {
