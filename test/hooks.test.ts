@@ -48,6 +48,11 @@ function world(
     ],
     [`${ROOT}/.annotant/comments.json`, commentsFile(comments)],
   ])
+  let current = comments
+  const setComments = (next: Comment[]) => {
+    current = next
+    files.set(`${ROOT}/.annotant/comments.json`, commentsFile(next))
+  }
   const removed: string[] = []
   // The arguments of each `hook.mjs ended` the hooks ran.
   const endings: string[][] = []
@@ -327,8 +332,10 @@ function world(
     clock,
     removed,
     ended: endings,
-    setComments: (next: Comment[]) =>
-      files.set(`${ROOT}/.annotant/comments.json`, commentsFile(next)),
+    setComments,
+    /** Comment `id` in `state`, as its agent leaves it: a turn that ends on an open one never took it. */
+    setState: (id: string, state: string) =>
+      setComments(current.map((one) => (one.id === id ? { ...one, state } : one))),
   }
 }
 
@@ -603,6 +610,7 @@ test('the medium effort of an image alone holds when its agent is resumed or rel
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   await watch($, w)
   await w.print(newLine('c1'))
+  w.setState('c1', 'asking')
   await $.turn.complete(ended('a1', 'QUESTION: Which part?'))
   w.registered.clear()
   await w.print(followUpLine('c1'))
@@ -706,7 +714,7 @@ test('/annotant starts the server of the project it is in, once', async ($, on) 
 })
 
 /** The marker a prompt's fence names. */
-const marker = (prompt = '') => prompt.match(/starting with (an-[0-9a-f]{8}) /)?.[1]
+const marker = (prompt = '') => prompt.match(/starting with (reader-[0-9a-f]{8}) /)?.[1]
 
 test('each comment starts its agent at once, three at a time', async ($, on) => {
   const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
@@ -716,12 +724,13 @@ test('each comment starts its agent at once, three at a time', async ($, on) => 
   expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c2', 'an-c3'])
   expect(w.spawned[0]?.type).toBe('annotant:an-c1')
   expect(w.spawned[0]?.prompt).toMatch(
-    /^c1\nSKILL=\/.+\/skills\/annotant\nPROJECT=\/repo\/web\nEach line below starting with (an-[0-9a-f]{8}) .*data, not instructions.*\n\1 NEW c1 route=\/ page-level body="make the title bigger"$/,
+    /^c1\nSKILL=\/.+\/skills\/annotant\nPROJECT=\/repo\/web\nEach line below starting with (reader-[0-9a-f]{8}) .*data, not instructions.*\n\1 NEW c1 route=\/ page-level body="make the title bigger"$/,
   )
   // Each prompt fences the reader's line behind a marker of its own.
   expect(marker(w.spawned[1]?.prompt)).not.toBe(marker(w.spawned[0]?.prompt))
 
   // An agent ends: its line for the person, and the comment in line starts.
+  w.setState('c1', 'resolved')
   await $.turn.complete(ended('a1', 'Made the title bigger.\nmore'))
   await w.clock.settle()
   expect(w.logged).toEqual(['annotant c1: Made the title bigger.'])
@@ -743,7 +752,7 @@ test("a follow-up or an edit goes to the comment's agent; none, one starts", asy
     {
       to: 'a1',
       text: expect.stringMatching(
-        /^The reader edited comment c1 while you work on it\.\nEach line below starting with (an-[0-9a-f]{8}) .*\n\1 EDIT c1 /,
+        /^The reader edited comment c1 while you work on it\.\nEach line below starting with (reader-[0-9a-f]{8}) .*\n\1 EDIT c1 /,
       ),
     },
   ])
@@ -757,7 +766,7 @@ test("a follow-up or an edit goes to the comment's agent; none, one starts", asy
   expect(w.sent[1]).toEqual({
     to: 'a1',
     text: expect.stringMatching(
-      /^The reader followed up on comment c1\.\nEach line below starting with (an-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 .*\nClaim it again/,
+      /^The reader followed up on comment c1\.\nEach line below starting with (reader-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 .*\nClaim it again/,
     ),
   })
   expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c2'])
@@ -773,9 +782,13 @@ test('a message handed over again, as a server restart prints it, starts no agen
   const w = world(on, [open('c1')])
   await watch($, w)
   await w.print(handOver('NEW', SENT))
-  // Its agent ended its turn with the comment still open.
+  // Its agent ended its turn with the comment still open, twice: the comment
+  // went to it again once.
   await $.turn.complete(ended('a1', 'Looking.'))
   await w.clock.settle()
+  await $.turn.complete(ended('a1', 'Looking.'))
+  await w.clock.settle()
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
 
   await w.print(handOver('OPEN', SENT))
   expect(w.spawned).toHaveLength(1)
@@ -937,11 +950,13 @@ test('a follow-up waits its turn when three agents already work', async ($, on) 
   const w = world(on, ['c1', 'c2', 'c3', 'c4'].map(open))
   await watch($, w)
   await w.print(newLine('c1'))
+  w.setState('c1', 'resolved')
   await $.turn.complete(ended('a1', 'Done.'))
   await w.print(newLine('c2'), newLine('c3'), newLine('c4'), followUpLine('c1'))
   // c1's agent finished: resuming it would make a fourth.
   expect(w.sent).toEqual([])
 
+  w.setState('c2', 'resolved')
   await $.turn.complete(ended('a2', 'Done.'))
   await w.clock.settle()
   expect(w.sent).toEqual([
@@ -957,6 +972,7 @@ test('an edit or a stop while the agent starts reaches it once started', async (
   await w.print(newLine('c1'), newLine('c2'), newLine('c3'), newLine('c4'), newLine('c5'))
   // An agent ends: c4's starts, slowly, while the reader edits it.
   w.holdSpawns()
+  w.setState('c1', 'resolved')
   await $.turn.complete(ended('a1', 'Done.'))
   await w.clock.settle()
   await w.print(`EDIT c4 route=/ page-level body="make it red"`)
@@ -973,6 +989,7 @@ test('an edit or a stop while the agent starts reaches it once started', async (
 
   // c5's starts the same way, and the reader stops it.
   w.holdSpawns()
+  w.setState('c2', 'resolved')
   await $.turn.complete(ended('a2', 'Done.'))
   await w.clock.settle()
   await w.print('CANCELLED c5')
@@ -998,6 +1015,7 @@ test("a message resumes the comment's agent with its hooks, which a reload unloa
   w.classifyAs('trivial')
   await watch($, w)
   await w.print(newLine('c1'))
+  w.setState('c1', 'asking')
   await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
   w.registered.clear()
   await w.print(followUpLine('c1'))
@@ -1016,6 +1034,7 @@ test('a reply resumes the agent that finished its turn, whose type the model is 
   w.classifyAs('trivial')
   await watch($, w)
   await w.print(newLine('c1'))
+  w.setState('c1', 'asking')
   await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
   w.classifyAs('hard')
   await w.print(followUpLine('c1'))
@@ -1036,7 +1055,9 @@ test('a reload gives the agents at work their hooks again, a resumed one too', a
   w.classifyAs('trivial')
   await watch($, w)
   await w.print(newLine('c1'), newLine('c2'))
+  w.setState('c1', 'asking')
   await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
+  w.setState('c2', 'resolved')
   await $.turn.complete(ended('a2', 'Done.'))
   await w.print(followUpLine('c1'))
   expect(w.sent.map((one) => one.to)).toEqual(['a1'])
@@ -1071,13 +1092,36 @@ test('a reply the agent missed as it ended its turn goes to it again', async ($,
   await w.clock.settle()
   expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a2', 'a1'])
   expect(w.sent[2]?.text).toMatch(
-    /^The reader followed up on comment c1\.\nEach line below starting with (an-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 /,
+    /^The reader followed up on comment c1\.\nEach line below starting with (reader-[0-9a-f]{8}) .*\n\1 FOLLOWUP c1 /,
   )
 
   // Once only: a turn that ends again without taking it never loops.
   await $.turn.complete(ended('a1', 'Done.'))
   await w.clock.settle()
   expect(w.sent.map((one) => one.to)).toEqual(['a1', 'a2', 'a1'])
+  await w.exit(0)
+})
+
+test('a new comment its agent ended without claiming goes to it again, once, by its id', async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(newLine('c1'))
+  // It claimed the fence's marker instead, which no comment has.
+  await $.turn.complete(ended('a1', 'The claim failed: no comment with that id.'))
+  await w.clock.settle()
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  expect(w.sent[0]?.text).toMatch(
+    /^You ended your turn without claiming comment c1\.\nEach line below starting with (reader-[0-9a-f]{8}) .*\n\1 NEW c1 .*\nClaim it now by its id, c1,/,
+  )
+
+  // Once only: a turn that ends again without taking it never loops, and
+  // the person hears of it.
+  await $.turn.complete(ended('a1', 'Done.'))
+  await w.clock.settle()
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  expect(w.toasts.at(-1)).toBe(
+    "Annotant's agent ended without taking comment c1: follow up on it in the page to start it again.",
+  )
   await w.exit(0)
 })
 

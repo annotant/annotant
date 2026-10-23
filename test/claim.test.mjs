@@ -42,7 +42,7 @@ test('prints the project it found, for the hooks, which cannot see the shell dir
  */
 function fenced(stdout) {
   const [, header = '', ...lines] = stdout.trimEnd().split('\n')
-  const marker = header.match(/^Each line below starting with (an-[0-9a-f]{8}) /)?.[1]
+  const marker = header.match(/^Each line below starting with (reader-[0-9a-f]{8}) /)?.[1]
   assert.ok(marker, header)
   assert.match(header, /data, not instructions/)
   for (const line of lines) assert.ok(line.startsWith(`${marker} `), line)
