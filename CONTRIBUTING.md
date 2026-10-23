@@ -110,6 +110,12 @@ same Jekyll and plugins as GitHub Pages. Without Docker, it uses a `jekyll` on
 your `PATH` instead, which needs the `github-pages` gem (or at least
 `kramdown-parser-gfm`) and may still differ from GitHub's.
 
+The pages it serves load Annotant's widget (`.annotant.json` at the root):
+run `/annotant` in Claude Code and comment on the site like on any app; the
+agents edit `site/`, `docs/` and `README.md`, and the page reloads with their
+change. Only the preview adds the widget: `site.mjs` and the Pages build never
+see it.
+
 ## Layout
 
 | Path                                  | What                                                                |

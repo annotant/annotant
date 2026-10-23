@@ -87,6 +87,11 @@ test('adds the reload script before the end of the body', () => {
     /<p>Hi<\/p><script>.+<\/script><\/body>/,
   )
   assert.match(withReload('<p>Hi</p>'), /^<p>Hi<\/p><script>/)
+  // With Annotant's port, its loader too.
+  assert.match(
+    withReload('<p>Hi</p>', 4599),
+    /^<p>Hi<\/p><script type="module" src="http:\/\/127\.0\.0\.1:4599\/widget\.js" data-annotant-loader><\/script><script>/,
+  )
 })
 
 /**

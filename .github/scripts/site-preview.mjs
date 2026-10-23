@@ -5,13 +5,16 @@
 // Docker, else a local `jekyll`), and serves it on http://localhost:4000.
 // A change to what the site is made of rebuilds it and reloads the open
 // pages; a build that fails prints why and keeps the last good one, if any.
-// Run from the repository root.
+// With an .annotant.json at the root, the pages it serves load Annotant's
+// widget too, so the site can be commented on with /annotant (the build never
+// holds it). Run from the repository root.
 import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, statSync, watch } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { errorCode } from '../../skills/annotant/scripts/lib/errors.mjs'
 import { REPOSITORY } from './site.mjs'
 
 const PORT = 4000
@@ -69,11 +72,16 @@ export function jekyllImage(workflow) {
 }
 
 /**
- * The page, with the script that reloads it when the site is rebuilt.
+ * The page, with the script that reloads it when the site is rebuilt, and
+ * Annotant's loader when its server's port is given.
  * @param {string} html
+ * @param {number} [annotant]
  */
-export function withReload(html) {
-  const script = `<script>new EventSource('${EVENTS}').addEventListener('reload', () => location.reload())</script>`
+export function withReload(html, annotant) {
+  const loader = annotant
+    ? `<script type="module" src="http://127.0.0.1:${annotant}/widget.js" data-annotant-loader></script>`
+    : ''
+  const script = `${loader}<script>new EventSource('${EVENTS}').addEventListener('reload', () => location.reload())</script>`
   const end = html.lastIndexOf('</body>')
   return end === -1 ? html + script : html.slice(0, end) + script + html.slice(end)
 }
@@ -123,10 +131,12 @@ function lookup(root, pathname) {
 }
 
 /**
- * A server for the built site in `root`, its pages reloading on `reload()`.
+ * A server for the built site in `root`, its pages reloading on `reload()`
+ * and loading Annotant's widget from the port `annotant`, when given.
  * @param {string} root
+ * @param {number} [annotant]
  */
-export function createPreview(root) {
+export function createPreview(root, annotant) {
   /** @type {Set<http.ServerResponse>} */
   const listeners = new Set()
   const server = http.createServer((req, res) => {
@@ -174,12 +184,12 @@ export function createPreview(root) {
       // With the script: a page opened before the first build shows once it ends.
       res
         .writeHead(404, { 'content-type': 'text/html; charset=utf-8' })
-        .end(withReload('<p>Not found.</p>'))
+        .end(withReload('<p>Not found.</p>', annotant))
       return
     }
     const type = CONTENT_TYPES[path.extname(file)] ?? 'application/octet-stream'
     const body = type.startsWith('text/html')
-      ? withReload(await readFile(file, 'utf8'))
+      ? withReload(await readFile(file, 'utf8'), annotant)
       : await readFile(file)
     res.writeHead(found ? 200 : 404, {
       'content-type': type,
@@ -192,6 +202,25 @@ export function createPreview(root) {
     for (const listener of listeners) listener.write('event: reload\ndata: \n\n')
   }
   return { server, reload }
+}
+
+/**
+ * The port of Annotant's server, from the .annotant.json at the root.
+ * Undefined without one.
+ */
+function annotantPort() {
+  let config
+  try {
+    config = JSON.parse(readFileSync('.annotant.json', 'utf8'))
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') {
+      console.error('.annotant.json:', error instanceof Error ? error.message : error)
+    }
+    return undefined
+  }
+  const port = typeof config?.port === 'number' ? config.port : 4599
+  console.log(`The pages load Annotant's widget: comment on them after /annotant.`)
+  return port
 }
 
 /**
@@ -306,7 +335,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     )
     process.exit(1)
   }
-  const { server, reload } = createPreview(BUILT)
+  const { server, reload } = createPreview(BUILT, annotantPort())
 
   const rebuild = rebuilder(async () => {
     // From scratch: a file gone from the sources goes from the site.

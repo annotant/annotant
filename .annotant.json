@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "annotant-site",
+  "port": 4599,
+  "devUrl": "http://localhost:4000",
+  "commentsFile": ".annotant/comments.json",
+  "framework": "jekyll",
+  "loader": [".github/scripts/site-preview.mjs"],
+  "checks": ["npm run format:check", "node --test test/site.test.mjs"],
+  "build": "node .github/scripts/site.mjs _site-src",
+  "buildOutput": "_site-src",
+  "editable": ["site", "docs", "README.md", ".github/assets"]
+}
