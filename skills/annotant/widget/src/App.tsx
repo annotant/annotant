@@ -100,8 +100,8 @@ import {
   shortcutOf,
 } from './shortcuts'
 import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
-import buddy from './assets/buddy.webp'
-import buddyThinking from './assets/buddy-thinking.webp'
+import ant from './assets/ant.webp'
+import antThinking from './assets/ant-thinking.webp'
 
 const REPOSITORY = 'https://github.com/annotant/annotant'
 
@@ -2425,7 +2425,7 @@ export default function App({ root }: { root: Element }) {
           </div>
           <footer className="an-panel-foot">
             <span className="an-composer-brand">
-              <img src={working ? buddyThinking : buddy} alt="" draggable={false} />
+              <img src={working ? antThinking : ant} alt="" draggable={false} />
               <a href={REPOSITORY} target="_blank" rel="noopener noreferrer">
                 Annotant v{ANNOTANT_VERSION}
               </a>
