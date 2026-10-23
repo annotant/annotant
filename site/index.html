@@ -4,18 +4,21 @@ root: ''
 ---
 
 <section class="hero">
-  <img
-    class="mascot"
-    src="assets/annotant.png"
-    alt="Annotant's mascot, a small blue ant"
-    width="241"
-    height="180"
-  />
+  <div class="mascot-wrap">
+    <img
+      class="mascot"
+      src="assets/annotant.png"
+      alt="Annotant's mascot, a small blue ant"
+      width="241"
+      height="180"
+    />
+  </div>
   <h1>Comment on your running app.<br />Claude makes the change.</h1>
   <p class="lede">
     Annotant is a <a href="https://claude.com/claude-code">Claude Code</a> plugin: select
     text, point at an element or draw on your dev app in the browser, write what to
-    change, and a background agent makes the change and answers in the same thread.
+    change, and a background agent makes the change and answers in the same thread. No
+    mockup, no artifact: the change lands in your code.
   </p>
   <p class="actions">
     <a class="button" href="#install">Install</a>
@@ -23,6 +26,21 @@ root: ''
     <a class="button secondary" href="https://github.com/annotant/annotant">GitHub</a>
   </p>
 </section>
+
+<script>
+  // The mascot's halo leans toward the pointer: --mx and --my run from -1 to 1.
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    addEventListener(
+      'pointermove',
+      (event) => {
+        const root = document.documentElement.style
+        root.setProperty('--mx', (event.clientX / innerWidth) * 2 - 1)
+        root.setProperty('--my', (event.clientY / innerHeight) * 2 - 1)
+      },
+      { passive: true },
+    )
+  }
+</script>
 
 <section class="demo" aria-label="A comment turning into a change">
   <figure class="page">
@@ -46,7 +64,7 @@ root: ''
   </figure>
 </section>
 
-<section class="points">
+<section class="points" hidden>
   <div>
     <h2>Right on the page</h2>
     <p>
