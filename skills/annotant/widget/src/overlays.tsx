@@ -1087,14 +1087,20 @@ const onScreen = (line: Line) =>
  * them; Done (or Enter) ends the drawing, Escape cancels it.
  */
 export function SketchDrawer({
+  lines: initial,
+  onLines,
   onDraw,
   onCancel,
 }: {
+  /** The lines it starts from, on the page: those drawn before the page reloaded. */
+  lines?: DrawnPoint[][] | undefined
+  /** Each change of the lines, on the page, for the session to keep. */
+  onLines?: (lines: DrawnPoint[][]) => void
   /** The lines, in viewport pixels. */
   onDraw: (lines: DrawnPoint[][]) => void
   onCancel: () => void
 }) {
-  const [lines, setLines] = useState<Line[]>([])
+  const [lines, setLines] = useState<Line[]>(initial ?? [])
   const [, setScrolled] = useState(0)
   // The line under the pointer, and the pointer drawing it.
   const drawing = useRef<{ pointer: number; line: Line }>(undefined)
@@ -1130,6 +1136,8 @@ export function SketchDrawer({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onCancel, done, undo])
+
+  useEffect(() => onLines?.(lines), [lines, onLines])
 
   // The lines stay on the page: they move with its scroll.
   useEffect(() => {

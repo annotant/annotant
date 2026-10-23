@@ -225,6 +225,14 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **A comment in progress survives a reload of the page**, as the app's dev
+  server reloads it after another comment's agent edits it: the draft (what
+  the reader wrote, its area, drawing or selected text, its elements, and its
+  images when the tab has room for them) comes back once what it is on is on
+  the page again, and so does the tool in use (an area being drawn, a drawing
+  with its lines so far, an element being pointed at). A draft whose selected
+  text or area is gone comes back as a comment on the page, with what the
+  reader wrote. (#191)
 - **A comment its agent leaves unfinished no longer shows an agent at work
   for good.** An agent that ends its turn without answering or asking stops
   its comment: the thread says "Claude stopped without finishing", with what
