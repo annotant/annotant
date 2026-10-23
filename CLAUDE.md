@@ -27,6 +27,9 @@ browser, and one background agent per comment makes the change. See the
   the `stable` branch users install from.
 - `docs/comments-file.md`: the comments file and the step files, their
   schemas and the comments' states; `scripts/lib/format.mjs` is its code.
+- `site/`: the website on GitHub Pages (Jekyll), its landing page and
+  layouts; `.github/scripts/site.mjs` builds its docs pages from the Markdown
+  files its `PAGES` lists (no copy), and `.github/workflows/pages.yml` publishes it.
 - `playground/`: a fake app with Annotant installed, to try changes on.
   `/playground` (`.claude/skills/playground/`) runs it from `.playground/`, a
   git-ignored copy the agents edit.

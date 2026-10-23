@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="https://annotant.keveun.net/">Website</a> ·
   <a href="#install">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#in-the-widget">The widget</a> ·
