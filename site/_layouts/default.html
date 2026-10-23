@@ -10,7 +10,11 @@
     />
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="{{ page.root }}assets/annotant.png" />
-    <link rel="stylesheet" href="{{ page.root }}assets/site.css" />
+    <!-- A new URL on each build: a cached page never meets a newer stylesheet. -->
+    <link
+      rel="stylesheet"
+      href="{{ page.root }}assets/site.css?v={{ site.time | date: '%s' }}"
+    />
   </head>
   <body>
     <a class="skip" href="#main">Skip to the content</a>
