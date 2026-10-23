@@ -141,7 +141,9 @@ export function createPreview(root, annotant) {
   const listeners = new Set()
   const server = http.createServer((req, res) => {
     serve(req, res).catch((/** @type {unknown} */ error) => {
-      console.error(`${req.url}:`, error instanceof Error ? error.message : error)
+      // The URL on one line, and never read as a format string.
+      const url = (req.url ?? '').replace(/[\r\n]/g, '')
+      console.error('%s: %s', url, error instanceof Error ? error.message : error)
       if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain' })
       res.end('Could not read the file.\n')
     })
