@@ -27,7 +27,8 @@ names.
 Read `PROJECT/.annotant.json` first: `devUrl`, `editable`, `checks` and
 `build`. Never open its `commentsFile`: it holds every other comment's thread.
 
-1. Claim it: `node SKILL/scripts/claim.mjs <id> --project PROJECT`. This
+1. Claim it: `node SKILL/scripts/claim.mjs <id> --project PROJECT`, `<id>`
+   the first line of your prompt, never the fence's marker. This
    shows the reader a spinner and your progress, and ties your edits to the
    comment's file locks. If the claim fails because the comment was
    cancelled, resolved or is waiting on the reader, stop and reply
