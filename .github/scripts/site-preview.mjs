@@ -284,7 +284,7 @@ const run = (command, args, env) =>
 
 /**
  * Stages the site in `dir` from scratch, as the Pages workflow does, marked as
- * a preview so its pages load no PostHog: both builds below run in production
+ * a preview so its pages' events say so: both builds below run in production
  * (GitHub Pages' image whatever it is given), so `jekyll.environment` cannot
  * tell a preview from the published site. Whether it succeeded.
  * @param {string} dir

@@ -82,10 +82,10 @@ test('builds once more after the calls made during a build, and reloads on succe
   assert.ok(ran)
 })
 
-test('marks its builds as previews, which load no PostHog', async (t) => {
+test('marks its builds as previews, which PostHog tells apart', async (t) => {
   const site = new URL('../site/', import.meta.url)
   const config = await readFile(new URL('_config.yml', site), 'utf8')
-  // The site's own config never says it, or the published site would load none.
+  // The site's own config never says it, or the published site's visits would be previews.
   assert.doesNotMatch(config, /^preview:/m)
   const dir = path.join(await tempDir(t), 'staged')
   assert.equal(await stage(dir), true)
@@ -96,7 +96,7 @@ test('marks its builds as previews, which load no PostHog', async (t) => {
   const layout = await readFile(new URL('_layouts/default.html', site), 'utf8')
   assert.match(
     layout,
-    /\{% if site\.posthog\.key and site\.preview != true and jekyll\.environment == "production" %\}[^{]*<script>[\s\S]*?posthog\.init[\s\S]*?<\/script>\s*\{% endif %\}/,
+    /\{% if site\.preview %\}\{% assign environment = "preview" %\}[\s\S]*?const environment = \{\{ environment \| jsonify \}\}[\s\S]*?Object\.assign\(event\.properties, \{ environment, internal \}\)/,
   )
 })
 

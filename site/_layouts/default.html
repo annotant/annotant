@@ -15,11 +15,24 @@
       rel="stylesheet"
       href="{{ page.root }}assets/site.css?v={{ site.time | date: '%s' }}"
     />
-    {% if site.posthog.key and site.preview != true and jekyll.environment == "production" %}
-    <!-- PostHog's snippet, on the published site only (npm run site marks its
-    builds as previews, a plain jekyll serve is in development): no cookie and
-    nothing stored in the browser. -->
+    {% if site.posthog.key %}
+    {% if site.preview %}{% assign environment = "preview" %}{% else %}{% assign environment = jekyll.environment %}{% endif %}
+    <!-- PostHog's snippet: no cookie, and nothing stored in a visitor's browser.
+    Every event says its environment (npm run site marks its builds as
+    previews), and whether it is internal, which the project's "Filter out
+    internal and test users" leaves out: a build other than the published one,
+    or the owner's browser, marked once with ?internal (?internal=0 unmarks it). -->
     <script>
+      const environment = {{ environment | jsonify }}
+      let internal = environment !== 'production'
+      try {
+        const marked = new URLSearchParams(location.search).get('internal')
+        if (marked === '0') localStorage.removeItem('posthog-internal')
+        else if (marked !== null) localStorage.setItem('posthog-internal', '1')
+        internal ||= localStorage.getItem('posthog-internal') === '1'
+      } catch {
+        // No storage (blocked, private window): a visitor like any other.
+      }
       !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
       posthog.init({{ site.posthog.key | jsonify }}, {
         api_host: {{ site.posthog.host | jsonify }},
@@ -27,6 +40,10 @@
         person_profiles: 'identified_only',
         disable_session_recording: true,
         disable_surveys: true,
+        before_send: (event) => {
+          if (event) Object.assign(event.properties, { environment, internal })
+          return event
+        },
       })
       // The GitHub links, as an event of their own (the landing page counts
       // the copied commands).
