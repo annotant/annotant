@@ -11,6 +11,7 @@ import {
   createPreview,
   jekyllImage,
   rebuilder,
+  stage,
   withReload,
 } from '../.github/scripts/site-preview.mjs'
 import { tempDir } from './helpers.mjs'
@@ -79,6 +80,24 @@ test('builds once more after the calls made during a build, and reloads on succe
     () => {},
   )()
   assert.ok(ran)
+})
+
+test('marks its builds as previews, which load no PostHog', async (t) => {
+  const site = new URL('../site/', import.meta.url)
+  const config = await readFile(new URL('_config.yml', site), 'utf8')
+  // The site's own config never says it, or the published site would load none.
+  assert.doesNotMatch(config, /^preview:/m)
+  const dir = path.join(await tempDir(t), 'staged')
+  assert.equal(await stage(dir), true)
+  assert.equal(
+    await readFile(path.join(dir, '_config.yml'), 'utf8'),
+    `${config}\npreview: true\n`,
+  )
+  const layout = await readFile(new URL('_layouts/default.html', site), 'utf8')
+  assert.match(
+    layout,
+    /\{% if site\.posthog\.key and site\.preview != true and jekyll\.environment == "production" %\}[^{]*<script>[\s\S]*?posthog\.init[\s\S]*?<\/script>\s*\{% endif %\}/,
+  )
 })
 
 test('adds the reload script before the end of the body', () => {

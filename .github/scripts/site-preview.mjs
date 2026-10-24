@@ -10,7 +10,7 @@
 // holds it). Run from the repository root.
 import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, statSync, watch } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { appendFile, readFile } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -283,6 +283,21 @@ const run = (command, args, env) =>
   })
 
 /**
+ * Stages the site in `dir` from scratch, as the Pages workflow does, marked as
+ * a preview so its pages load no PostHog: both builds below run in production
+ * (GitHub Pages' image whatever it is given), so `jekyll.environment` cannot
+ * tell a preview from the published site. Whether it succeeded.
+ * @param {string} dir
+ */
+export async function stage(dir) {
+  // From scratch: a file gone from the sources goes from the site.
+  rmSync(dir, { recursive: true, force: true })
+  if (!(await run(process.execPath, ['.github/scripts/site.mjs', dir]))) return false
+  await appendFile(path.join(dir, '_config.yml'), '\npreview: true\n')
+  return true
+}
+
+/**
  * Whether a command runs and exits with 0.
  * @param {string} command
  * @param {string[]} args
@@ -339,14 +354,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   const { server, reload } = createPreview(BUILT, annotantPort())
 
-  const rebuild = rebuilder(async () => {
-    // From scratch: a file gone from the sources goes from the site.
-    rmSync(STAGED, { recursive: true, force: true })
-    return (
-      (await run(process.execPath, ['.github/scripts/site.mjs', STAGED])) &&
-      (await build())
-    )
-  }, reload)
+  const rebuild = rebuilder(async () => (await stage(STAGED)) && (await build()), reload)
 
   /** @type {NodeJS.Timeout | undefined} */
   let pending
