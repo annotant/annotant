@@ -11,3 +11,11 @@ kramdown:
 # at any address: the plugin would redo it.
 relative_links:
   enabled: false
+# PostHog counts the visits (_layouts/default.html) once `key` is set, in the
+# "Sites" project shared with other websites, told apart by $host. The key is
+# public by design; without one, the pages load nothing. Keep on in its
+# settings "Discard client IP data" (no IP is stored) and "Filter out internal
+# and test users" with `internal` is not true (previews and the owner's visits).
+posthog:
+  key: phc_qBYkHwroRva6PuupZSB6n2XyW7BiYRF3g2LFiAS2eBQg
+  host: https://us.i.posthog.com
