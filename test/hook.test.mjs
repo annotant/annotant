@@ -1,7 +1,7 @@
 // scripts/hook.mjs, run as Claude Code runs a comment's agent's hooks: the
 // event as JSON on stdin, a deny as JSON on stdout.
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
@@ -382,4 +382,27 @@ test("records what the hooks module notes of the agent's thinking, in the run", 
 test('never stands in the way of the tool when it cannot read its input', async (t) => {
   const w = await world(t)
   assert.equal(await w.hook(0, 'pre', 'not json'), undefined)
+})
+
+test('names in the hook log the event that ran each line', async (t) => {
+  const w = await world(t)
+  const log = path.join(stateDir, 'hook.log')
+  await writeFile(path.join(stateDir, 'debug'), '')
+  t.after(() => rm(path.join(stateDir, 'debug'), { force: true }))
+  await w.claim(0)
+  const file = path.join(w.root, 'src/App.tsx')
+  const event = { tool_name: 'Edit', tool_input: edit(file), tool_use_id: 'logged' }
+  await w.hook(0, 'pre', { ...event, hook_event_name: 'PreToolUse' })
+  // Without the event's name, the mode tells it.
+  await w.hook(0, 'post', event)
+  const lines = (await readFile(log, 'utf8')).split('\n')
+  const id = w.id(0)
+  assert.ok(
+    lines.some((line) => line.endsWith(` a1 ${id} [PreToolUse] locked src/App.tsx`)),
+  )
+  assert.ok(
+    lines.some((line) =>
+      line.endsWith(` a1 ${id} [PostToolUse] recorded edit done "src/App.tsx"`),
+    ),
+  )
 })

@@ -319,16 +319,20 @@ with `/annotant-debug off`; the log stays where it is. Without the command,
 `touch ~/.cache/annotant/debug` turns it on and removing that file turns it
 off. The log keeps its last 128 to 256 KB.
 
-Each line reads `<time> <agent> <comment> <what happened>`; the agent is
-`main` for your own session, and the comment `-` when there is none:
+Each line reads `<time> <agent> <comment> [<cause>] <what happened>`; the
+agent is `main` for your own session, and the comment `-` when there is none.
+The cause is what led to the line: a hook event of your session
+(`session.start`, `turn.complete`, `session.append`), one of the agent's own
+hooks (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`), or a line
+of Annotant's server (`server NEW`, `server FOLLOWUP`, `server CANCELLED`…):
 
 ```
-… main - hooks loaded in a new session (Claude Code 2.1.287)
-… a53927e6… e329bcbb… started on claude-haiku-5-5, the comment classified trivial
-… a53927e6… e329bcbb… started for NEW
-… a53927e6… e329bcbb… locked api/presets.py
-… a53927e6… e329bcbb… recorded edit done "../api/presets.py"
-… a53927e6… e329bcbb… run ended (answered or asked): released 1 lock(s)
+… main - [session.start] hooks loaded in a new session (Claude Code 2.1.287)
+… a53927e6… e329bcbb… [server NEW] started on claude-haiku-5-5, the comment classified trivial
+… a53927e6… e329bcbb… [server NEW] started for NEW
+… a53927e6… e329bcbb… [PreToolUse] locked api/presets.py
+… a53927e6… e329bcbb… [PostToolUse] recorded edit done "../api/presets.py"
+… a53927e6… e329bcbb… [PostToolUse] run ended (answered or asked): released 1 lock(s)
 ```
 
 | Line                                                        | What it means                                                                                                                                  |

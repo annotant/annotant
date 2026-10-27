@@ -150,13 +150,20 @@ const APPEND =
   'tail -c "$4" "$1" | sed 1d > "$1.$$" && mv "$1.$$" "$1"; fi'
 
 /**
- * Appends `<time> <agent> <comment> <message>` to the log when it is on.
- * `comment` is `-` before the agent claimed one.
+ * Appends `<time> <agent> <comment> [<cause>] <message>` to the log when it is
+ * on. `comment` is `-` before the agent claimed one; `cause` is the hook event
+ * that led to the line, or `server <word>` for a line of the server.
  */
-async function debug($: $, agent: string, comment: string, message: string) {
+async function debug(
+  $: $,
+  cause: string,
+  agent: string,
+  comment: string,
+  message: string,
+) {
   if (!(await isLogging($))) return
   const { log } = await paths($)
-  const line = `${new Date().toISOString()} ${agent} ${comment} ${message}\n`
+  const line = `${new Date().toISOString()} ${agent} ${comment} [${cause}] ${message}\n`
   const argv = ['sh', '-c', APPEND, 'sh', log, line, `${MAX_LOG}`, `${MAX_LOG / 2}`]
   writing = writing
     .then(() => $.process.run(argv))
@@ -481,10 +488,16 @@ const sentOf = (line: string) => /^\S+ \S+ sent=(\S+)/.exec(line)?.[1]
  * this session: a server restart prints the line again, and a message starts
  * or messages an agent once.
  */
-async function wasHandedOver($: $, id: string, line: string) {
+async function wasHandedOver($: $, cause: string, id: string, line: string) {
   const key = sentOf(line)
   if (!key || (await read($, handed))[id] !== key) return false
-  await debug($, 'main', id, `ignored ${line.split(' ')[0]}: ${key} was handed over`)
+  await debug(
+    $,
+    cause,
+    'main',
+    id,
+    `ignored ${line.split(' ')[0]}: ${key} was handed over`,
+  )
   return true
 }
 
@@ -506,8 +519,11 @@ const forgetHandOver = ($: $, id: string) =>
     return rest
   })
 
-/** A comment waiting for a free agent, with the latest line about it. */
-type Queued = { id: string; line: string; kind: Kind }
+/**
+ * A comment waiting for a free agent, with the latest line about it; `cause`:
+ * what queued it, for the hook log.
+ */
+type Queued = { id: string; line: string; kind: Kind; cause: string }
 
 type Watch = {
   root: string
@@ -623,7 +639,7 @@ function pump($: $) {
  * The comment's agent type again: a reload of the plugin unloads its agent
  * types, and with them the hooks of the agents running as one. Whether it is.
  */
-async function registerAgain($: $, id: string, worker: Worker) {
+async function registerAgain($: $, cause: string, id: string, worker: Worker) {
   const project = await loadProject($, worker.root).catch(() => undefined)
   if (!project) return false
   return registerCommentAgent($, project, id, worker.model, worker.effort).then(
@@ -631,6 +647,7 @@ async function registerAgain($: $, id: string, worker: Worker) {
     async (error: unknown) => {
       await debug(
         $,
+        cause,
         worker.agent,
         id,
         `could not register its agent type: ${String(error)}`,
@@ -647,16 +664,22 @@ async function registerRunning($: $) {
     all
       .filter(([, worker]) => worker.running)
       .map(async ([id, worker]) => {
-        if (await registerAgain($, id, worker))
-          await debug($, worker.agent, id, 'agent type registered again after a reload')
+        if (await registerAgain($, 'session.start', id, worker))
+          await debug(
+            $,
+            'session.start',
+            worker.agent,
+            id,
+            'agent type registered again after a reload',
+          )
       }),
   )
 }
 
 /** Sends the reader's edit or follow-up to the comment's agent, which a message resumes. */
-async function send($: $, worker: Worker, { id, line, kind }: Queued) {
+async function send($: $, worker: Worker, { id, line, kind, cause }: Queued) {
   // The message resumes the agent with its hooks again.
-  await registerAgain($, id, worker)
+  await registerAgain($, cause, id, worker)
   const type = `annotant:${agentName(id)}`
   resuming.set(type, (resuming.get(type) ?? 0) + 1)
   const sent = await $.session
@@ -677,6 +700,7 @@ async function send($: $, worker: Worker, { id, line, kind }: Queued) {
     })
   await debug(
     $,
+    cause,
     worker.agent,
     id,
     sent.isDelivered ? `sent the ${KINDS[kind]}` : `could not send: ${sent.reason}`,
@@ -700,10 +724,10 @@ async function handOver($: $, watched: Watch, next: Queued) {
   const worker = (await read($, workers))[next.id]
   if (worker?.running) return
   if (worker && next.kind === 'followup' && (await send($, worker, next))) return
-  await startWorker($, watched, next.id, next.line)
+  await startWorker($, watched, next)
 }
 
-async function startWorker($: $, watched: Watch, id: string, line: string) {
+async function startWorker($: $, watched: Watch, { id, line, cause }: Queued) {
   const name = agentName(id)
   starting.set(id, { root: watched.root, since: Date.now(), stop: false })
   const started = await spawnWorker($, watched, id, name, line).catch(
@@ -724,7 +748,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
   if (!agent) {
     const why = started.deny ?? 'no agent started'
     $.ui.toast(`Annotant could not start an agent for comment ${tag(id)}: ${why}`)
-    await debug($, 'main', id, `could not start an agent: ${short(why, 160)}`)
+    await debug($, cause, 'main', id, `could not start an agent: ${short(why, 160)}`)
     return
   }
   if (started.route) {
@@ -732,7 +756,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     await $.fs.write(routeFile(project, id), JSON.stringify({ ...route, agent }))
     const label = route.complexity ? `, the comment classified ${route.complexity}` : ''
     const effort = route.effort ? ` at ${route.effort} effort` : ''
-    await debug($, agent, id, `started on ${route.model}${effort}${label}`)
+    await debug($, cause, agent, id, `started on ${route.model}${effort}${label}`)
   }
   const worker = {
     agent,
@@ -744,9 +768,9 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
   }
   await markHandedOver($, id, line)
   await setWorker($, id, worker)
-  await debug($, agent, id, `started for ${line.split(' ')[0]}`)
+  await debug($, cause, agent, id, `started for ${line.split(' ')[0]}`)
   if (meanwhile?.stop) {
-    await stopWorker($, watched, id)
+    await stopWorker($, cause, watched, id)
     if (meanwhile.again) {
       watched.queue.push(meanwhile.again)
       void pump($)
@@ -820,7 +844,13 @@ async function dispatch($: $, watched: Watch, next: Queued) {
  * Ends the comment's agent; `ifRunning`: only while it still works on it, the
  * reader resolved it meanwhile (its own answer ends its turn).
  */
-async function stopWorker($: $, watched: Watch, id: string, ifRunning = false) {
+async function stopWorker(
+  $: $,
+  cause: string,
+  watched: Watch,
+  id: string,
+  ifRunning = false,
+) {
   watched.queue = watched.queue.filter((one) => one.id !== id)
   const pending = starting.get(id)
   if (pending) {
@@ -832,7 +862,7 @@ async function stopWorker($: $, watched: Watch, id: string, ifRunning = false) {
   if (!worker?.running) return
   await $.tool.call({ tool: 'TaskStop', task_id: worker.agent }).catch(() => undefined)
   await setWorker($, id, { ...worker, running: false })
-  await debug($, worker.agent, id, 'stopped: the reader ended the comment')
+  await debug($, cause, worker.agent, id, 'stopped: the reader ended the comment')
   void pump($)
 }
 
@@ -855,26 +885,29 @@ async function onLine(
   if (!/^[\w-]+$/.test(id)) return
   const heard = (watched.heard.get(id) ?? 0) + 1
   watched.heard.set(id, heard)
+  const cause = `server ${kind}`
   const work = WORK[kind]
   if (work) {
-    if (work !== 'edit' && (await wasHandedOver($, id, line))) return
-    const next = { id, line, kind: work }
+    if (work !== 'edit' && (await wasHandedOver($, cause, id, line))) return
+    const next = { id, line, kind: work, cause }
     watched.asked.set(id, next)
     return dispatch($, watched, next)
   }
   switch (kind) {
     case 'CANCELLED':
-      return stopWorker($, watched, id)
+      return stopWorker($, cause, watched, id)
     case 'DELETED':
       await forgetHandOver($, id)
-      return stopWorker($, watched, id)
+      return stopWorker($, cause, watched, id)
     case 'RESOLVED':
       // The agent's own answer ends its turn.
       if (await resolvedByAgent($, watched.root, id)) return
       void $.clock
         .sleep(RESOLVED_GRACE_MS)
         .then(() =>
-          watched.heard.get(id) === heard ? stopWorker($, watched, id, true) : undefined,
+          watched.heard.get(id) === heard
+            ? stopWorker($, cause, watched, id, true)
+            : undefined,
         )
         .catch(() => undefined)
       return
@@ -1188,7 +1221,13 @@ async function registerCommand($: $, command: Parameters<$['command']['register'
   await $.command
     .register(command)
     .catch((error: unknown) =>
-      debug($, 'main', '-', `/${command.name} not registered: ${String(error)}`),
+      debug(
+        $,
+        'session.start',
+        'main',
+        '-',
+        `/${command.name} not registered: ${String(error)}`,
+      ),
     )
 }
 
@@ -1255,6 +1294,7 @@ async function answerMissed($: $, id: string, worker: Worker) {
     )
     await debug(
       $,
+      'turn.complete',
       worker.agent,
       id,
       'the comment still waits, already sent again: left it',
@@ -1262,12 +1302,25 @@ async function answerMissed($: $, id: string, worker: Worker) {
     return
   }
   watched.asked.delete(id)
+  const again = { ...last, cause: 'turn.complete' }
   if (last.kind !== 'new') {
-    await debug($, worker.agent, id, 'the comment still waits: sent the reply again')
-    return dispatch($, watched, { ...last, kind: 'followup' })
+    await debug(
+      $,
+      again.cause,
+      worker.agent,
+      id,
+      'the comment still waits: sent the reply again',
+    )
+    return dispatch($, watched, { ...again, kind: 'followup' })
   }
-  await debug($, worker.agent, id, 'the comment was never claimed: sent it again')
-  if (!(await send($, worker, last))) await dispatch($, watched, last)
+  await debug(
+    $,
+    again.cause,
+    worker.agent,
+    id,
+    'the comment was never claimed: sent it again',
+  )
+  if (!(await send($, worker, again))) await dispatch($, watched, again)
 }
 
 /**
@@ -1282,6 +1335,7 @@ async function workAbandoned($: $, id: string, worker: Worker) {
   if (!project || !comment) {
     await debug(
       $,
+      'turn.complete',
       worker.agent,
       id,
       'turn ended: could not read the comment, left as it is',
@@ -1312,6 +1366,7 @@ async function workAbandoned($: $, id: string, worker: Worker) {
     .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: String(error) }))
   await debug(
     $,
+    'turn.complete',
     worker.agent,
     id,
     ran.stdout.includes('STOPPED')
@@ -1326,7 +1381,7 @@ async function workerDone($: $, agent: string, answer: string) {
   if (!done) return
   await setWorker($, done.id, { ...done.worker, running: false })
   const said = answer.trim().split('\n')[0] ?? ''
-  await debug($, agent, done.id, `turn ended: ${short(said, 120)}`)
+  await debug($, 'turn.complete', agent, done.id, `turn ended: ${short(said, 120)}`)
   await answerMissed($, done.id, done.worker)
   await workAbandoned($, done.id, done.worker)
   if (said && said !== 'CANCELLED') {
@@ -1386,7 +1441,13 @@ export const register: Register = (on) => {
       immediate: true,
     })
     const { version } = await $.session.version()
-    await debug($, 'main', '-', `hooks loaded in a new session (Claude Code ${version})`)
+    await debug(
+      $,
+      'session.start',
+      'main',
+      '-',
+      `hooks loaded in a new session (Claude Code ${version})`,
+    )
     await registerRunning($)
     await rearm($)
     return next(e)

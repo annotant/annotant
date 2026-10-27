@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Changed
+
+- **The hook log names what led to each line**, in brackets after the
+  comment: a hook event of the session (`[turn.complete]`), one of the
+  agent's own hooks (`[PreToolUse]`, `[PostToolUse]`), or a line of the
+  server (`[server NEW]`).
+
 ## 0.2.0 - 2026-10-23
 
 ### Added

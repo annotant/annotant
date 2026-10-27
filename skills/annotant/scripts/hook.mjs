@@ -109,24 +109,40 @@ function writeTarget(tool, input) {
   return undefined
 }
 
-/** The hook log the hooks module writes too: on while its marker exists. */
-async function debug(agent, comment, message) {
+/**
+ * What runs hook.mjs, as the hook log names it: Claude Code's hook event, or
+ * the hooks module's own when it runs it.
+ * @type {Record<string, string | undefined>}
+ */
+const CAUSES = {
+  pre: 'PreToolUse',
+  post: 'PostToolUse',
+  stop: 'Stop',
+  note: 'session.append',
+  ended: 'turn.complete',
+}
+
+/**
+ * The hook log the hooks module writes too, `<time> <agent> <comment> [<cause>]
+ * <message>`: on while its marker exists.
+ */
+async function debug(agent, comment, cause, message) {
   try {
     await readFile(path.join(STATE_ROOT, 'debug'))
   } catch {
     return
   }
-  const line = `${new Date().toISOString()} ${agent} ${comment} ${message}\n`
+  const line = `${new Date().toISOString()} ${agent} ${comment} [${cause}] ${message}\n`
   await appendFile(path.join(STATE_ROOT, 'hook.log'), line).catch(() => undefined)
 }
 
 /**
  * The hooks of one comment's agent.
- * @param {{ comment: string, root: string, lockRoot: string, agent: string }} options
+ * @param {{ comment: string, root: string, lockRoot: string, agent: string, cause: string }} options
  */
-function hooksFor({ comment, root, lockRoot, agent }) {
+function hooksFor({ comment, root, lockRoot, agent, cause }) {
   const project = projectAt(root)
-  const log = (/** @type {string} */ message) => debug(agent, comment, message)
+  const log = (/** @type {string} */ message) => debug(agent, comment, cause, message)
   const scripts = path.dirname(new URL(import.meta.url).pathname)
   const table = path.join(
     STATE_ROOT,
@@ -475,6 +491,9 @@ function hooksFor({ comment, root, lockRoot, agent }) {
   }
 }
 
+/** @param {string | undefined} mode */
+const causeOf = (mode) => (mode && CAUSES[mode]) ?? 'hook.mjs'
+
 async function main() {
   const [mode] = process.argv.slice(2)
   const comment = flag('--comment')
@@ -495,6 +514,7 @@ async function main() {
     root,
     lockRoot: flag('--lock-root') ?? root,
     agent: event.agent_id ?? flag('--agent') ?? '-',
+    cause: event.hook_event_name ?? causeOf(mode),
   })
   if (mode === 'pre') {
     const deny = await hooks.pre(event)
@@ -530,5 +550,11 @@ try {
   await main()
 } catch (error) {
   // Never in the agent's way: its tool runs, unlocked and unrecorded.
-  await debug('-', flag('--comment') ?? '-', `hook.mjs failed: ${String(error)}`)
+  const [mode] = process.argv.slice(2)
+  await debug(
+    '-',
+    flag('--comment') ?? '-',
+    causeOf(mode),
+    `hook.mjs failed: ${String(error)}`,
+  )
 }

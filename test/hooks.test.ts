@@ -417,9 +417,9 @@ test('/annotant-debug turns the hook log on, shows it, and turns it off', async 
   await w.print(newLine('c1'))
   const log = w.file(LOG) ?? ''
   expect(log).toMatch(
-    / a1 c1 started on claude-sonnet-5-5, the comment classified standard\n/,
+    / a1 c1 \[server NEW\] started on claude-sonnet-5-5, the comment classified standard\n/,
   )
-  expect(log).toMatch(/ a1 c1 started for NEW\n/)
+  expect(log).toMatch(/ a1 c1 \[server NEW\] started for NEW\n/)
 
   const shown = await $.command.run(debugCommand(''))
   expect(shown.text).toMatch(/hook log is on/i)
@@ -436,11 +436,13 @@ test('keeps the lines another process appends to the hook log meanwhile', async 
   await $.command.run(debugCommand('on'))
   await watch($, w)
   await w.print(newLine('c1'))
-  w.appendToLogMeanwhile('2026-10-13T00:00:00.000Z a1 c1 locked src/App.tsx\n')
+  w.appendToLogMeanwhile(
+    '2026-10-13T00:00:00.000Z a1 c1 [PreToolUse] locked src/App.tsx\n',
+  )
   await w.print(newLine('c2'))
   const log = w.file(LOG) ?? ''
-  expect(log).toMatch(/ a1 c1 locked src\/App\.tsx\n/)
-  expect(log).toMatch(/ a2 c2 started for NEW\n/)
+  expect(log).toMatch(/ a1 c1 \[PreToolUse\] locked src\/App\.tsx\n/)
+  expect(log).toMatch(/ a2 c2 \[server NEW\] started for NEW\n/)
   await w.exit(0)
 })
 
@@ -454,7 +456,7 @@ test('keeps the hook log under its cap, its newest whole lines', async ($, on) =
   expect(log.length).toBeLessThanOrEqual(128 * 1024)
   expect(log.length).toBeGreaterThan(100 * 1024)
   expect(log).toMatch(/^x{99}\n/)
-  expect(log).toMatch(/ a1 c1 started for NEW\n/)
+  expect(log).toMatch(/ a1 c1 \[server NEW\] started for NEW\n/)
   await w.exit(0)
 })
 
@@ -1144,7 +1146,7 @@ test('a comment its agent left working as its turn ended stops, for the reader t
     ['--comment', 'c1', '--project', ROOT, '--lock-root', ROOT, '--agent', 'a1'],
   ])
   expect(w.file(LOG)).toMatch(
-    / a1 c1 turn ended with the comment working: stopped it, the reader can send it again\n/,
+    / a1 c1 \[turn\.complete\] turn ended with the comment working: stopped it, the reader can send it again\n/,
   )
   // The server's line for the stop finds no agent to end.
   await w.print('CANCELLED c1')
