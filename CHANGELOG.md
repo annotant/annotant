@@ -14,6 +14,12 @@ released to the `stable` branch.
   agent's own hooks (`[PreToolUse]`, `[PostToolUse]`), or a line of the
   server (`[server NEW]`).
 
+### Fixed
+
+- **No more "session.append hook was skipped" notice** on a machine with
+  managed settings: Annotant reads only its agents' responses, not the rows
+  Claude Code's security default keeps away from installed plugins.
+
 ## 0.2.0 - 2026-10-23
 
 ### Added

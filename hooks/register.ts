@@ -1489,8 +1489,10 @@ export const register: Register = (on) => {
   )
 
   // The agent's thinking (often redacted, then an empty label) and the
-  // messages it writes between its tool calls.
-  on('session.append', async ($, e, next) => {
+  // messages it writes between its tool calls. Its responses only: the
+  // organization's policy plugin passes the other doors over the plugins a
+  // person installs, and says so each time.
+  on('session.append', { door: 'response' }, async ($, e, next) => {
     const stored = await next(e)
     if (!e.agentId || e.message.type !== 'assistant') return stored
     const worker = await workerOf($, e.agentId)

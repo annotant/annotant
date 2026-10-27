@@ -56,6 +56,8 @@ function world(
   const removed: string[] = []
   // The arguments of each `hook.mjs ended` the hooks ran.
   const endings: string[][] = []
+  // What hook.mjs note was given: the steps of an agent's responses.
+  const notes: string[] = []
   // Another process appending to the hook log (a comment agent's hook.mjs,
   // another session): its line lands right after the mod next reads or
   // appends to it.
@@ -160,6 +162,7 @@ function world(
       files.set(file, text)
       otherAppends(file)
     }
+    if (e.argv[2] === 'note') notes.push(e.init?.stdin ?? '')
     // hook.mjs ended: it stops the comment its agent left working.
     if (e.argv[2] === 'ended') {
       endings.push(e.argv.slice(3))
@@ -332,6 +335,7 @@ function world(
     clock,
     removed,
     ended: endings,
+    notes,
     setComments,
     /** Comment `id` in `state`, as its agent leaves it: a turn that ends on an open one never took it. */
     setState: (id: string, state: string) =>
@@ -398,6 +402,24 @@ const debugCommand = (args: string): CommandRunInput => ({
   args,
   origin: { kind: 'composer' },
   presentation: { isFullscreen: false, columns: 100 },
+})
+
+test("notes an agent's responses, and leaves the doors the policy plugin passes over", async ($, on) => {
+  const w = world(on, [open('c1')])
+  await watch($, w)
+  await w.print(newLine('c1'))
+  const row = (door: 'response' | 'attachment') =>
+    $.session.append({
+      message: { type: 'assistant', content: [{ type: 'text', text: `From ${door}.` }] },
+      door,
+      agentId: 'a1',
+    })
+  await row('attachment')
+  await row('response')
+  await w.clock.settle()
+  expect(w.notes).toHaveLength(1)
+  expect(w.notes[0]).toMatch(/"label":"From response\."/)
+  await w.exit(0)
 })
 
 test('logs nothing while the hook log is off', async ($, on) => {
