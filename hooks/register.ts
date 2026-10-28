@@ -461,6 +461,8 @@ const SERVER_ERRORS = new Set([
   'COMMENTS_REFUSED',
 ])
 const WATCH_TOOL = 'mcp__annotant__watch'
+const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
+let warnedOfTeammates = false
 
 type Kind = 'new' | 'followup' | 'edit'
 /** The server's lines that ask an agent for work. */
@@ -710,6 +712,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
     (error: unknown) => ({
       deny: error instanceof Error ? error.message : String(error),
       agentId: undefined,
+      teammateId: undefined,
       route: undefined,
     }),
   )
@@ -745,6 +748,7 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
   await markHandedOver($, id, line)
   await setWorker($, id, worker)
   await debug($, agent, id, `started for ${line.split(' ')[0]}`)
+  if (started.teammateId !== undefined) await warnOfTeammate($, agent, id)
   if (meanwhile?.stop) {
     await stopWorker($, watched, id)
     if (meanwhile.again) {
@@ -752,6 +756,21 @@ async function startWorker($: $, watched: Watch, id: string, line: string) {
       void pump($)
     }
   } else if (meanwhile?.message) await send($, worker, meanwhile.message)
+}
+
+/** The agent started as a teammate (agent teams on): its type's hooks never run. */
+async function warnOfTeammate($: $, agent: string, id: string) {
+  await debug(
+    $,
+    agent,
+    id,
+    'runs as a teammate: Claude Code dropped its hooks (no file locks, no tool steps)',
+  )
+  if (warnedOfTeammates) return
+  warnedOfTeammates = true
+  $.ui.toast(
+    `Annotant's agents start as teammates, so Claude Code drops their hooks: no file locks, no tool steps. Put ${AGENT_TEAMS} at '0' in the env of ~/.claude/settings.json; no restart needed.`,
+  )
 }
 
 /**

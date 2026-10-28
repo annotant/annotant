@@ -8,15 +8,17 @@
   },
   "workspaces": [
     "skills/annotant/widget",
-    "playground"
+    "playground",
+    "demo"
   ],
   "scripts": {
     "build": "npm run build --workspace skills/annotant/widget",
     "build:dev": "npm run build:dev --workspace skills/annotant/widget",
     "watch": "npm run watch --workspace skills/annotant/widget",
     "playground": "npm run dev --workspace playground",
+    "demo": "npm run dev --workspace demo",
     "site": "node .github/scripts/site-preview.mjs",
-    "typecheck": "tsc -p skills/annotant/scripts && tsc -p .github/scripts && tsc -p test && tsc -p skills/annotant/widget && tsc -p playground && tsc -p .claude/skills/playground/scripts",
+    "typecheck": "tsc -p skills/annotant/scripts && tsc -p .github/scripts && tsc -p test && tsc -p skills/annotant/widget && tsc -p playground && tsc -p demo && tsc -p .claude/skills/playground/scripts",
     "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives",
     "lint:unused": "knip",
     "format": "prettier --write .",
@@ -27,8 +29,8 @@
   },
   "devDependencies": {
     "@types/node": "26.6.5",
-    "knip": "6.41.0",
-    "oxlint": "1.88.0",
+    "knip": "6.42.1",
+    "oxlint": "1.89.0",
     "oxlint-tsgolint": "7.0.2004",
     "prettier": "3.9.10"
   }

@@ -7,6 +7,18 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.2.1 - 2026-10-28
+
+### Fixed
+
+- **A notification when agent teams drop the agents' hooks.** With Claude
+  Code's agent teams on (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` at `1`), each
+  comment's agent starts as a teammate, and Claude Code keeps none of the
+  hooks its type sets: no file locks, no tool steps under the comment, and
+  no warning. The hook log now notes it for each agent, and a notification,
+  once a session, names the setting to put at `0` in `~/.claude/settings.json`.
+  The README's new _Known issues_ section explains it. (#202)
+
 ## 0.2.0 - 2026-10-23
 
 ### Added

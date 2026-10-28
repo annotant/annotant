@@ -4,5 +4,7 @@ package-lock.json
 skills/annotant/widget/dist/
 /.playground/
 /playground/dist/
+/.demo/
+/demo/dist/
 # Liquid inside HTML tags, which Prettier takes for attributes and breaks.
 site/_layouts/

@@ -16,9 +16,12 @@ skills/annotant/widget/dist/
 .annotant/
 .playwright-mcp/
 
-# The playground's working copy, which /playground runs and agents edit, and its build.
+# The playground's and the demo's working copies, which /playground runs and agents
+# edit, and their builds.
 /.playground/
 /playground/dist/
+/.demo/
+/demo/dist/
 
 # The website, staged and built by `npm run site`.
 /_site-src/

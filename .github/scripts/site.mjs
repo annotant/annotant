@@ -22,7 +22,14 @@ export const PAGES = [
     source: 'README.md',
     path: 'docs/index.md',
     title: 'Guide',
-    sections: ['How it works', 'Install', 'In the widget', 'Troubleshooting', 'Security'],
+    sections: [
+      'How it works',
+      'Install',
+      'In the widget',
+      'Troubleshooting',
+      'Known issues',
+      'Security',
+    ],
   },
   {
     source: 'docs/comments-file.md',

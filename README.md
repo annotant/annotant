@@ -23,6 +23,7 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#in-the-widget">The widget</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#known-issues">Known issues</a> ·
   <a href="#security">Security</a> ·
   <a href="#contributing">Contributing</a>
 </p>
@@ -348,7 +349,26 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 | `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
 | `turn ended with the comment working: …` | The agent ended its turn neither answering nor asking: the comment stops, and the reader sends it again from its thread. |
 | `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
+| `runs as a teammate: Claude Code dropped its hooks …`       | Agent teams are on: the agent has no file locks and records no steps. See [Known issues](#known-issues).                                        |
 | `stopped: the reader ended the comment`                     | The reader stopped, resolved or deleted the comment while its agent worked.                                                                    |
+
+## Known issues
+
+### Agent teams drop the agents' hooks
+
+With Claude Code's [agent teams](https://code.claude.com/docs/en/agent-teams)
+on (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` at `1` in your settings' `env`),
+each comment's agent starts as a teammate, and Claude Code keeps only a few
+fields of its agent type: not its hooks. The agent still makes the change,
+but with no file locks, so two agents may edit the same file at once, and
+no tool steps under the comment. A notification says so, once a session.
+Until Claude Code applies a teammate's hooks, turn agent teams off where you
+turned them on, `~/.claude/settings.json` say; the setting is read again for
+each agent, with no restart:
+
+```json
+{ "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0" } }
+```
 
 ## Security
 
