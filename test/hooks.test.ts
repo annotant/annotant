@@ -15,6 +15,7 @@ const offerOf = (agent: string): Parameters<EngineInterface['agent']['offer']>[0
 
 const ROOT = '/repo/web'
 const LOG = '/home/u/.cache/annotant/hook.log'
+const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
 
 type Comment = {
   id: string
@@ -228,6 +229,9 @@ function world(
   let release = ignore
   // Claude Code refuses the spawn, saying why.
   let denied: string | undefined
+  // Agent teams on: the Agent tool's result names the teammate, which Claude
+  // Code turns into the spawn's teammateId.
+  let teammates = false
   on('agent.spawn', async (_$, e) => {
     await held
     if (denied !== undefined) return { deny: denied }
@@ -237,9 +241,11 @@ function world(
     const asked = e.model ?? registered.get(type)?.model
     spawned.push({ model: asked, prompt: e.prompt, name: e.name, type })
     const model = { haiku: 'claude-haiku-5-5', opus: 'claude-opus-5-5' }[asked ?? '']
+    const agentId = `a${spawned.length}`
     return {
       model: model ?? asked ?? 'claude-sonnet-5-5',
-      agentId: `a${spawned.length}`,
+      agentId,
+      ...(teammates ? { result: { agentId, teammate_id: agentId } } : {}),
     }
   })
   // The classifier: its label, a failed request, or one that never answers.
@@ -301,6 +307,9 @@ function world(
     },
     denySpawns: (why: string) => {
       denied = why
+    },
+    spawnTeammates: () => {
+      teammates = true
     },
     holdSpawns: () => {
       held = new Promise<void>((done) => (release = done))
@@ -420,6 +429,9 @@ test('/annotant-debug turns the hook log on, shows it, and turns it off', async 
     / a1 c1 started on claude-sonnet-5-5, the comment classified standard\n/,
   )
   expect(log).toMatch(/ a1 c1 started for NEW\n/)
+  // Not a teammate: nothing about agent teams.
+  expect(log).not.toContain('runs as a teammate')
+  expect(w.toasts.some((toast) => toast.includes(AGENT_TEAMS))).toBe(false)
 
   const shown = await $.command.run(debugCommand(''))
   expect(shown.text).toMatch(/hook log is on/i)
@@ -841,6 +853,23 @@ test('a comment stopped and sent again while its agent starts gets a new agent',
   await w.releaseSpawns()
   expect(w.stopped).toEqual(['a1'])
   expect(w.spawned.map((agent) => agent.name)).toEqual(['an-c1', 'an-c1'])
+  await w.exit(0)
+})
+
+test('an agent started as a teammate has no hooks: logged for each, told once', async ($, on) => {
+  const w = world(on, [open('c1'), open('c2')])
+  w.spawnTeammates()
+  await $.command.run(debugCommand('on'))
+  await watch($, w)
+  await w.print(newLine('c1'), newLine('c2'))
+  const log = w.file(LOG) ?? ''
+  const dropped =
+    'runs as a teammate: Claude Code dropped its hooks (no file locks, no tool steps)'
+  expect(log).toContain(` a1 c1 ${dropped}\n`)
+  expect(log).toContain(` a2 c2 ${dropped}\n`)
+  expect(w.toasts.filter((toast) => toast.includes(AGENT_TEAMS))).toEqual([
+    expect.stringMatching(/at '0' in the env of ~\/\.claude\/settings\.json/),
+  ])
   await w.exit(0)
 })
 
