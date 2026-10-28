@@ -7,6 +7,8 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.2.1 - 2026-10-28
+
 ### Fixed
 
 - **A notification when agent teams drop the agents' hooks.** With Claude
