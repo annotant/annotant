@@ -1,0 +1,35 @@
+.github/scripts/site.mjs
+  s_526e1cde495b7c::t_7b67f57227f64e 25-32
+test/hooks.test.ts
+  s_526e1cde495b7c::t_b74de823bd0bf3 866-867
+  s_526e1cde495b7c::t_bd5b26c41eac52 18,232-233,244,247-248,432-434,870-871
+  s_526e1cde495b7c::t_7b67f57227f64e 234,311-313,859-865,868-869,872
+  s_526e1cde495b7c::t_8b1696fe955ef4 873-875
+hooks/register.ts
+  s_526e1cde495b7c::t_bd5b26c41eac52 761
+  s_526e1cde495b7c::t_7b67f57227f64e 464-465,715,751,762-773
+  s_526e1cde495b7c::t_b781c9f8ab56b5 774-775
+README.md
+  s_526e1cde495b7c::t_7b67f57227f64e 26,352,355-364,368-371
+  s_526e1cde495b7c::t_bd5b26c41eac52 365-367
+  s_526e1cde495b7c::t_ea8322e3c020a3 372
+CHANGELOG.md
+  s_526e1cde495b7c::t_7b67f57227f64e 10-15,17-19
+  s_526e1cde495b7c::t_bd5b26c41eac52 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b4365dcb82f2f472095c1d378a655ff35bdc5272",
+  "prompts": {},
+  "sessions": {
+    "s_526e1cde495b7c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ef9123e5-3645-454c-b92f-f4a850d3c79d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Kevin Manson <kevin.manson@qohash.com>"
+    }
+  }
+}
