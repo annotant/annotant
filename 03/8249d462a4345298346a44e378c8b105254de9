@@ -1,0 +1,19 @@
+package-lock.json
+  s_bac580f8818eb5::t_886076b9262e20 2763-2765,3896
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "038249d462a4345298346a44e378c8b105254de9",
+  "prompts": {},
+  "sessions": {
+    "s_bac580f8818eb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91dbdc59-2c48-49a4-a33b-011c2d648c14",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kevin Manson <kevin.manson@qohash.com>"
+    }
+  }
+}
