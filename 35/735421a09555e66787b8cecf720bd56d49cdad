@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_526e1cde495b7c::t_1811d957beb799 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35735421a09555e66787b8cecf720bd56d49cdad",
+  "prompts": {},
+  "sessions": {
+    "s_526e1cde495b7c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ef9123e5-3645-454c-b92f-f4a850d3c79d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Kevin Manson <kevin.manson@qohash.com>"
+    }
+  }
+}
