@@ -9,6 +9,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **A drawing leaves the page once what you drew it on is gone.** When none
+  of the elements a drawing covers or points at is on the page any more, its
+  lines no longer circle whatever took their place; its chip in the thread
+  still shows it. (#239)
 - **A drawing stays on what you drew it over when the page narrows.** Resizing
   the docked panel or the window no longer shifts and stretches a drawing over
   content of a fixed width, such as a dropdown list: it follows the element it
