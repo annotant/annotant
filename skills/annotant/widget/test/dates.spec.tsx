@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
 import { DateTime, dateFormat } from '../src/ui'
 import { comment, fakeServer, openPanel, openThread } from './server'
@@ -40,5 +40,6 @@ test('the list and the thread show their dates in French when the reader prefers
 
   openThread('c1')
   renderWidget()
-  expect((await screen.findByText(french)).className).toBe('an-message-time')
+  fireEvent.click(await screen.findByTestId('an-msg'))
+  expect(screen.getByText(french).className).toBe('an-message-time')
 })

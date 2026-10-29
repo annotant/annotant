@@ -1,6 +1,6 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { comment, fakeEvents, fakeServer, openThread } from './server'
+import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, shownStep } from './widget'
 
 test('a claimed comment shows what Claude is doing, and can be cancelled', async () => {
@@ -489,4 +489,113 @@ test('a failed step reads its error aloud, which the line keeps in its title', a
   expect(progress.querySelector('[aria-live]')?.textContent).toBe(
     'npm test failed: Exit 1',
   )
+})
+
+/** The thread's dates on screen: those shown, not those left to screen readers. */
+const shownDates = () =>
+  [...document.body.querySelectorAll('.an-message-time')].map((time) =>
+    time.getAttribute('datetime'),
+  )
+
+test("a thread shows a message's date only once it is clicked, one at a time", async () => {
+  const at = '2026-01-01T11:00:00.000Z'
+  fakeServer([comment({ messages: [{ author: 'claude', body: 'Done.', at }] })])
+  openThread('c1')
+  renderWidget()
+
+  const [first, second] = await screen.findAllByTestId('an-msg')
+  // Screen readers still read every date.
+  expect(first?.querySelector('time')?.className).toBe('an-visually-hidden')
+  expect(shownDates()).toEqual([])
+
+  fireEvent.click(first!)
+  expect(shownDates()).toEqual(['2026-01-01T10:00:00.000Z'])
+  fireEvent.click(second!)
+  expect(shownDates()).toEqual([at])
+  fireEvent.click(second!)
+  expect(shownDates()).toEqual([])
+})
+
+test("Enter or Space on a message shows its date, the keys of what it holds don't", async () => {
+  fakeServer([
+    comment({
+      messages: [
+        {
+          author: 'claude',
+          body: 'Which one?',
+          at: '2026-01-01T11:00:00.000Z',
+          question: true,
+          options: [{ label: 'Red' }, { label: 'Blue' }],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const [first, question] = await screen.findAllByTestId('an-msg')
+  fireEvent.keyDown(first!, { key: 'Enter' })
+  expect(shownDates()).toEqual(['2026-01-01T10:00:00.000Z'])
+  fireEvent.keyDown(first!, { key: ' ' })
+  expect(shownDates()).toEqual([])
+
+  const option = within(question!).getByRole('button', { name: 'Red' })
+  fireEvent.keyDown(option, { key: 'Enter' })
+  fireEvent.click(option)
+  expect(shownDates()).toEqual([])
+})
+
+test('a click that ends a text selection leaves the date as it is', async () => {
+  fakeServer([comment()])
+  openThread('c1')
+  renderWidget()
+
+  const bubble = await screen.findByText('Make the title bigger')
+  const selection = getSelection()!
+  selection.selectAllChildren(bubble)
+  onTestFinished(() => selection.removeAllRanges())
+  fireEvent.click(bubble)
+  expect(shownDates()).toEqual([])
+})
+
+test('a drag across a message leaves the date as it is, whatever the selection says', async () => {
+  fakeServer([comment()])
+  openThread('c1')
+  renderWidget()
+
+  const bubble = await screen.findByText('Make the title bigger')
+  fireEvent.mouseDown(bubble, { clientX: 10, clientY: 10 })
+  fireEvent.click(bubble, { clientX: 80, clientY: 12 })
+  expect(shownDates()).toEqual([])
+  fireEvent.mouseDown(bubble, { clientX: 10, clientY: 10 })
+  fireEvent.click(bubble, { clientX: 11, clientY: 10 })
+  expect(shownDates()).toEqual(['2026-01-01T10:00:00.000Z'])
+})
+
+test("a click on a message's image opens it, not the date", async () => {
+  fakeServer([
+    comment({
+      messages: [
+        {
+          author: 'reader',
+          body: 'Like this',
+          at: '2026-01-01T11:00:00.000Z',
+          images: ['shot.png'],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByAltText('Attached image 1'))
+  expect(shownDates()).toEqual([])
+})
+
+test('the list keeps each thread its date', async () => {
+  fakeServer([comment()])
+  openPanel()
+  renderWidget()
+
+  expect((await screen.findByTestId('an-summary')).querySelector('time')).not.toBeNull()
 })

@@ -239,7 +239,9 @@ code { font-family: var(--cb-mono); }
 .an-discussion { padding: 0; border: none; cursor: default; }
 /* The thread as a chat: the reader's messages right, in the accent; Claude's left, in a tint. */
 .an-chat { display: flex; flex-direction: column; gap: 16px; }
-.an-msg { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* A message takes the focus, to show its date on Enter or Space: outlined for the keyboard only. */
+.an-msg { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; outline: none; }
+.an-msg:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; border-radius: 14px; }
 .an-msg--reader { align-items: flex-end; padding-left: 40px; }
 .an-msg--claude { align-items: flex-start; }
 .an-msg-elements { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: 100%; }
