@@ -13,6 +13,10 @@ released to the `stable` branch.
   threads and the list of comments use the first of the browser's preferred
   languages, not the language of its interface: French first shows
   `28/10/2026 23:37` in an English Chrome. (#218)
+- **A message's date shows when it is clicked.** A thread no longer puts a
+  date under every message: clicking a message, or Enter or Space on it,
+  shows its date, and screen readers still read them all. The list of
+  comments keeps its dates. (#233)
 
 ## 0.2.2 - 2026-10-29
 
