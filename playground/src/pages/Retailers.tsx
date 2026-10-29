@@ -2,9 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { OPENING_SOON, RETAILERS } from '../data'
 
-const SORTS = { name: 'Name', city: 'City', since: 'Since' } as const
-type Sort = keyof typeof SORTS
-const SORT_KEYS: Sort[] = ['name', 'city', 'since']
+const SORT_KEYS = ['name', 'city', 'since'] as const
+type Sort = (typeof SORT_KEYS)[number]
+const SORTS: Record<Sort, string> = { name: 'Name', city: 'City', since: 'Since' }
 
 /** Mounted before the app's root, as some modal libraries do: earlier in the DOM than the page it covers. */
 function Portal({ children }: { children: ReactNode }) {

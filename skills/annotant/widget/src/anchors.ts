@@ -507,7 +507,7 @@ const overlaps = (a: ReviewBox, b: ReviewBox) =>
 
 /**
  * The page's elements under `parent`: a `display: contents` one has no box, its
- * children do; nor has the wrapper of a layer that `through` holds (a portal).
+ * children do; nor has a wrapper `through` picks (a portal's).
  */
 function laidOut(
   parent: Element,
@@ -523,7 +523,7 @@ function laidOut(
   })
 }
 
-/** Where a rectangle is hit-tested: its centre first, then four points around it. */
+/** Where a box is hit-tested: its centre first, then four points around it. */
 const SAMPLES = [
   [0.5, 0.5],
   [0.25, 0.25],
@@ -532,18 +532,23 @@ const SAMPLES = [
   [0.75, 0.75],
 ] as const
 
+/** The points of `box` that `SAMPLES` names. */
+const samplesOf = (box: ReviewBox): DrawnPoint[] =>
+  SAMPLES.map(([x, y]) => ({ x: box.left + box.width * x, y: box.top + box.height * y }))
+
 /** The page's elements painted on top in `rect`, at its centre first; none off screen. */
 function paintedIn(root: Element, rect: ReviewBox): Element[] {
-  return SAMPLES.map(([x, y]) =>
-    hitAt(root, { x: rect.left + rect.width * x, y: rect.top + rect.height * y }),
-  ).filter((element) => element !== undefined)
+  return samplesOf(rect)
+    .map((point) => hitAt(root, point))
+    .filter((element) => element !== undefined)
 }
 
 /**
- * The element `rect` lies in: from what is painted at its centre, the first
- * element up that holds all of it, `root` when none does; an overlay, not the
- * page under it, wherever it is in the DOM. Where nothing is hit, by layout
- * alone: the smallest element that holds it, the later of two siblings.
+ * The element `rect` lies in: from the first element painted in it, its centre
+ * first, the first element up that holds all of it, `root` when none does (a
+ * dropdown smaller than it); an overlay, not the page under it, wherever it is
+ * in the DOM. Where nothing is hit, by layout alone: the smallest element that
+ * holds it, the later of two siblings.
  */
 function holderFor(root: Element, rect: ReviewBox, painted: Element[]): Element {
   const [top] = painted
@@ -562,10 +567,33 @@ function holderFor(root: Element, rect: ReviewBox, painted: Element[]): Element 
   }
 }
 
+/** Drawn over what is behind: a background, or an image. */
+const OPAQUE = 'img, video, canvas, iframe, svg, picture, object, embed'
+const clear = (color: string) =>
+  !color || color === 'transparent' || /,\s*0\)$/.test(color)
+
 /**
- * Whether `element` shows where it is in `rect`: what is painted at the
- * middle of its part there is itself, in it, or holds it (a box that lets
- * clicks through), not a layer over it. Unknown off screen: shown.
+ * Whether `layer`, or what holds it short of the branch it shares with
+ * `element`, paints over `element`: a modal's panel, not a transparent link
+ * stretched over a card to make all of it a click target.
+ */
+function paintsOver(layer: Element, element: Element): boolean {
+  for (let node: Element | null = layer; node && !node.contains(element);) {
+    if (node.matches(OPAQUE)) return true
+    const { backgroundColor, backgroundImage } = getComputedStyle(node)
+    if (!clear(backgroundColor) || (backgroundImage && backgroundImage !== 'none'))
+      return true
+    node = node.parentElement
+  }
+  return false
+}
+
+/**
+ * Whether `element` shows in `rect`: at one of a few points of its part there,
+ * what is painted is itself, in it, holds it (a box that lets clicks through),
+ * or does not paint over it; one that clicks go through (`pointer-events:
+ * none`) shows whatever is under it. Unknown off screen, or where nothing is
+ * hit: shown.
  */
 function shownIn(root: Element, element: Element, box: ReviewBox, rect: ReviewBox) {
   const left = Math.max(box.left, rect.left, 0)
@@ -577,8 +605,17 @@ function shownIn(root: Element, element: Element, box: ReviewBox, rect: ReviewBo
     window.innerHeight,
   )
   if (right <= left || bottom <= top) return true
-  const hit = hitAt(root, { x: (left + right) / 2, y: (top + bottom) / 2 })
-  return !hit || element.contains(hit) || hit.contains(element)
+  const part = { left, top, width: right - left, height: bottom - top }
+  const covered = samplesOf(part).every((point) => {
+    const hit = hitAt(root, point)
+    return (
+      !!hit &&
+      !element.contains(hit) &&
+      !hit.contains(element) &&
+      paintsOver(hit, element)
+    )
+  })
+  return !covered || getComputedStyle(element).pointerEvents === 'none'
 }
 
 /**
