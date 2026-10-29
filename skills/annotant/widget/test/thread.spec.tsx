@@ -497,7 +497,7 @@ const shownDates = () =>
     time.getAttribute('datetime'),
   )
 
-test("a thread shows a message's date only once it is clicked, one at a time", async () => {
+test("a thread shows a message's date only once it is clicked, each on its own", async () => {
   const at = '2026-01-01T11:00:00.000Z'
   fakeServer([comment({ messages: [{ author: 'claude', body: 'Done.', at }] })])
   openThread('c1')
@@ -510,9 +510,26 @@ test("a thread shows a message's date only once it is clicked, one at a time", a
 
   fireEvent.click(first!)
   expect(shownDates()).toEqual(['2026-01-01T10:00:00.000Z'])
+  // Another message's date shows too: the first one's stays.
   fireEvent.click(second!)
+  expect(shownDates()).toEqual(['2026-01-01T10:00:00.000Z', at])
+  fireEvent.click(first!)
   expect(shownDates()).toEqual([at])
-  fireEvent.click(second!)
+})
+
+test("a date shown in one thread stays out of another's message with the same id", async () => {
+  fakeServer([
+    comment({ id: 'c1', body: 'Make the title bigger' }),
+    comment({ id: 'c2', body: 'Make the footer smaller' }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByTestId('an-msg'))
+  expect(shownDates()).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Make the footer smaller' }))
+  await screen.findByText('Make the footer smaller', { selector: '.an-bubble' })
   expect(shownDates()).toEqual([])
 })
 

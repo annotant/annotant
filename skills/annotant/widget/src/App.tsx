@@ -729,10 +729,14 @@ export default function App({ root }: { root: Element }) {
   const width = clampWidth(chosenWidth)
   const [view, setView] = useState<View>(saved?.view ?? 'page')
   const [threadId, setThreadId] = useState(saved?.threadId)
-  /** The message whose date shows: one at a time. */
-  const [datedId, setDatedId] = useState<string>()
-  const toggleDate = (id: string) =>
-    setDatedId((dated) => (dated === id ? undefined : id))
+  /** The messages whose date shows, as `<comment>/<message>`: message ids repeat across threads. */
+  const [dated, setDated] = useState<ReadonlySet<string>>(new Set())
+  const toggleDate = (key: string) =>
+    setDated((keys) => {
+      const next = new Set(keys)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     saved?.statusFilter ?? 'open',
   )
@@ -1785,8 +1789,8 @@ export default function App({ root }: { root: Element }) {
               key={message.id}
               author="claude"
               at={message.at}
-              dated={message.id === datedId}
-              onToggle={() => toggleDate(message.id)}
+              dated={dated.has(`${comment.id}/${message.id}`)}
+              onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
             >
               {message.question ? (
                 <Question
@@ -1807,8 +1811,8 @@ export default function App({ root }: { root: Element }) {
               key={message.id}
               author="reader"
               at={message.at}
-              dated={message.id === datedId}
-              onToggle={() => toggleDate(message.id)}
+              dated={dated.has(`${comment.id}/${message.id}`)}
+              onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
             >
               {message.images?.length ? (
                 <div className="an-images">
