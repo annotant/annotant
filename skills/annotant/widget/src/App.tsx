@@ -323,9 +323,64 @@ function Waiting({
   )
 }
 
-// The date as well as the time: a thread can outlive the day it started.
-function MessageTime({ at }: { at: string }) {
-  return <DateTime className="an-message-time" at={at} />
+/** How far the pointer moves, in pixels, before a press is a drag. */
+const DRAG = 4
+
+/**
+ * A message in the thread. Its date, under every message, would be noise: a
+ * click on the message, or Enter or Space on it, shows or hides it, and screen
+ * readers read it all along. The date as well as the time: a
+ * thread can outlive the day it started.
+ */
+function Message({
+  author,
+  at,
+  dated,
+  onToggle,
+  children,
+}: {
+  author: ReviewMessage['author']
+  at: string
+  dated: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const pressedAt = useRef<{ x: number; y: number }>(undefined)
+  return (
+    <div
+      className={`an-msg an-msg--${author}`}
+      tabIndex={0}
+      data-testid="an-msg"
+      onMouseDown={(event) => {
+        pressedAt.current = { x: event.clientX, y: event.clientY }
+      }}
+      onClick={(event) => {
+        // A link, a button or a field keeps its own action; an image is in a link.
+        const { target } = event
+        if (
+          target instanceof Element &&
+          target.closest('a, button, input, textarea, select, label')
+        )
+          return
+        // A drag that selects the text is not a click: the widget's shadow root
+        // may hide its selection from the document's, so the pointer tells too.
+        const from = pressedAt.current
+        if (from && Math.hypot(event.clientX - from.x, event.clientY - from.y) > DRAG)
+          return
+        if (getSelection()?.toString()) return
+        onToggle()
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || event.repeat) return
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onToggle()
+      }}
+    >
+      {children}
+      <DateTime className={dated ? 'an-message-time' : 'an-visually-hidden'} at={at} />
+    </div>
+  )
 }
 
 /**
@@ -674,6 +729,14 @@ export default function App({ root }: { root: Element }) {
   const width = clampWidth(chosenWidth)
   const [view, setView] = useState<View>(saved?.view ?? 'page')
   const [threadId, setThreadId] = useState(saved?.threadId)
+  /** The messages whose date shows, as `<comment>/<message>`: message ids repeat across threads. */
+  const [dated, setDated] = useState<ReadonlySet<string>>(new Set())
+  const toggleDate = (key: string) =>
+    setDated((keys) => {
+      const next = new Set(keys)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     saved?.statusFilter ?? 'open',
   )
@@ -1722,7 +1785,13 @@ export default function App({ root }: { root: Element }) {
         {comment.messages.map((message, index, messages) =>
           message.author === 'claude' ? (
             // Its steps were only there to wait on it: an answer shows alone.
-            <div key={message.id} className="an-msg an-msg--claude">
+            <Message
+              key={message.id}
+              author="claude"
+              at={message.at}
+              dated={dated.has(`${comment.id}/${message.id}`)}
+              onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
+            >
               {message.question ? (
                 <Question
                   message={message}
@@ -1736,10 +1805,15 @@ export default function App({ root }: { root: Element }) {
               ) : (
                 <div className="an-bubble an-bubble--claude">{message.body}</div>
               )}
-              <MessageTime at={message.at} />
-            </div>
+            </Message>
           ) : (
-            <div key={message.id} className="an-msg an-msg--reader">
+            <Message
+              key={message.id}
+              author="reader"
+              at={message.at}
+              dated={dated.has(`${comment.id}/${message.id}`)}
+              onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
+            >
               {message.images?.length ? (
                 <div className="an-images">
                   {message.images.map((name, image) => (
@@ -1772,8 +1846,7 @@ export default function App({ root }: { root: Element }) {
               {message.body && (
                 <div className="an-bubble an-bubble--reader">{message.body}</div>
               )}
-              <MessageTime at={message.at} />
-            </div>
+            </Message>
           ),
         )}
       </div>
