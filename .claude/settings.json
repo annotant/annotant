@@ -2,5 +2,17 @@
   "enabledPlugins": {
     "annotant@annotant": false,
     "code-buddy@code-buddy": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/node-from-nvmrc.sh"
+          }
+        ]
+      }
+    ]
   }
 }
