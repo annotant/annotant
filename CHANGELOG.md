@@ -7,6 +7,14 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Changed
+
+- **Agents answer in the reader's language.** A comment's agent writes its
+  answer and its questions in the language of the reader's last message.
+  Its instructions no longer assume Playwright or components: it looks at an
+  unclear element with a browser tool when it has one, and asks in the thread
+  otherwise. (#223)
+
 ### Fixed
 
 - **A drawn area greys out once its agent changes the code.** An area or a
