@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Fixed
+
+- **A drawing's picture shows only what you saw.** The picture Claude gets
+  stays within the window, and paints the page in its stacking order (a modal
+  over what it covers, a dropdown over a footer), each part cut by the boxes
+  it scrolls in, as on screen. Black text shows in it again. (#241)
+
 ## 0.3.0 - 2026-10-29
 
 ### Added
