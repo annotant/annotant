@@ -228,8 +228,12 @@ floats or is docked, hold for every tab of the app and the next sessions.
   detail, a line along an alignment that is off. Draw with the mouse, a pen or
   a finger; _Undo_ takes the last line back, _Clear_ all of them, _Done_ (or
   Enter) ends the drawing. A page-level comment can get one too, with _Draw on
-  the page_. The drawing stays on the page while you write, and is placed as
-  an area is: in the element its lines lie in, stretching with its width.
+  the page_. The drawing stays on the page while you write, and is placed
+  from what it was drawn over: the largest element wholly in its lines' box,
+  else the one they point at, following that element's width. Over a list of
+  a fixed width it moves with the list and keeps its size when the page
+  narrows; over text that wraps it narrows with the text. With none, it is
+  placed as an area is: in the element its lines lie in.
   Claude receives the lines, the elements around them (a margin past their
   box, so what an arrow points at is in) and the one the longest line points
   at (under its end, or the next one along it when it ends in a gap), and a
