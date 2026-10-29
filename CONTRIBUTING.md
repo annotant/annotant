@@ -22,6 +22,9 @@ merged. By taking part, you agree to follow the [code of conduct](CODE_OF_CONDUC
 You need [Node.js](https://nodejs.org) 22.12 or later, except 25, which
 Vitest does not support and `npm ci` refuses (CI uses the version in
 [`.nvmrc`](.nvmrc)); npm; and [Claude Code](https://claude.com/claude-code).
+A Claude Code session started in the clone puts that version first on its
+commands' `PATH` when nvm, fnm or Homebrew has it installed
+([`.claude/hooks/node-from-nvmrc.sh`](.claude/hooks/node-from-nvmrc.sh)).
 
 ```sh
 git clone https://github.com/<you>/annotant
