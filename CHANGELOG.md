@@ -7,6 +7,8 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-29
+
 ### Added
 
 - **The closed widget's strip of tools moves.** Drag it by its grip, or move
@@ -19,7 +21,6 @@ released to the `stable` branch.
 - **The layout holds for every tab.** Where the strip of tools is, whether
   the panel floats or is docked and its width are kept for every tab of the
   app and the next sessions, not only the tab they were chosen in. (#217)
-
 - **Dates follow the reader's preferred languages.** The dates in the
   threads and the list of comments use the first of the browser's preferred
   languages, not the language of its interface: French first shows
@@ -27,8 +28,7 @@ released to the `stable` branch.
 - **A message's date shows when it is clicked.** A thread no longer puts a
   date under every message: clicking a message, or Enter or Space on it,
   shows or hides its date, each message on its own, and screen readers still
-  read them all. The list of
-  comments keeps its dates. (#233)
+  read them all. The list of comments keeps its dates. (#233)
 
 ## 0.2.2 - 2026-10-29
 
