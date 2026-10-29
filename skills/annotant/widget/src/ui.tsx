@@ -168,6 +168,35 @@ export function Chip({
   )
 }
 
+/**
+ * The date and time in the reader's preferred languages (`navigator.languages`),
+ * not the browser's interface one: `Intl` takes the first it supports. An empty
+ * list, or one `Intl` rejects (a tag the page made up), → the default locale.
+ */
+export function dateFormat(
+  languages: readonly string[] | undefined = navigator.languages,
+) {
+  const options: Intl.DateTimeFormatOptions = { dateStyle: 'short', timeStyle: 'short' }
+  try {
+    return new Intl.DateTimeFormat(languages?.length ? languages : undefined, options)
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options)
+  }
+}
+
+// Built on the first date shown, then kept for the page's life.
+let dates: Intl.DateTimeFormat | undefined
+
+export function DateTime({ at, className }: { at: string; className?: string }) {
+  const date = new Date(at)
+  return (
+    <time className={className} dateTime={at}>
+      {/* `format` throws on an invalid date: a hand-edited comments file shows it as is. */}
+      {Number.isNaN(date.getTime()) ? at : (dates ??= dateFormat()).format(date)}
+    </time>
+  )
+}
+
 export function Spinner({ size = 16 }: { size?: number }) {
   return (
     <svg

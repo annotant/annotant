@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Changed
+
+- **Dates follow the reader's preferred languages.** The dates in the
+  threads and the list of comments use the first of the browser's preferred
+  languages, not the language of its interface: French first shows
+  `28/10/2026 23:37` in an English Chrome. (#218)
+
 ## 0.2.2 - 2026-10-29
 
 ### Changed
