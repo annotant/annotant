@@ -7,6 +7,8 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.2.2 - 2026-10-29
+
 ### Changed
 
 - **Agents answer in the reader's language.** A comment's agent writes its
