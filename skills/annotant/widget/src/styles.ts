@@ -341,6 +341,10 @@ code { font-family: var(--cb-mono); }
 /* A drawing's lines carry the rainbow (overlays.tsx): its box is not framed. */
 .an-mark--drawing { background: none; }
 .an-mark--drawing::before { content: none; }
+/* Its agent has written, or is writing, a file: the area is where the content was, not where it is. */
+.an-mark--area[data-outdated] { background: none; opacity: .45; }
+.an-mark--area[data-outdated]::before { background: var(--cb-muted); animation: none; }
+.an-mark--area[data-outdated] .an-strokes { stroke: var(--cb-muted); }
 /* Drawing: the page under a veil, but for the area being drawn and what it covers. */
 .an-draw { position: fixed; inset: 0; cursor: crosshair; }
 .an-draw-box { position: fixed; border: 2px solid var(--cb-accent); border-radius: 2px; background: rgba(var(--cb-accent-rgb), .06); box-shadow: 0 0 0 100vmax rgba(16, 36, 74, .28); }

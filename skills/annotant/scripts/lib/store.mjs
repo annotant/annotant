@@ -35,6 +35,19 @@ const WRITE_KINDS = new Set(['edit', 'write', 'multiedit'])
 // What the agent says and thinks accompanies its steps; it is not one.
 const NARRATION_KINDS = new Set(['thinking', 'message'])
 
+/**
+ * The files the steps wrote, or are writing: a failed write changed nothing;
+ * one still running, or cut short by a stop, may have.
+ * @param {import('./format.mjs').Step[]} steps
+ */
+const writtenBy = (steps) => [
+  ...new Set(
+    steps
+      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed')
+      .map((s) => s.label),
+  ),
+]
+
 /** Waiting for an agent, or worked on by one: what agents and the server act on. */
 export const isActive = (comment) =>
   comment.state === 'open' || comment.state === 'working'
@@ -96,11 +109,10 @@ function move(comment, to, { by, run, agent, model, complexity, message }) {
  * step, in the place where it started. Sorted by time.
  * @param {{ progressDir: string }} project
  * @param {string} id
- * @param {number} [limit]
  * @param {{ history?: boolean }} [options]
  * @returns {Promise<import('./format.mjs').Step[]>}
  */
-export async function readProgress(project, id, limit, { history = false } = {}) {
+export async function readProgress(project, id, { history = false } = {}) {
   let lines
   try {
     const file = history ? historyPath(project, id) : progressPath(project, id)
@@ -128,7 +140,7 @@ export async function readProgress(project, id, limit, { history = false } = {})
   // By time: the hooks module writes what the agent thinks while hook.mjs
   // writes its tools, and either may land first.
   steps.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
-  return limit ? steps.slice(-limit) : steps
+  return steps
 }
 
 /** @param {string} file */
@@ -331,14 +343,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     await endRun(id, run)
     return {
       at,
-      changed: [
-        ...new Set(
-          steps
-            // A failed write changed nothing; one cut short by the stop may have.
-            .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed')
-            .map((s) => s.label),
-        ),
-      ],
+      changed: writtenBy(steps),
       steps: steps.filter((s) => !NARRATION_KINDS.has(s.kind)).length,
       ...(run ? { run } : {}),
     }
@@ -455,17 +460,19 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         )
         return Promise.all(
           comments.map(async (c) => {
-            /** @type {CommentV2 & { progress?: unknown[], history?: unknown[] }} */
+            /** @type {CommentV2 & { progress?: unknown[], edited?: true, history?: unknown[] }} */
             const listed = { ...c }
             // Only a run in progress has steps to show.
             if (c.state === 'working') {
-              const progress = await readProgress(project, c.id, PROGRESS_SHOWN)
-              if (progress.length) listed.progress = progress
+              const steps = await readProgress(project, c.id)
+              if (steps.length) listed.progress = steps.slice(-PROGRESS_SHOWN)
+              // Its first write may be out of the steps shown.
+              if (writtenBy(steps).length) listed.edited = true
             }
             if (history) {
               // The runs that ended, then the one in progress.
               const steps = [
-                ...(await readProgress(project, c.id, undefined, { history })),
+                ...(await readProgress(project, c.id, { history })),
                 ...(await readProgress(project, c.id)),
               ]
               if (steps.length) listed.history = steps

@@ -24,6 +24,7 @@ import {
   type ReviewBox,
   gist,
   markedElement,
+  outdated,
   pickedMark,
   type ReviewComment,
   wasResolved,
@@ -314,7 +315,7 @@ export function ElementMarks({
  * it, as its width follows the element it lies in. With `rainbow`, the id of
  * its gradient, they carry the rainbow of a comment in progress, turning.
  */
-function Strokes({ area, rainbow }: { area: ReviewArea; rainbow?: string }) {
+function Strokes({ area, rainbow }: { area: ReviewArea; rainbow?: string | undefined }) {
   if (!area.strokes?.length) return null
   const { width, height } = area
   // Its ends a diagonal apart, the gradient covers the box as it turns.
@@ -404,7 +405,10 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
 /**
  * Frames around the areas comments were drawn on, as around an element,
  * until their thread is first resolved; a bubble on each opens its thread.
- * A drawing has no frame: its lines carry the rainbow.
+ * A drawing has no frame: its lines carry the rainbow. Once its agent has
+ * written a file, while it works or once stopped, the page under an area may
+ * have changed: it greys out, as what the reader pointed at, not what is
+ * there now.
  */
 export function AreaMarks({
   root,
@@ -425,6 +429,7 @@ export function AreaMarks({
             <div
               className={`an-mark an-mark--area${area.strokes ? ' an-mark--drawing' : ''}`}
               data-testid="an-area-mark"
+              data-outdated={outdated(comment) || undefined}
               style={{
                 top: frame.top - shown.top,
                 left: frame.left - shown.left,
@@ -432,7 +437,10 @@ export function AreaMarks({
                 height: frame.height,
               }}
             >
-              <Strokes area={area} rainbow={`an-rainbow-${comment.id}`} />
+              <Strokes
+                area={area}
+                rainbow={outdated(comment) ? undefined : `an-rainbow-${comment.id}`}
+              />
             </div>
           </div>
           <button

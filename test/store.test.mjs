@@ -176,6 +176,30 @@ test('only a claimed comment shows progress, a tool merged from start to end', a
   ])
 })
 
+test('a run that wrote a file says so, even once the write is out of the steps shown', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, id: 't0', kind: 'read', label: 'a.ts', state: 'done' },
+    { at: 1, id: 't1', kind: 'edit', label: 'a.ts', state: 'failed' },
+  )
+  // A read writes nothing, and a failed write changed nothing.
+  assert.equal((await comments.list('/'))[0].edited, undefined)
+  await appendProgress(
+    project,
+    comment.id,
+    // Still running: it may already have changed the file.
+    { at: 2, id: 't2', kind: 'write', label: 'b.ts', state: 'running' },
+    ...Array.from({ length: 12 }, (_, i) => ({ at: 3 + i, kind: 'thinking', label: '' })),
+  )
+  const [listed] = await comments.list('/')
+  assert.equal(listed.edited, true)
+  // The 10 steps shown are all thinking: the write is not one of them.
+  assert.equal(listed.progress?.length, 10)
+})
+
 test('steps show in the order they happened, whichever process wrote one first', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)
