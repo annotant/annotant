@@ -7,7 +7,18 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **The closed widget's strip of tools moves.** Drag it by its grip, or move
+  it with the arrow keys (Shift for bigger steps), where it covers nothing of
+  the page; a double-click on the grip puts it back in the bottom right
+  corner. It stays fully on screen, even after the window is resized. (#236)
+
 ### Changed
+
+- **The layout holds for every tab.** Where the strip of tools is, whether
+  the panel floats or is docked and its width are kept for every tab of the
+  app and the next sessions, not only the tab they were chosen in. (#217)
 
 - **Dates follow the reader's preferred languages.** The dates in the
   threads and the list of comments use the first of the browser's preferred
