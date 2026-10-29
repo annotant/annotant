@@ -129,6 +129,15 @@ code { font-family: var(--cb-mono); }
   padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
   background: var(--cb-surface); box-shadow: 0 4px 16px rgba(0,0,0,.15);
 }
+/* Its grip moves it: the tools keep their clicks. */
+.an-grip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 30px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; color: var(--cb-muted); cursor: grab; touch-action: none;
+}
+.an-grip:hover { color: var(--cb-text); background: var(--cb-surface-2); }
+.an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
+.an-dock[data-moving] .an-grip { cursor: grabbing; }
 .an-tool { border-radius: 7px; }
 .an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
 .an-tool--idle svg { width: 18px; height: 18px; }
