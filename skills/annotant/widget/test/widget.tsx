@@ -37,3 +37,32 @@ export function stubHighlights() {
   )
   return highlights
 }
+
+/** A ResizeObserver whose callbacks the test calls: happy-dom lays nothing out. */
+export function resizes() {
+  const observers: { callback: ResizeObserverCallback; targets: Set<Element> }[] = []
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      targets = new Set<Element>()
+      constructor(callback: ResizeObserverCallback) {
+        observers.push({ callback, targets: this.targets })
+      }
+      observe(target: Element) {
+        this.targets.add(target)
+      }
+      unobserve(target: Element) {
+        this.targets.delete(target)
+      }
+      disconnect() {
+        this.targets.clear()
+      }
+    },
+  )
+  return (target: Element | null) => {
+    for (const { callback, targets } of observers) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the widget reads no entry
+      if (target && targets.has(target)) callback([], {} as ResizeObserver)
+    }
+  }
+}

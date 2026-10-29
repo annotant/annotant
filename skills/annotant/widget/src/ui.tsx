@@ -43,6 +43,7 @@ const PATHS = {
   'arrow-up': 'M12 19V5M6 11l6-6 6 6',
   'chevron-down': 'M6 9l6 6 6-6',
   check: 'M5 12l5 5 9-11',
+  grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
 } as const
 
 export type IconName = keyof typeof PATHS
@@ -165,6 +166,35 @@ export function Chip({
     <span className={`an-chip an-chip--${tone}${small ? ' an-chip--small' : ''}`}>
       {children}
     </span>
+  )
+}
+
+/**
+ * The date and time in the reader's preferred languages (`navigator.languages`),
+ * not the browser's interface one: `Intl` takes the first it supports. An empty
+ * list, or one `Intl` rejects (a tag the page made up), → the default locale.
+ */
+export function dateFormat(
+  languages: readonly string[] | undefined = navigator.languages,
+) {
+  const options: Intl.DateTimeFormatOptions = { dateStyle: 'short', timeStyle: 'short' }
+  try {
+    return new Intl.DateTimeFormat(languages?.length ? languages : undefined, options)
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options)
+  }
+}
+
+// Built on the first date shown, then kept for the page's life.
+let dates: Intl.DateTimeFormat | undefined
+
+export function DateTime({ at, className }: { at: string; className?: string }) {
+  const date = new Date(at)
+  return (
+    <time className={className} dateTime={at}>
+      {/* `format` throws on an invalid date: a hand-edited comments file shows it as is. */}
+      {Number.isNaN(date.getTime()) ? at : (dates ??= dateFormat()).format(date)}
+    </time>
   )
 }
 

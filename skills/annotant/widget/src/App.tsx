@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SyntheticEvent,
@@ -59,6 +60,17 @@ import {
 import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
+import {
+  type Box,
+  type Size,
+  fitBox,
+  fitPlace,
+  placeOf,
+  placeStyle,
+  readLayout,
+  viewport,
+  writeLayout,
+} from './layout'
 import { setInlineStyle } from './inline'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
 import {
@@ -77,6 +89,7 @@ import {
   Checkbox,
   Chip,
   Composer,
+  DateTime,
   type IconName,
   Icon,
   IconButton,
@@ -322,12 +335,63 @@ function Waiting({
   )
 }
 
-// The date as well as the time: a thread can outlive the day it started.
-function MessageTime({ at }: { at: string }) {
+/** How far the pointer moves, in pixels, before a press is a drag. */
+const DRAG = 4
+
+/**
+ * A message in the thread. Its date, under every message, would be noise: a
+ * click on the message, or Enter or Space on it, shows or hides it, and screen
+ * readers read it all along. The date as well as the time: a
+ * thread can outlive the day it started.
+ */
+function Message({
+  author,
+  at,
+  dated,
+  onToggle,
+  children,
+}: {
+  author: ReviewMessage['author']
+  at: string
+  dated: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const pressedAt = useRef<{ x: number; y: number }>(undefined)
   return (
-    <time className="an-message-time" dateTime={at}>
-      {new Date(at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
-    </time>
+    <div
+      className={`an-msg an-msg--${author}`}
+      tabIndex={0}
+      data-testid="an-msg"
+      onMouseDown={(event) => {
+        pressedAt.current = { x: event.clientX, y: event.clientY }
+      }}
+      onClick={(event) => {
+        // A link, a button or a field keeps its own action; an image is in a link.
+        const { target } = event
+        if (
+          target instanceof Element &&
+          target.closest('a, button, input, textarea, select, label')
+        )
+          return
+        // A drag that selects the text is not a click: the widget's shadow root
+        // may hide its selection from the document's, so the pointer tells too.
+        const from = pressedAt.current
+        if (from && Math.hypot(event.clientX - from.x, event.clientY - from.y) > DRAG)
+          return
+        if (getSelection()?.toString()) return
+        onToggle()
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || event.repeat) return
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onToggle()
+      }}
+    >
+      {children}
+      <DateTime className={dated ? 'an-message-time' : 'an-visually-hidden'} at={at} />
+    </div>
   )
 }
 
@@ -533,8 +597,9 @@ interface PendingCenter {
 
 interface UiState {
   open: boolean
-  docked: boolean
-  width: number
+  /** Kept by this tab before the layout was kept for all of them. */
+  docked?: boolean
+  width?: number
   view: View
   threadId?: string
   statusFilter: StatusFilter
@@ -670,13 +735,29 @@ export default function App({ root }: { root: Element }) {
   const [restored, setRestored] = useState(open)
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
-  const [docked, setDocked] = useState(saved?.docked ?? false)
+  const [savedLayout] = useState(readLayout)
+  const [docked, setDocked] = useState(savedLayout.docked ?? saved?.docked ?? false)
   // The width chosen, kept as is: the window, maybe narrower, only caps the one shown.
-  const [chosenWidth, setWidth] = useState(saved?.width ?? PANEL_WIDTH)
-  const [, setWindowWidth] = useState(window.innerWidth)
+  const [chosenWidth, setWidth] = useState(
+    savedLayout.width ?? saved?.width ?? PANEL_WIDTH,
+  )
+  const [windowSize, setWindow] = useState(viewport)
+  // Where the reader put the closed widget's tools, kept as is: the window only keeps them on screen.
+  const [strip, setStrip] = useState(savedLayout.strip)
+  const [stripSize, setStripSize] = useState<Size>()
+  // Where the tools are while they are dragged, from the window's top left corner.
+  const [moving, setMoving] = useState<{ left: number; top: number }>()
   const width = clampWidth(chosenWidth)
   const [view, setView] = useState<View>(saved?.view ?? 'page')
   const [threadId, setThreadId] = useState(saved?.threadId)
+  /** The messages whose date shows, as `<comment>/<message>`: message ids repeat across threads. */
+  const [dated, setDated] = useState<ReadonlySet<string>>(new Set())
+  const toggleDate = (key: string) =>
+    setDated((keys) => {
+      const next = new Set(keys)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     saved?.statusFilter ?? 'open',
   )
@@ -781,15 +862,13 @@ export default function App({ root }: { root: Element }) {
   const watching = page.reachable
 
   useEffect(() => {
-    writeSession(UI_KEY, {
-      open,
-      docked,
-      width: chosenWidth,
-      view,
-      threadId,
-      statusFilter,
-    })
-  }, [open, docked, chosenWidth, view, threadId, statusFilter])
+    writeSession(UI_KEY, { open, view, threadId, statusFilter })
+  }, [open, view, threadId, statusFilter])
+
+  // Each on its own, so that a tab writes only what was changed in it.
+  useEffect(() => writeLayout('docked', docked), [docked])
+  useEffect(() => writeLayout('width', chosenWidth), [chosenWidth])
+  useEffect(() => writeLayout('strip', strip), [strip])
 
   // Not while the draft kept is still to come back: it would be forgotten.
   useEffect(() => {
@@ -960,7 +1039,7 @@ export default function App({ root }: { root: Element }) {
     refocus.current = false
     const back = opener.current?.isConnected
       ? opener.current
-      : dock.current?.querySelector('button')
+      : dock.current?.querySelector<HTMLElement>('.an-tool')
     opener.current = undefined
     back?.focus()
   }, [open])
@@ -975,10 +1054,83 @@ export default function App({ root }: { root: Element }) {
   }
 
   useEffect(() => {
-    const fit = () => setWindowWidth(window.innerWidth)
+    const fit = () => setWindow(viewport())
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [])
+
+  // The tools' size, to keep all of them on screen: it changes as a tool in progress shows its Cancel.
+  useEffect(() => {
+    const tools = dock.current
+    if (open || !tools) return undefined
+    const measure = () =>
+      setStripSize((size) =>
+        size?.width === tools.offsetWidth && size.height === tools.offsetHeight
+          ? size
+          : { width: tools.offsetWidth, height: tools.offsetHeight },
+      )
+    measure()
+    const resizes = new ResizeObserver(measure)
+    resizes.observe(tools)
+    return () => resizes.disconnect()
+  }, [open])
+
+  const shownStrip = strip && stripSize ? fitPlace(strip, stripSize, windowSize) : strip
+
+  /** Puts the tools at `box`, from the corner nearest to it, within the window. */
+  const placeStrip = (box: Box) => {
+    const bounds = viewport()
+    setStrip(fitPlace(placeOf(box, bounds), box, bounds))
+  }
+
+  // By the grip only, so that the tools keep their clicks: the click ending a drag lands on it.
+  const startMove = (event: ReactMouseEvent) => {
+    const tools = dock.current
+    if (event.button !== 0 || !tools) return
+    const from = tools.getBoundingClientRect()
+    const grab = { x: event.clientX - from.left, y: event.clientY - from.top }
+    const size = { width: from.width, height: from.height }
+    let to: { left: number; top: number } | undefined
+    const html = document.documentElement
+    const restoreCursor = setInlineStyle(html, 'cursor', 'grabbing')
+    const restoreSelect = setInlineStyle(html, 'user-select', 'none')
+    const onMove = (move: MouseEvent) => {
+      to = fitBox(move.clientX - grab.x, move.clientY - grab.y, size, viewport())
+      setMoving(to)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      restoreCursor()
+      restoreSelect()
+      if (to) placeStrip({ ...to, ...size })
+      setMoving(undefined)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  const moveByKey = (event: ReactKeyboardEvent) => {
+    const step = event.shiftKey ? 50 : 10
+    const by = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[event.key]
+    const box = dock.current?.getBoundingClientRect()
+    if (!by || !box) return
+    // Not the page's, nor the widget's shortcuts on the arrows.
+    event.preventDefault()
+    event.stopPropagation()
+    const [dx = 0, dy = 0] = by
+    placeStrip({
+      left: box.left + dx,
+      top: box.top + dy,
+      width: box.width,
+      height: box.height,
+    })
+  }
 
   const resizeTo = (move: MouseEvent) => {
     setWidth(clampWidth(window.innerWidth - move.clientX))
@@ -1725,7 +1877,13 @@ export default function App({ root }: { root: Element }) {
         {comment.messages.map((message, index, messages) =>
           message.author === 'claude' ? (
             // Its steps were only there to wait on it: an answer shows alone.
-            <div key={message.id} className="an-msg an-msg--claude">
+            <Message
+              key={message.id}
+              author="claude"
+              at={message.at}
+              dated={dated.has(`${comment.id}/${message.id}`)}
+              onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
+            >
               {message.question ? (
                 <Question
                   message={message}
@@ -1739,10 +1897,15 @@ export default function App({ root }: { root: Element }) {
               ) : (
                 <div className="an-bubble an-bubble--claude">{message.body}</div>
               )}
-              <MessageTime at={message.at} />
-            </div>
+            </Message>
           ) : (
-            <div key={message.id} className="an-msg an-msg--reader">
+            <Message
+              key={message.id}
+              author="reader"
+              at={message.at}
+              dated={dated.has(`${comment.id}/${message.id}`)}
+              onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
+            >
               {message.images?.length ? (
                 <div className="an-images">
                   {message.images.map((name, image) => (
@@ -1775,8 +1938,7 @@ export default function App({ root }: { root: Element }) {
               {message.body && (
                 <div className="an-bubble an-bubble--reader">{message.body}</div>
               )}
-              <MessageTime at={message.at} />
-            </div>
+            </Message>
           ),
         )}
       </div>
@@ -1921,12 +2083,7 @@ export default function App({ root }: { root: Element }) {
               {comment.anchor.section}
             </span>
           )}
-          <time dateTime={comment.createdAt}>
-            {new Date(comment.createdAt).toLocaleString(undefined, {
-              dateStyle: 'short',
-              timeStyle: 'short',
-            })}
-          </time>
+          <DateTime at={comment.createdAt} />
           {deleteButton(comment)}
         </div>
         <p>{gist(comment.messages[0])}</p>
@@ -2037,7 +2194,24 @@ export default function App({ root }: { root: Element }) {
           role="group"
           aria-label="Annotant tools"
           className="an-dock an-live"
+          data-moving={moving ? true : undefined}
+          style={
+            moving
+              ? { ...moving, right: 'auto', bottom: 'auto' }
+              : shownStrip && placeStyle(shownStrip)
+          }
         >
+          <button
+            type="button"
+            className="an-grip"
+            aria-label="Move Annotant tools"
+            title="Move (drag, or the arrow keys). Double-click to put back"
+            onMouseDown={startMove}
+            onKeyDown={moveByKey}
+            onDoubleClick={() => setStrip(undefined)}
+          >
+            <Icon name="grip" />
+          </button>
           <ToolButton
             icon="chat"
             label="Comment"

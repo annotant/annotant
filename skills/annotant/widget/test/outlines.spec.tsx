@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { RAINBOW_PERIOD } from '../src/styles'
 import { comment, fakeServer, openPanel } from './server'
-import { renderWidget, stubHighlights } from './widget'
+import { renderWidget, resizes, stubHighlights } from './widget'
 
 const TITLE = {
   selector: 'h1',
@@ -360,35 +360,6 @@ test('a text in an inline box that hides its overflow keeps its rainbow', async 
   await waitFor(() => expect(lines()).toHaveLength(1))
   expect(pins()).toHaveLength(1)
 })
-
-/** A ResizeObserver whose callbacks the test calls: happy-dom lays nothing out. */
-function resizes() {
-  const observers: { callback: ResizeObserverCallback; targets: Set<Element> }[] = []
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      targets = new Set<Element>()
-      constructor(callback: ResizeObserverCallback) {
-        observers.push({ callback, targets: this.targets })
-      }
-      observe(target: Element) {
-        this.targets.add(target)
-      }
-      unobserve(target: Element) {
-        this.targets.delete(target)
-      }
-      disconnect() {
-        this.targets.clear()
-      }
-    },
-  )
-  return (target: Element | null) => {
-    for (const { callback, targets } of observers) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the widget reads no entry
-      if (target && targets.has(target)) callback([], {} as ResizeObserver)
-    }
-  }
-}
 
 test('marks follow their element when the page is squeezed with no change to its nodes', async () => {
   const move = layout()

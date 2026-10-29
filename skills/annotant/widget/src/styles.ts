@@ -129,6 +129,15 @@ code { font-family: var(--cb-mono); }
   padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
   background: var(--cb-surface); box-shadow: 0 4px 16px rgba(0,0,0,.15);
 }
+/* Its grip moves it: the tools keep their clicks. */
+.an-grip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 30px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; color: var(--cb-muted); cursor: grab; touch-action: none;
+}
+.an-grip:hover { color: var(--cb-text); background: var(--cb-surface-2); }
+.an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
+.an-dock[data-moving] .an-grip { cursor: grabbing; }
 .an-tool { border-radius: 7px; }
 .an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
 .an-tool--idle svg { width: 18px; height: 18px; }
@@ -239,7 +248,9 @@ code { font-family: var(--cb-mono); }
 .an-discussion { padding: 0; border: none; cursor: default; }
 /* The thread as a chat: the reader's messages right, in the accent; Claude's left, in a tint. */
 .an-chat { display: flex; flex-direction: column; gap: 16px; }
-.an-msg { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* A message takes the focus, to show its date on Enter or Space: outlined for the keyboard only. */
+.an-msg { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; outline: none; }
+.an-msg:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; border-radius: 14px; }
 .an-msg--reader { align-items: flex-end; padding-left: 40px; }
 .an-msg--claude { align-items: flex-start; }
 .an-msg-elements { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: 100%; }
