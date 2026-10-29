@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { anchorFromArea, holderOf, rectFromArea } from '../src/anchors'
+import { anchorFromArea, coveredBy, holderOf, rectFromArea } from '../src/anchors'
 import type { ReviewArea, ReviewComment } from '../src/domain'
 import { comment, fakeEvents, fakeServer, openPanel } from './server'
 import { renderWidget } from './widget'
@@ -14,6 +14,10 @@ const PAGE = `
   </section>
 `
 
+/** The layer an element paints in, from its `data-z` or its nearest ancestor's. */
+const layer = (element: Element) =>
+  Number(element.closest('[data-z]')?.getAttribute('data-z') ?? 0)
+
 /** happy-dom lays nothing out: each element's box is its `data-box` (left, top, width, height). */
 function layout() {
   const box = vi
@@ -25,9 +29,23 @@ function layout() {
       return DOMRect.fromRect({ x, y, width, height })
     })
   const scroll = vi.spyOn(window, 'scrollBy').mockImplementation(() => undefined)
+  // Nor does it paint: under a point are the boxes holding it, the topmost first:
+  // in the highest layer (`data-z` on it or around it), the later in the DOM.
+  Object.defineProperty(document, 'elementsFromPoint', {
+    configurable: true,
+    value: (x: number, y: number) =>
+      [...document.querySelectorAll('[data-box]')]
+        .filter((element) => {
+          const { left, top, right, bottom } = element.getBoundingClientRect()
+          return x >= left && x <= right && y >= top && y <= bottom
+        })
+        .toReversed()
+        .toSorted((a, b) => layer(b) - layer(a)),
+  })
   onTestFinished(() => {
     box.mockRestore()
     scroll.mockRestore()
+    Reflect.deleteProperty(document, 'elementsFromPoint')
   })
 }
 
@@ -209,6 +227,74 @@ test('an area drawn over a modal lies in the modal, not in the page under it', (
   expect(area?.within?.tag).toBe('div')
   expect(area?.within?.text).toBe('Sure?')
   expect(area?.covers.map((node) => node.text)).toEqual(['Sure?'])
+})
+
+/** A modal over the cards, mounted before them, on top by its `z-index`. */
+function modal(root: Element) {
+  root.insertAdjacentHTML(
+    'afterbegin',
+    `<div role="dialog" data-box="100,100,400,400" data-z="10">
+      <p data-box="120,120,200,40">Sure?</p><button data-box="120,300,100,40">OK</button>
+    </div>`,
+  )
+}
+
+test('an area drawn over a modal mounted before the page lies in the modal', () => {
+  layout()
+  const root = page()
+  modal(root)
+
+  const area = anchorFromArea(root, { left: 110, top: 110, width: 300, height: 100 }).area
+
+  expect(area?.within?.selector).toBe('div')
+  expect(area?.covers.map((node) => node.text)).toEqual(['Sure?'])
+  expect(area?.crosses).toEqual([])
+  if (!area) throw new Error('no area')
+  // Placed again in the modal, on reload.
+  expect(holderOf(root, area)?.getAttribute('role')).toBe('dialog')
+})
+
+test("an area drawn a little past a modal's edge records the modal, not the page under it", () => {
+  layout()
+  const root = page()
+  modal(root)
+
+  const area = anchorFromArea(root, { left: 90, top: 110, width: 300, height: 100 }).area
+
+  expect(area?.covers.map((node) => node.text)).toEqual(['Sure?'])
+  expect(area?.crosses.map((node) => node.selector)).toEqual(['div'])
+})
+
+test('the highlight while drawing over a modal is on its elements', () => {
+  layout()
+  const root = page()
+  modal(root)
+
+  const covered = coveredBy(root, { left: 110, top: 110, width: 300, height: 100 })
+
+  expect(covered.map((element) => element.textContent)).toEqual(['Sure?'])
+})
+
+test('an area drawn over a dropdown smaller than it records the dropdown, not the card under it', () => {
+  layout()
+  const root = page()
+  // The menu's list overflows its box, over card A.
+  root.querySelector('section')?.insertAdjacentHTML(
+    'beforeend',
+    `<div data-box="300,125,100,30"><button data-box="300,125,100,30">Menu</button>
+      <ul data-box="300,160,150,100" data-z="5">
+        <li data-box="300,160,150,30">Edit</li><li data-box="300,190,150,30">Delete</li>
+      </ul>
+    </div>`,
+  )
+  const rect = { left: 280, top: 155, width: 200, height: 130 }
+
+  const area = anchorFromArea(root, rect).area
+
+  expect(area?.within?.selector).toBe('section')
+  expect(area?.covers.map((node) => node.tag)).toEqual(['ul'])
+  expect(area?.crosses).toEqual([])
+  expect(coveredBy(root, rect).map((element) => element.tagName)).toEqual(['UL'])
 })
 
 test('an area is placed on the page, whatever its scroll', () => {

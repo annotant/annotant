@@ -505,22 +505,55 @@ const overlaps = (a: ReviewBox, b: ReviewBox) =>
   a.top < b.top + b.height &&
   b.top < a.top + a.height
 
-/** The page's elements under `parent`: a `display: contents` one has no box, its children do. */
-function laidOut(parent: Element): { element: Element; box: ReviewBox }[] {
+/**
+ * The page's elements under `parent`: a `display: contents` one has no box, its
+ * children do; nor has the wrapper of a layer that `through` holds (a portal).
+ */
+function laidOut(
+  parent: Element,
+  through: (element: Element) => boolean = () => false,
+): { element: Element; box: ReviewBox }[] {
   return Array.from(parent.children).flatMap((element) => {
     if (element.closest(WIDGET) || element.matches(UNREAD)) return []
     const box = boxOf(element)
     if (box.width && box.height) return [{ element, box }]
-    return getComputedStyle(element).display === 'contents' ? laidOut(element) : []
+    return getComputedStyle(element).display === 'contents' || through(element)
+      ? laidOut(element, through)
+      : []
   })
 }
 
+/** Where a rectangle is hit-tested: its centre first, then four points around it. */
+const SAMPLES = [
+  [0.5, 0.5],
+  [0.25, 0.25],
+  [0.75, 0.25],
+  [0.25, 0.75],
+  [0.75, 0.75],
+] as const
+
+/** The page's elements painted on top in `rect`, at its centre first; none off screen. */
+function paintedIn(root: Element, rect: ReviewBox): Element[] {
+  return SAMPLES.map(([x, y]) =>
+    hitAt(root, { x: rect.left + rect.width * x, y: rect.top + rect.height * y }),
+  ).filter((element) => element !== undefined)
+}
+
 /**
- * The smallest element under `root` that holds all of `rect`, `root` when none
- * does. Of two siblings that both hold it, the later one, which usually paints
- * on top: a modal's portal, not the page under it.
+ * The element `rect` lies in: from what is painted at its centre, the first
+ * element up that holds all of it, `root` when none does; an overlay, not the
+ * page under it, wherever it is in the DOM. Where nothing is hit, by layout
+ * alone: the smallest element that holds it, the later of two siblings.
  */
-function holderFor(root: Element, rect: ReviewBox): Element {
+function holderFor(root: Element, rect: ReviewBox, painted: Element[]): Element {
+  const [top] = painted
+  if (top) {
+    for (let element: Element | null = top; element && element !== root;) {
+      if (holds(boxOf(element), rect)) return element
+      element = element.parentElement
+    }
+    return root
+  }
   let holder = root
   for (;;) {
     const child = laidOut(holder).findLast(({ box }) => holds(box, rect))
@@ -530,12 +563,32 @@ function holderFor(root: Element, rect: ReviewBox): Element {
 }
 
 /**
- * What `rect` covers in `holder`: the outermost elements wholly inside it; the
- * children of `holder` it cuts through, and the innermost ones in them (the
- * section, and the two buttons around a gap in it); `truncated` when there
- * were more than it keeps.
+ * Whether `element` shows where it is in `rect`: what is painted at the
+ * middle of its part there is itself, in it, or holds it (a box that lets
+ * clicks through), not a layer over it. Unknown off screen: shown.
  */
-function elementsIn(holder: Element, rect: ReviewBox) {
+function shownIn(root: Element, element: Element, box: ReviewBox, rect: ReviewBox) {
+  const left = Math.max(box.left, rect.left, 0)
+  const top = Math.max(box.top, rect.top, 0)
+  const right = Math.min(box.left + box.width, rect.left + rect.width, window.innerWidth)
+  const bottom = Math.min(
+    box.top + box.height,
+    rect.top + rect.height,
+    window.innerHeight,
+  )
+  if (right <= left || bottom <= top) return true
+  const hit = hitAt(root, { x: (left + right) / 2, y: (top + bottom) / 2 })
+  return !hit || element.contains(hit) || hit.contains(element)
+}
+
+/**
+ * What `rect` covers in `holder`, of what shows there: the outermost elements
+ * wholly inside it; the children of `holder` it cuts through, and the innermost
+ * ones in them (the section, and the two buttons around a gap in it);
+ * `truncated` when there were more than it keeps. A layer painted in it
+ * (`painted`) is looked for past its parent's box: a dropdown that overflows it.
+ */
+function elementsIn(root: Element, holder: Element, rect: ReviewBox, painted: Element[]) {
   const covers: Element[] = []
   const crosses: Element[] = []
   let truncated = false
@@ -543,12 +596,19 @@ function elementsIn(holder: Element, rect: ReviewBox) {
     if (list.length < max) list.push(element)
     else truncated = true
   }
+  const holdsPainted = (element: Element) =>
+    painted.some((hit) => element !== hit && element.contains(hit))
   // Whether `rect` cuts through an element under `parent`.
   const visit = (parent: Element): boolean => {
     let cuts = false
-    for (const { element, box } of laidOut(parent)) {
+    for (const { element, box } of laidOut(parent, holdsPainted)) {
+      if (!overlaps(rect, box)) {
+        if (holdsPainted(element)) cuts = visit(element) || cuts
+        continue
+      }
+      if (!shownIn(root, element, box, rect)) continue
       if (holds(rect, box)) keep(covers, MAX_COVERS, element)
-      else if (overlaps(rect, box)) {
+      else {
         cuts = true
         const outer = parent === holder
         if (outer) keep(crosses, MAX_CROSSES, element)
@@ -563,7 +623,8 @@ function elementsIn(holder: Element, rect: ReviewBox) {
 
 /** The elements an area drawn over `rect` would record as covered. */
 export function coveredBy(root: Element, rect: ReviewBox): Element[] {
-  return elementsIn(holderFor(root, rect), rect).covers
+  const painted = paintedIn(root, rect)
+  return elementsIn(root, holderFor(root, rect, painted), rect, painted).covers
 }
 
 /** An element's text as the page shows it: a card's label and title apart, not run together. */
@@ -591,10 +652,14 @@ export function anchorFromArea(
   rect: ReviewBox,
   reach: ReviewBox = rect,
 ): ReviewAnchor {
-  const holder = holderFor(root, rect)
+  const painted = paintedIn(root, rect)
+  const holder = holderFor(root, rect, painted)
+  const reached = reach === rect ? painted : paintedIn(root, reach)
   const { covers, crosses, truncated } = elementsIn(
-    reach === rect ? holder : holderFor(root, reach),
+    root,
+    reach === rect ? holder : holderFor(root, reach, reached),
     reach,
+    reached,
   )
   const box = boxOf(holder)
   const size = { width: Math.round(box.width), height: Math.round(box.height) }
