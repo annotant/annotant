@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { anchorFromArea, holderOf, rectFromArea } from '../src/anchors'
 import type { ReviewArea, ReviewComment } from '../src/domain'
-import { comment, fakeServer, openPanel } from './server'
+import { comment, fakeEvents, fakeServer, openPanel } from './server'
 import { renderWidget } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
@@ -446,6 +446,40 @@ test('an area is in progress until its thread is resolved', async () => {
     '500px',
     '60px',
   ])
+})
+
+test('an area greys out once its agent has written a file: the page under it changed', async () => {
+  const events = fakeEvents()
+  const comments = [comment({ area: DRAWN, state: 'working' })]
+  renderCards(comments)
+
+  const mark = await screen.findByTestId('an-area-mark')
+  expect(mark.hasAttribute('data-outdated')).toBe(false)
+  comments[0] = { ...comments[0]!, edited: true }
+  events.send('changed')
+  await waitFor(() =>
+    expect(screen.getByTestId('an-area-mark').hasAttribute('data-outdated')).toBe(true),
+  )
+})
+
+/** A comment whose run stopped, having written `changed`. */
+const stopped = (changed: string[]) =>
+  comment({
+    id: changed.length ? 'c1' : 'c2',
+    area: DRAWN,
+    state: 'stopped',
+    cancellation: { at: '2026-01-01T10:01:00.000Z', changed, steps: 3 },
+  })
+
+test('a stopped area stays greyed out when its agent had written a file', async () => {
+  renderCards([stopped(['src/App.tsx']), stopped([])])
+
+  await waitFor(() => expect(screen.getAllByTestId('an-area-mark')).toHaveLength(2))
+  expect(
+    screen
+      .getAllByTestId('an-area-mark')
+      .map((mark) => mark.hasAttribute('data-outdated')),
+  ).toEqual([true, false])
 })
 
 test("the area's chip in a resolved thread shows it again on the page", async () => {

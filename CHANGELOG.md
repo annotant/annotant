@@ -7,6 +7,15 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Fixed
+
+- **A drawn area greys out once its agent changes the code.** An area or a
+  freehand drawing stays where the content was when the reader drew it; once
+  the agent at work has written a file, the page under it may have changed.
+  The mark now greys out, without its rainbow, until the comment is resolved
+  or the run ends; it still opens the thread. A stopped comment whose agent
+  had written files stays grey. (#215)
+
 ## 0.2.1 - 2026-10-28
 
 ### Fixed
