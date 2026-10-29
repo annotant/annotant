@@ -1,8 +1,8 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fitPlace, placeOf, viewport } from '../src/layout'
 import { fakeServer } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, resizes } from './widget'
 
 const WIDTH = 130
 const HEIGHT = 36
@@ -11,12 +11,15 @@ const LAYOUT_KEY = 'annotant:layout'
 const isDock = (element: Element) => element.classList.contains('an-dock')
 const px = (value: string) => (value && value !== 'auto' ? parseFloat(value) : undefined)
 
-/** happy-dom lays nothing out: the tools take WIDTH × HEIGHT, where their inline style puts them. */
+/** happy-dom lays nothing out: the tools take `size`, where their inline style puts them. */
+const size = { width: WIDTH }
+
 function layOut() {
+  size.width = WIDTH
   const width = vi
     .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
     .mockImplementation(function (this: HTMLElement) {
-      return isDock(this) ? WIDTH : 0
+      return isDock(this) ? size.width : 0
     })
   const height = vi
     .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
@@ -29,9 +32,9 @@ function layOut() {
       if (!(this instanceof HTMLElement) || !isDock(this)) return new DOMRect()
       const { style } = this
       const bounds = viewport()
-      const left = px(style.left) ?? bounds.width - (px(style.right) ?? 16) - WIDTH
+      const left = px(style.left) ?? bounds.width - (px(style.right) ?? 16) - size.width
       const top = px(style.top) ?? bounds.height - (px(style.bottom) ?? 16) - HEIGHT
-      return new DOMRect(left, top, WIDTH, HEIGHT)
+      return new DOMRect(left, top, size.width, HEIGHT)
     })
   onTestFinished(() => {
     width.mockRestore()
@@ -91,8 +94,60 @@ test('the strip dragged by its grip lands where it is dropped, kept for every ta
     '50px',
     'auto',
   ])
-  // The drag ends on the grip: no tool started.
+  // The drag ends with a click on the grip: no tool started.
+  fireEvent.click(grip)
   expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+})
+
+test('a click on the grip, or a drag with another button, leaves the strip in place', () => {
+  const { tools, grip } = renderClosed()
+  fireEvent.mouseDown(grip, { button: 0 })
+  fireEvent.mouseUp(document)
+  fireEvent.click(grip)
+  fireEvent.mouseDown(grip, { button: 2 })
+  fireEvent.mouseMove(document, { clientX: 45, clientY: 55 })
+  fireEvent.mouseUp(document)
+
+  expect(tools.getAttribute('style')).toBeNull()
+  expect(stored()).not.toHaveProperty('strip')
+})
+
+test('the strip grown by a Cancel stays on screen', () => {
+  const resize = resizes()
+  const bounds = viewport()
+  localStorage.setItem(
+    LAYOUT_KEY,
+    JSON.stringify({ strip: { corner: 'top-left', x: bounds.width - WIDTH, y: 10 } }),
+  )
+  const { tools } = renderClosed()
+  expect(tools.style.left).toBe(`${bounds.width - WIDTH}px`)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
+  size.width = 200
+  act(() => resize(tools))
+  expect(tools.style.left).toBe(`${bounds.width - 200}px`)
+})
+
+test('a tab changes only what was changed in it, not what another tab changed since', () => {
+  const { grip } = renderClosed()
+  // Another tab docks the panel meanwhile.
+  localStorage.setItem(LAYOUT_KEY, JSON.stringify({ docked: true, width: 500 }))
+  fireEvent.keyDown(grip, { key: 'ArrowLeft' })
+  expect(stored()).toMatchObject({ docked: true, width: 500, strip: { x: 26 } })
+})
+
+test('the strip still moves where storage is blocked', () => {
+  const blocked = vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+    throw new DOMException('Blocked', 'SecurityError')
+  })
+  try {
+    const { tools, grip } = renderClosed()
+    fireEvent.keyDown(grip, { key: 'ArrowLeft' })
+    expect(tools.style.right).toBe('26px')
+  } finally {
+    // Before the storage is cleared after the test.
+    blocked.mockRestore()
+  }
 })
 
 test('the arrow keys move the strip, further with Shift', () => {

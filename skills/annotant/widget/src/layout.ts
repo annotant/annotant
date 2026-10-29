@@ -33,12 +33,13 @@ export interface Box extends Size {
   top: number
 }
 
-const CORNERS: readonly string[] = [
-  'top-left',
-  'top-right',
-  'bottom-left',
-  'bottom-right',
-] satisfies Corner[]
+// All four, or a strip kept in the one left out would be forgotten.
+const CORNERS: readonly string[] = Object.keys({
+  'top-left': true,
+  'top-right': true,
+  'bottom-left': true,
+  'bottom-right': true,
+} satisfies Record<Corner, true>)
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -70,7 +71,17 @@ export function readLayout(): Layout {
   return layout
 }
 
-export function writeLayout(layout: Layout) {
+/**
+ * Changes one field of what is kept, over what is kept now: another tab may
+ * have changed the others since this one read them. None: the field goes.
+ */
+export function writeLayout<K extends keyof Layout>(
+  field: K,
+  value: Layout[K] | undefined,
+) {
+  const layout = readLayout()
+  if (value === undefined) delete layout[field]
+  else layout[field] = value
   writeLocal(LAYOUT_KEY, layout)
 }
 

@@ -865,9 +865,10 @@ export default function App({ root }: { root: Element }) {
     writeSession(UI_KEY, { open, view, threadId, statusFilter })
   }, [open, view, threadId, statusFilter])
 
-  useEffect(() => {
-    writeLayout({ docked, width: chosenWidth, ...(strip && { strip }) })
-  }, [docked, chosenWidth, strip])
+  // Each on its own, so that a tab writes only what was changed in it.
+  useEffect(() => writeLayout('docked', docked), [docked])
+  useEffect(() => writeLayout('width', chosenWidth), [chosenWidth])
+  useEffect(() => writeLayout('strip', strip), [strip])
 
   // Not while the draft kept is still to come back: it would be forgotten.
   useEffect(() => {
