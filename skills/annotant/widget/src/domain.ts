@@ -56,6 +56,15 @@ interface ReviewHolder extends ReviewNode {
   size: ReviewSize
 }
 
+/**
+ * The element a drawing is placed from: where its area's corner lies from the
+ * element's corner, its scroll aside, and the element's size then; never 0.
+ */
+interface ReviewPin extends ReviewNode {
+  offset: { top: number; left: number }
+  size: ReviewSize
+}
+
 /** A line drawn freehand: its points, `[x, y]` from the area's corner, in CSS pixels. */
 export type ReviewStroke = [number, number][]
 
@@ -88,6 +97,12 @@ export interface ReviewArea extends ReviewBox {
   strokes?: ReviewStroke[]
   /** With `strokes`: the element the longest line points at, under its end or next along it. */
   pointsAt?: ReviewNode
+  /**
+   * With `strokes`: the element the lines are placed from, the largest wholly
+   * in their box or else the one they point at. They follow it, their left
+   * offset and width scaled to its width, not the holder's.
+   */
+  around?: ReviewPin
   /** With `strokes`: the last image of the comment's first message is their picture. */
   pictured?: true
 }

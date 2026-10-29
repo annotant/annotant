@@ -150,6 +150,7 @@ async function readJson(req) {
  * @typedef {import('./lib/format.mjs').AreaNode} AreaNode
  * @typedef {import('./lib/format.mjs').Box} Box
  * @typedef {import('./lib/format.mjs').Area} Area
+ * @typedef {import('./lib/format.mjs').Holder} Holder
  */
 
 /** The most elements an area records as covered, and as crossed, as the widget caps them. */
@@ -359,10 +360,28 @@ function sanitiseStrokes(strokes, box) {
 }
 
 /**
+ * An element an area is placed from (`within`, `around`): kept only with
+ * where the area lies from it and a size, never 0, to scale it by.
+ * @param {any} node
+ * @returns {Holder | undefined}
+ */
+function sanitiseHolder(node) {
+  const sanitised = sanitiseAreaNode(node)
+  const { offset, size } = node ?? {}
+  const width = pixels(size?.width)
+  const height = pixels(size?.height)
+  return sanitised && offset && typeof offset === 'object' && width && height
+    ? {
+        ...sanitised,
+        offset: { top: pixels(offset.top, true), left: pixels(offset.left, true) },
+        size: { width, height },
+      }
+    : undefined
+}
+
+/**
  * A rectangle the reader drew over the page, or the box of lines they drew
  * freehand; one with no surface is none.
- * Its holder (`within`) is kept only with where the area lies in it and a
- * size to scale it by.
  * @param {any} area
  * @returns {Area | undefined}
  */
@@ -370,15 +389,14 @@ function sanitiseArea(area) {
   if (!area || typeof area !== 'object') return undefined
   const box = sanitiseBox(area)
   if (!box.width || !box.height) return undefined
-  const within = sanitiseAreaNode(area.within)
-  const { offset, size } = area.within ?? {}
-  const holder = { width: pixels(size?.width), height: pixels(size?.height) }
+  const within = sanitiseHolder(area.within)
   const covers = Array.isArray(area.covers) ? area.covers : []
   const crosses = Array.isArray(area.crosses) ? area.crosses : []
   const truncated =
     area.truncated === true || covers.length > MAX_COVERS || crosses.length > MAX_CROSSES
   const strokes = sanitiseStrokes(area.strokes, box)
   const pointsAt = strokes && sanitiseAreaNode(area.pointsAt)
+  const around = strokes && sanitiseHolder(area.around)
   return {
     ...box,
     viewport: {
@@ -387,20 +405,13 @@ function sanitiseArea(area) {
       scrollX: pixels(area.viewport?.scrollX, true),
       scrollY: pixels(area.viewport?.scrollY, true),
     },
-    ...(within && offset && typeof offset === 'object' && holder.width && holder.height
-      ? {
-          within: {
-            ...within,
-            offset: { top: pixels(offset.top, true), left: pixels(offset.left, true) },
-            size: holder,
-          },
-        }
-      : {}),
+    ...(within ? { within } : {}),
     covers: sanitiseNodes(covers, MAX_COVERS),
     crosses: sanitiseNodes(crosses, MAX_CROSSES),
     ...(truncated ? { truncated: true } : {}),
     ...(strokes ? { strokes } : {}),
     ...(pointsAt ? { pointsAt } : {}),
+    ...(around ? { around } : {}),
     ...(strokes && area.pictured === true ? { pictured: true } : {}),
   }
 }

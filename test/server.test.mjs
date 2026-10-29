@@ -426,15 +426,40 @@ test('keeps the lines drawn freehand in an area, in its box, and says how many',
     (await createArea({ width: 40, height: 40, pictured: true })).pictured,
     undefined,
   )
-  // No line at all is no drawing, and points at nothing.
+  // What the lines were drawn around, kept with where they lie from it and its size.
+  const around = {
+    selector: 'ul > li',
+    tag: 'li',
+    text: 'CNESST-1523',
+    offset: { top: -13.4, left: -18 },
+    size: { width: 200, height: 30 },
+  }
+  assert.deepEqual(
+    (await createArea({ width: 40, height: 40, strokes: [[[1, 1]]], around })).around,
+    { ...around, offset: { top: -13, left: -18 } },
+  )
+  assert.equal(
+    (
+      await createArea({
+        width: 40,
+        height: 40,
+        strokes: [[[1, 1]]],
+        around: { ...around, size: { width: 0, height: 30 } },
+      })
+    ).around,
+    undefined,
+  )
+  // No line at all is no drawing, points at nothing and was drawn around nothing.
   const none = await createArea({
     width: 40,
     height: 40,
     strokes: [[], 'x'],
     pointsAt: { selector: 'h3', tag: 'h3', text: 'Title' },
+    around,
   })
   assert.equal(none.strokes, undefined)
   assert.equal(none.pointsAt, undefined)
+  assert.equal(none.around, undefined)
 
   const event = await nextLine(`NEW ${created.id} `, printed)
   assert.match(

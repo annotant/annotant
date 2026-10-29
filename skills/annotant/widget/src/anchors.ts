@@ -908,12 +908,43 @@ function keptLines(lines: DrawnPoint[][]): DrawnPoint[][] {
   return kept
 }
 
+const surface = (element: Element) => {
+  const { width, height } = boxOf(element)
+  return width * height
+}
+
+/**
+ * The element lines are placed from: the largest wholly in their box `rect`,
+ * of those `coveredBy` keeps, else the one they point at (`target`). A dropdown
+ * of a fixed width moves with the layout but does not narrow with its holder.
+ * Several that move apart: the lines follow this one.
+ */
+function drawnAround(root: Element, rect: ReviewBox, target: Element | undefined) {
+  const element =
+    coveredBy(root, rect).reduce<Element | undefined>(
+      (largest, covered) =>
+        !largest || surface(covered) > surface(largest) ? covered : largest,
+      undefined,
+    ) ?? target
+  const box = element && boxOf(element)
+  if (!element || !box?.width || !box.height) return undefined
+  return {
+    ...nodeOf(root, element),
+    offset: {
+      top: Math.round(rect.top - box.top),
+      left: Math.round(rect.left - box.left),
+    },
+    size: { width: Math.round(box.width), height: Math.round(box.height) },
+  }
+}
+
 /**
  * Describes lines drawn freehand over the page (in viewport pixels) as an
  * area, the box of the lines it keeps (`rect`, in viewport pixels), which
  * records what they lie in as a rectangle does, with the lines from its
- * corner. What they cover and cross is that of `reach`, a wider box, and
- * `pointsAt` is the element they point at.
+ * corner. What they cover and cross is that of `reach`, a wider box,
+ * `pointsAt` is the element they point at, and `around` the one they are
+ * placed from.
  */
 export function anchorFromDrawing(
   root: Element,
@@ -932,6 +963,7 @@ export function anchorFromDrawing(
   const reach = reachOf(rect)
   const anchor = anchorFromArea(root, rect, reach)
   const target = pointedAt(root, kept, rect)
+  const around = drawnAround(root, rect, target)
   const strokes = kept.map((line) =>
     line.map(({ x, y }): [number, number] => [
       Math.round(x - rect.left),
@@ -942,6 +974,7 @@ export function anchorFromDrawing(
     ...anchor.area,
     strokes,
     ...(target ? { pointsAt: nodeOf(root, target) } : {}),
+    ...(around ? { around } : {}),
   }
   return {
     anchor: area ? { ...anchor, area } : anchor,
@@ -951,23 +984,52 @@ export function anchorFromDrawing(
   }
 }
 
-/** The element the area was drawn in, when it is on the page. */
-export function holderOf(root: Element, area: ReviewArea): Element | undefined {
-  if (!area.within) return undefined
+function nodeIn(root: Element, node: ReviewNode | undefined): Element | undefined {
+  if (!node) return undefined
   try {
-    return root.querySelector(area.within.selector) ?? undefined
+    return root.querySelector(node.selector) ?? undefined
   } catch {
     return undefined
   }
 }
 
+/** The element the area was drawn in, when it is on the page. */
+export const holderOf = (root: Element, area: ReviewArea) => nodeIn(root, area.within)
+
+/** The element a drawing is placed from, when it is on the page. */
+export const aroundOf = (root: Element, area: ReviewArea) => nodeIn(root, area.around)
+
+/** `element`'s box while it is laid out: none once gone or hidden. */
+function shownBox(element: Element | undefined) {
+  const box = element && boxOf(element)
+  return box?.width && box.height ? box : undefined
+}
+
 /**
- * Where the area is now, in viewport pixels: in the element it was drawn in,
- * which may have moved or scrolled since; its width follows the holder's (a
- * narrower window), its height does not (content added further down).
- * Without its holder, where it was on the page.
+ * Where the area is now, in viewport pixels. A drawing, from the element it
+ * is placed from (`around`) while it shows, which may have moved since; its
+ * left offset and width follow that element's width, not its height: a list
+ * of a fixed width keeps them, text that wraps narrows them. Else in the element it was drawn in, which may have moved
+ * or scrolled since; its width follows the holder's (a narrower window), its
+ * height does not (content added further down). Without either, where it was
+ * on the page.
  */
-export function rectFromArea(area: ReviewArea, holder?: Element): ReviewBox {
+export function rectFromArea(
+  area: ReviewArea,
+  holder?: Element,
+  around?: Element,
+): ReviewBox {
+  const pin = area.around && shownBox(around)
+  if (area.around && pin) {
+    const { offset, size } = area.around
+    const scale = pin.width / size.width
+    return {
+      top: pin.top + offset.top,
+      left: pin.left + offset.left * scale,
+      width: area.width * scale,
+      height: area.height,
+    }
+  }
   const box = holder && boxOf(holder)
   if (area.within && holder && box?.width && box.height) {
     const { offset, size } = area.within
@@ -989,13 +1051,20 @@ export function rectFromArea(area: ReviewArea, holder?: Element): ReviewBox {
 
 /**
  * Where to frame the area now: as `rectFromArea`, but nowhere while the
- * element it was drawn in is gone or hidden (a closed modal, another tab):
- * its old place on the page would frame something else.
+ * element a drawing is placed from is hidden (a closed dropdown), nor while the
+ * element it was drawn in is gone or hidden (a closed modal, another tab) and
+ * no `around` shows: its old place would frame something else. An `around`
+ * gone from the page leaves it to its holder.
  */
-export function framedArea(area: ReviewArea, holder?: Element): ReviewBox | undefined {
-  const box = holder && boxOf(holder)
-  if (area.within && !(box?.width && box.height)) return undefined
-  return rectFromArea(area, holder)
+export function framedArea(
+  area: ReviewArea,
+  holder?: Element,
+  around?: Element,
+): ReviewBox | undefined {
+  const pinned = area.around && shownBox(around)
+  if (area.around && around && !pinned) return undefined
+  if (area.within && !shownBox(holder) && !pinned) return undefined
+  return rectFromArea(area, holder, around)
 }
 
 /**
@@ -1009,7 +1078,7 @@ export function areaReady(root: Element, area: ReviewArea): boolean {
 
 /** Scrolls the page to the area: centred, or its top in view when it is taller than the window. */
 export function scrollToArea(root: Element, area: ReviewArea): void {
-  const rect = rectFromArea(area, holderOf(root, area))
+  const rect = rectFromArea(area, holderOf(root, area), aroundOf(root, area))
   const margin = 40
   const top =
     rect.height > window.innerHeight - 2 * margin

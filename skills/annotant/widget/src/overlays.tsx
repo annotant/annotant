@@ -14,6 +14,7 @@ import {
   coveredBy,
   type DrawnPoint,
   elementFromAnchor,
+  aroundOf,
   framedArea,
   holderOf,
   rangesFromAnchors,
@@ -296,16 +297,17 @@ function findAreas(root: Element, comments: ReviewComment[]) {
     // An element picked since takes the area's place.
     if (wasResolved(comment) || !area || pickedMark(comment)) return []
     const holder = holderOf(root, area)
-    return [{ comment, area, holder, clippers: clippersOf(holder ?? null) }]
+    const around = aroundOf(root, area)
+    return [{ comment, area, holder, around, clippers: clippersOf(holder ?? null) }]
   })
 }
 
 const holdersOf = (found: ReturnType<typeof findAreas>) =>
-  found.map(({ holder }) => holder)
+  found.flatMap(({ holder, around }) => [holder, around])
 
 function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
-  return found.flatMap(({ comment, area, holder, clippers }) => {
-    const frame = framedArea(area, holder)
+  return found.flatMap(({ comment, area, holder, around, clippers }) => {
+    const frame = framedArea(area, holder, around)
     const shown = frame && within(frame, clipOf(clippers))
     return shown ? [{ comment, area, frame, shown }] : []
   })
@@ -629,9 +631,12 @@ export function TargetOutline({ element }: { element: Element }) {
   )
 }
 
-/** Outlines a drawn area while it is on screen, in the element it was drawn in. */
+/** Outlines a drawn area while it is on screen, where `framedArea` places it. */
 export function AreaOutline({ root, area }: { root: Element; area: ReviewArea }) {
-  const measure = useCallback(() => framedArea(area, holderOf(root, area)), [root, area])
+  const measure = useCallback(
+    () => framedArea(area, holderOf(root, area), aroundOf(root, area)),
+    [root, area],
+  )
   const box = useOnScreen(measure)
   if (!box) return null
   return (
