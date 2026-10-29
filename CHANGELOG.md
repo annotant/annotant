@@ -17,6 +17,9 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **The panel no longer slides in again after an agent's edit.** When the
+  dev server reloads the page, a panel left open shows up in place, without
+  its opening animation. Opening it by hand still slides it in. (#214)
 - **A drawn area greys out once its agent changes the code.** An area or a
   freehand drawing stays where the content was when the reader drew it; once
   the agent at work has written a file, the page under it may have changed.
