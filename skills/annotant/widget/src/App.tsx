@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SyntheticEvent,
@@ -59,6 +60,17 @@ import {
 import { MAX_IMAGES } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
+import {
+  type Box,
+  type Size,
+  fitBox,
+  fitPlace,
+  placeOf,
+  placeStyle,
+  readLayout,
+  viewport,
+  writeLayout,
+} from './layout'
 import { setInlineStyle } from './inline'
 import { clearHighlights, paintHighlights, scrollToComment } from './highlights'
 import {
@@ -585,8 +597,9 @@ interface PendingCenter {
 
 interface UiState {
   open: boolean
-  docked: boolean
-  width: number
+  /** Kept by this tab before the layout was kept for all of them. */
+  docked?: boolean
+  width?: number
   view: View
   threadId?: string
   statusFilter: StatusFilter
@@ -722,10 +735,18 @@ export default function App({ root }: { root: Element }) {
   const [restored, setRestored] = useState(open)
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
-  const [docked, setDocked] = useState(saved?.docked ?? false)
+  const [savedLayout] = useState(readLayout)
+  const [docked, setDocked] = useState(savedLayout.docked ?? saved?.docked ?? false)
   // The width chosen, kept as is: the window, maybe narrower, only caps the one shown.
-  const [chosenWidth, setWidth] = useState(saved?.width ?? PANEL_WIDTH)
-  const [, setWindowWidth] = useState(window.innerWidth)
+  const [chosenWidth, setWidth] = useState(
+    savedLayout.width ?? saved?.width ?? PANEL_WIDTH,
+  )
+  const [windowSize, setWindow] = useState(viewport)
+  // Where the reader put the closed widget's tools, kept as is: the window only keeps them on screen.
+  const [strip, setStrip] = useState(savedLayout.strip)
+  const [stripSize, setStripSize] = useState<Size>()
+  // Where the tools are while they are dragged, from the window's top left corner.
+  const [moving, setMoving] = useState<{ left: number; top: number }>()
   const width = clampWidth(chosenWidth)
   const [view, setView] = useState<View>(saved?.view ?? 'page')
   const [threadId, setThreadId] = useState(saved?.threadId)
@@ -841,15 +862,13 @@ export default function App({ root }: { root: Element }) {
   const watching = page.reachable
 
   useEffect(() => {
-    writeSession(UI_KEY, {
-      open,
-      docked,
-      width: chosenWidth,
-      view,
-      threadId,
-      statusFilter,
-    })
-  }, [open, docked, chosenWidth, view, threadId, statusFilter])
+    writeSession(UI_KEY, { open, view, threadId, statusFilter })
+  }, [open, view, threadId, statusFilter])
+
+  // Each on its own, so that a tab writes only what was changed in it.
+  useEffect(() => writeLayout('docked', docked), [docked])
+  useEffect(() => writeLayout('width', chosenWidth), [chosenWidth])
+  useEffect(() => writeLayout('strip', strip), [strip])
 
   // Not while the draft kept is still to come back: it would be forgotten.
   useEffect(() => {
@@ -1020,7 +1039,7 @@ export default function App({ root }: { root: Element }) {
     refocus.current = false
     const back = opener.current?.isConnected
       ? opener.current
-      : dock.current?.querySelector('button')
+      : dock.current?.querySelector<HTMLElement>('.an-tool')
     opener.current = undefined
     back?.focus()
   }, [open])
@@ -1035,10 +1054,83 @@ export default function App({ root }: { root: Element }) {
   }
 
   useEffect(() => {
-    const fit = () => setWindowWidth(window.innerWidth)
+    const fit = () => setWindow(viewport())
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [])
+
+  // The tools' size, to keep all of them on screen: it changes as a tool in progress shows its Cancel.
+  useEffect(() => {
+    const tools = dock.current
+    if (open || !tools) return undefined
+    const measure = () =>
+      setStripSize((size) =>
+        size?.width === tools.offsetWidth && size.height === tools.offsetHeight
+          ? size
+          : { width: tools.offsetWidth, height: tools.offsetHeight },
+      )
+    measure()
+    const resizes = new ResizeObserver(measure)
+    resizes.observe(tools)
+    return () => resizes.disconnect()
+  }, [open])
+
+  const shownStrip = strip && stripSize ? fitPlace(strip, stripSize, windowSize) : strip
+
+  /** Puts the tools at `box`, from the corner nearest to it, within the window. */
+  const placeStrip = (box: Box) => {
+    const bounds = viewport()
+    setStrip(fitPlace(placeOf(box, bounds), box, bounds))
+  }
+
+  // By the grip only, so that the tools keep their clicks: the click ending a drag lands on it.
+  const startMove = (event: ReactMouseEvent) => {
+    const tools = dock.current
+    if (event.button !== 0 || !tools) return
+    const from = tools.getBoundingClientRect()
+    const grab = { x: event.clientX - from.left, y: event.clientY - from.top }
+    const size = { width: from.width, height: from.height }
+    let to: { left: number; top: number } | undefined
+    const html = document.documentElement
+    const restoreCursor = setInlineStyle(html, 'cursor', 'grabbing')
+    const restoreSelect = setInlineStyle(html, 'user-select', 'none')
+    const onMove = (move: MouseEvent) => {
+      to = fitBox(move.clientX - grab.x, move.clientY - grab.y, size, viewport())
+      setMoving(to)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      restoreCursor()
+      restoreSelect()
+      if (to) placeStrip({ ...to, ...size })
+      setMoving(undefined)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
+  const moveByKey = (event: ReactKeyboardEvent) => {
+    const step = event.shiftKey ? 50 : 10
+    const by = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[event.key]
+    const box = dock.current?.getBoundingClientRect()
+    if (!by || !box) return
+    // Not the page's, nor the widget's shortcuts on the arrows.
+    event.preventDefault()
+    event.stopPropagation()
+    const [dx = 0, dy = 0] = by
+    placeStrip({
+      left: box.left + dx,
+      top: box.top + dy,
+      width: box.width,
+      height: box.height,
+    })
+  }
 
   const resizeTo = (move: MouseEvent) => {
     setWidth(clampWidth(window.innerWidth - move.clientX))
@@ -2102,7 +2194,24 @@ export default function App({ root }: { root: Element }) {
           role="group"
           aria-label="Annotant tools"
           className="an-dock an-live"
+          data-moving={moving ? true : undefined}
+          style={
+            moving
+              ? { ...moving, right: 'auto', bottom: 'auto' }
+              : shownStrip && placeStyle(shownStrip)
+          }
         >
+          <button
+            type="button"
+            className="an-grip"
+            aria-label="Move Annotant tools"
+            title="Move (drag, or the arrow keys). Double-click to put back"
+            onMouseDown={startMove}
+            onKeyDown={moveByKey}
+            onDoubleClick={() => setStrip(undefined)}
+          >
+            <Icon name="grip" />
+          </button>
           <ToolButton
             icon="chat"
             label="Comment"
