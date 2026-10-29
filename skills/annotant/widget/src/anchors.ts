@@ -651,16 +651,24 @@ const DRAWING_MARGIN = 8
 const DRAWING_REACH = 0.25
 const MIN_DRAWING_REACH = 120
 
-/** `rect` with a drawing's room around it. */
+/**
+ * `rect` with a drawing's room around it, cut to the window: what lies past
+ * its edges, the reader did not see. The lines' box stays whole.
+ */
 function reachOf(rect: ReviewBox): ReviewBox {
   const x = Math.max(MIN_DRAWING_REACH, rect.width * DRAWING_REACH)
   const y = Math.max(MIN_DRAWING_REACH, rect.height * DRAWING_REACH)
-  return {
-    left: rect.left - x,
-    top: rect.top - y,
-    width: rect.width + 2 * x,
-    height: rect.height + 2 * y,
-  }
+  const left = Math.min(rect.left, Math.max(0, rect.left - x))
+  const top = Math.min(rect.top, Math.max(0, rect.top - y))
+  const right = Math.max(
+    rect.left + rect.width,
+    Math.min(window.innerWidth, rect.left + rect.width + x),
+  )
+  const bottom = Math.max(
+    rect.top + rect.height,
+    Math.min(window.innerHeight, rect.top + rect.height + y),
+  )
+  return { left, top, width: right - left, height: bottom - top }
 }
 
 function lengthOf(line: DrawnPoint[]): number {
