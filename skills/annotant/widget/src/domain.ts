@@ -203,6 +203,8 @@ export interface ReviewComment {
   cancellation?: ReviewCancellation
   /** Latest tool calls of the agent working on it; never stored in the file. */
   progress?: ReviewProgress[]
+  /** Working only: its agent has written, or is writing, a file in this run; never stored in the file. */
+  edited?: true
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
   /**
@@ -331,6 +333,14 @@ export const paused = (comment: Lifecycle) => comment.state === 'stopped'
 /** Stopped by its agent: it ended its turn neither answering nor asking. */
 export const gaveUp = (comment: Pick<ReviewComment, 'state' | 'events'>) =>
   paused(comment) && comment.events.at(-1)?.by === 'agent'
+
+/**
+ * Its agent changed files, in the run at work or in the one stopped: the
+ * page may no longer be what the reader commented on.
+ */
+export const outdated = (
+  comment: Pick<ReviewComment, 'state' | 'edited' | 'cancellation'>,
+) => !!comment.edited || (paused(comment) && !!comment.cancellation?.changed.length)
 
 /** Claude answered a follow-up: the reader follows up again or resolves it. */
 export const answered = (comment: Lifecycle) => comment.state === 'answered'

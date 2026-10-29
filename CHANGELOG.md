@@ -7,6 +7,28 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.2.2 - 2026-10-29
+
+### Changed
+
+- **Agents answer in the reader's language.** A comment's agent writes its
+  answer and its questions in the language of the reader's last message.
+  Its instructions no longer assume Playwright or components: it looks at an
+  unclear element with a browser tool when it has one, and asks in the thread
+  otherwise. (#223)
+
+### Fixed
+
+- **The panel no longer slides in again after an agent's edit.** When the
+  dev server reloads the page, a panel left open shows up in place, without
+  its opening animation. Opening it by hand still slides it in. (#214)
+- **A drawn area greys out once its agent changes the code.** An area or a
+  freehand drawing stays where the content was when the reader drew it; once
+  the agent at work has written a file, the page under it may have changed.
+  The mark now greys out, without its rainbow, until the comment is resolved
+  or the run ends; it still opens the thread. A stopped comment whose agent
+  had written files stays grey. (#215)
+
 ## 0.2.1 - 2026-10-28
 
 ### Fixed

@@ -443,24 +443,35 @@ test('a drawing made from a page comment keeps what the reader wrote, and goes w
   expect(screen.getByRole('checkbox')).toBeTruthy()
 })
 
-test("the drawing's chip in a resolved thread shows it again on the page", async () => {
-  const drawing: ReviewArea = {
-    top: 242,
-    left: 92,
-    width: 36,
-    height: 126,
-    viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0 },
-    covers: [],
-    crosses: [],
-    strokes: [
-      [
-        [8, 8],
-        [8, 118],
-      ],
+const DRAWING: ReviewArea = {
+  top: 242,
+  left: 92,
+  width: 36,
+  height: 126,
+  viewport: { width: 1280, height: 800, scrollX: 0, scrollY: 0 },
+  covers: [],
+  crosses: [],
+  strokes: [
+    [
+      [8, 8],
+      [8, 118],
     ],
-  }
+  ],
+}
+
+test('a drawing loses its rainbow once its agent has written a file', async () => {
+  renderCards([comment({ area: DRAWING, state: 'working', edited: true })])
+
+  const mark = await screen.findByTestId('an-area-mark')
+  expect(mark.hasAttribute('data-outdated')).toBe(true)
+  const lines = mark.querySelector('svg')
+  expect(lines?.style.stroke).toBe('')
+  expect(lines?.querySelector('linearGradient')).toBeNull()
+})
+
+test("the drawing's chip in a resolved thread shows it again on the page", async () => {
   openPanel('page', 'c1')
-  renderCards([comment({ area: drawing, state: 'resolved' })])
+  renderCards([comment({ area: DRAWING, state: 'resolved' })])
 
   const chip = await screen.findByRole('button', { name: /1 line/ })
   expect(chip.title).toBe(

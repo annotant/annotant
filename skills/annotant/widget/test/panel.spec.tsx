@@ -36,6 +36,16 @@ test('the panel stays on screen while it leaves', async () => {
   await waitFor(() => expect(screen.queryByTestId('annotant-panel')).toBeNull())
 })
 
+test('the panel restored open after a reload does not slide in, but slides in once reopened', async () => {
+  const { panel } = renderOpenPanel()
+  expect(panel.hasAttribute('data-restored')).toBe(true)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByTestId('annotant-panel')).toBeNull())
+  fireEvent.click(screen.getByRole('button', { name: 'Comment' }))
+  expect(screen.getByTestId('annotant-panel').hasAttribute('data-restored')).toBe(false)
+})
+
 test('the panel reopened while it leaves stays', async () => {
   const { panel } = renderOpenPanel()
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))

@@ -54,3 +54,13 @@ test('the agent reads values init writes to .annotant.json', () => {
     assert.match(config, new RegExp(`"${key}":`), key)
   }
 })
+
+test('the agent names no tool the reader may lack, nor a framework notion', () => {
+  assert.doesNotMatch(agent, /Playwright/i)
+  assert.doesNotMatch(agent, /\bcomponents?\b/i)
+  assert.match(agent, /otherwise ask in the thread/)
+})
+
+test("the agent answers in the language of the reader's last message", () => {
+  assert.match(agent, /in\s+the\s+language\s+of\s+the\s+reader's\s+last\s+message/)
+})
