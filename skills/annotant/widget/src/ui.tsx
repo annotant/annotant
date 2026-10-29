@@ -168,6 +168,28 @@ export function Chip({
   )
 }
 
+/**
+ * The date and time in the reader's preferred languages (`navigator.languages`),
+ * not the browser's interface one: `Intl` takes the first it supports. None →
+ * the default locale.
+ */
+export function dateFormat(languages: readonly string[] = navigator.languages) {
+  return new Intl.DateTimeFormat(languages.length ? languages : undefined, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+}
+
+const DATES = dateFormat()
+
+export function DateTime({ at, className }: { at: string; className?: string }) {
+  return (
+    <time className={className} dateTime={at}>
+      {DATES.format(new Date(at))}
+    </time>
+  )
+}
+
 export function Spinner({ size = 16 }: { size?: number }) {
   return (
     <svg

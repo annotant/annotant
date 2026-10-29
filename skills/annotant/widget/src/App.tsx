@@ -77,6 +77,7 @@ import {
   Checkbox,
   Chip,
   Composer,
+  DateTime,
   type IconName,
   Icon,
   IconButton,
@@ -324,11 +325,7 @@ function Waiting({
 
 // The date as well as the time: a thread can outlive the day it started.
 function MessageTime({ at }: { at: string }) {
-  return (
-    <time className="an-message-time" dateTime={at}>
-      {new Date(at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
-    </time>
-  )
+  return <DateTime className="an-message-time" at={at} />
 }
 
 /**
@@ -1921,12 +1918,7 @@ export default function App({ root }: { root: Element }) {
               {comment.anchor.section}
             </span>
           )}
-          <time dateTime={comment.createdAt}>
-            {new Date(comment.createdAt).toLocaleString(undefined, {
-              dateStyle: 'short',
-              timeStyle: 'short',
-            })}
-          </time>
+          <DateTime at={comment.createdAt} />
           {deleteButton(comment)}
         </div>
         <p>{gist(comment.messages[0])}</p>
