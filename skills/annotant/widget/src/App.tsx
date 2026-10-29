@@ -666,6 +666,8 @@ export default function App({ root }: { root: Element }) {
   const route = useRoute()
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
+  // Open since the page loaded, as the tab kept it: it shows up in place, without sliding in.
+  const [restored, setRestored] = useState(open)
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
   const [docked, setDocked] = useState(saved?.docked ?? false)
@@ -946,6 +948,7 @@ export default function App({ root }: { root: Element }) {
 
   const close = () => {
     setOpen(false)
+    setRestored(false)
     setAttachingTo(undefined)
     setLeaving(true)
     refocus.current = true
@@ -2078,6 +2081,7 @@ export default function App({ root }: { root: Element }) {
           className={`an-panel an-live ${docked ? 'an-panel--docked' : ''}`}
           style={{ width }}
           data-closing={!open || undefined}
+          data-restored={restored || undefined}
           data-drawing={drawing || undefined}
           // While the reader draws, the message box must not take Escape or Enter.
           inert={!open || !!drawing}

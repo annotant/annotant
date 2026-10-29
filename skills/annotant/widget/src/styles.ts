@@ -143,6 +143,8 @@ code { font-family: var(--cb-mono); }
   transition-duration: ${PANEL_IN_MS}ms; transition-timing-function: ease-out;
 }
 .an-panel--docked { top: 0; right: 0; bottom: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--cb-border); }
+/* Open again as the tab kept it: already in place, it does not slide in. */
+.an-panel[data-restored] { animation: none; }
 /* Kept on screen until it has left: the page underneath gets the pointer back at once. */
 .an-panel[data-closing] { animation: an-panel-out ${PANEL_OUT_MS}ms ease-in forwards; pointer-events: none; }
 /* Dragged, the edge follows the pointer. */
