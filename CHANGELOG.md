@@ -9,6 +9,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **An area drawn on an overlay records the overlay.** A rectangle or a
+  drawing over a modal, a drawer or a dropdown highlights, and sends Claude,
+  the overlay's elements, not those of the page hidden under it, wherever the
+  overlay is in the DOM and even when it is smaller than the area. (#248)
 - **A drawing's picture shows only what you saw.** The picture Claude gets
   stays within the window, and paints the page in its stacking order (a modal
   over what it covers, a dropdown over a footer), each part cut by the boxes
