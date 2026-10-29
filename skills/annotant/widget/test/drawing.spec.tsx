@@ -1,6 +1,12 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { anchorFromDrawing } from '../src/anchors'
+import {
+  anchorFromDrawing,
+  aroundOf,
+  framedArea,
+  holderOf,
+  rectFromArea,
+} from '../src/anchors'
 import { drawingImage } from '../src/drawing'
 import type { NewReviewComment, ReviewArea, ReviewComment } from '../src/domain'
 import { comment, fakeServer, openPanel } from './server'
@@ -146,6 +152,132 @@ test('what a drawing records reaches past its lines, to what an arrow stops shor
       ],
     ])?.reach,
   ).toEqual({ left: 0, top: 72, width: 1024, height: 256 })
+})
+
+/** A form, and a dropdown list of a fixed width on its right. */
+function dropdown() {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">
+    <section data-box="0,100,1000,400">
+      <p data-box="20,120,500,40">Form</p>
+      <ul data-box="700,120,200,300">
+        <li data-box="700,120,200,30">CNESST-1505</li>
+        <li data-box="700,150,200,30">CNESST-1523</li>
+      </ul>
+    </section>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+  return root
+}
+
+/** A loop around the second item of the dropdown. */
+function loopAroundItem(root: Element) {
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 690, y: 145 },
+      { x: 910, y: 145 },
+      { x: 910, y: 185 },
+      { x: 690, y: 185 },
+      { x: 690, y: 150 },
+    ],
+  ])?.anchor.area
+  if (!area) throw new Error('no area')
+  return area
+}
+
+test('a drawing over an element of a fixed width keeps its place and size over it in a narrower holder', () => {
+  const root = dropdown()
+  const area = loopAroundItem(root)
+  expect(area.around).toEqual({
+    selector: 'section > ul > li:nth-of-type(2)',
+    tag: 'li',
+    text: 'CNESST-1523',
+    offset: { top: -13, left: -18 },
+    size: { width: 200, height: 30 },
+  })
+
+  // The panel squeezes the page: the section narrows, the list moves but keeps its width.
+  const box = (selector: string, value: string) =>
+    root.querySelector(selector)?.setAttribute('data-box', value)
+  box('section', '0,100,600,400')
+  box('p', '20,120,300,40')
+  box('ul', '300,120,200,300')
+  box('li:first-child', '300,120,200,30')
+  box('li:last-child', '300,150,200,30')
+
+  expect(rectFromArea(area, holderOf(root, area), aroundOf(root, area))).toEqual({
+    left: 282,
+    top: 137,
+    width: 236,
+    height: 56,
+  })
+})
+
+test('a drawing is placed from the largest element wholly in its lines', () => {
+  const root = dropdown()
+  root.querySelector('li:last-child')?.setAttribute('data-box', '700,150,200,60')
+
+  // A loop around both items: the second, the taller, places it.
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 690, y: 115 },
+      { x: 910, y: 115 },
+      { x: 910, y: 215 },
+      { x: 690, y: 215 },
+    ],
+  ])?.anchor.area
+
+  expect(area?.around?.text).toBe('CNESST-1523')
+})
+
+test('a drawing hides while what it is placed from hides, and goes back to its holder once that is gone', () => {
+  const root = dropdown()
+  const area = loopAroundItem(root)
+  const framed = () => framedArea(area, holderOf(root, area), aroundOf(root, area))
+  const item = root.querySelector('li:last-child')
+
+  // Placed from the item, the section hidden or not.
+  root.querySelector('section')?.setAttribute('data-box', '0,0,0,0')
+  expect(framed()).toEqual({ left: 682, top: 137, width: 236, height: 56 })
+  // The dropdown closed: nothing framed, not the section's spot it was in.
+  root.querySelector('section')?.setAttribute('data-box', '0,100,1000,400')
+  item?.setAttribute('data-box', '0,0,0,0')
+  expect(framed()).toBeUndefined()
+  // The item gone from the page: placed in the section, as before.
+  item?.remove()
+  expect(framed()).toEqual({ left: 682, top: 137, width: 236, height: 56 })
+  root.querySelector('section')?.setAttribute('data-box', '0,0,0,0')
+  expect(framed()).toBeUndefined()
+})
+
+test('a drawing over text that stretches with its holder still follows it', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  // Underlines card A's text: no element wholly under it, it points at the text.
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 100, y: 150 },
+      { x: 200, y: 150 },
+    ],
+  ])?.anchor.area
+  if (!area) throw new Error('no area')
+  expect(area.around?.selector).toBe('section > div:nth-of-type(1) > p')
+
+  // On a narrower window, the text halves with the card and the section.
+  root.querySelector('section')?.setAttribute('data-box', '0,100,500,400')
+  root.querySelector('section > div')?.setAttribute('data-box', '20,120,200,200')
+  root.querySelector('section > div > p')?.setAttribute('data-box', '30,130,150,40')
+
+  expect(rectFromArea(area, holderOf(root, area), aroundOf(root, area))).toEqual({
+    left: 61,
+    top: 142,
+    width: 58,
+    height: 16,
+  })
 })
 
 test("a drawing records its elements' text as the page shows it, blocks apart", () => {
