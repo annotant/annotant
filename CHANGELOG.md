@@ -9,6 +9,11 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **A drawing stays on what you drew it over when the page narrows.** Resizing
+  the docked panel or the window no longer shifts and stretches a drawing over
+  content of a fixed width, such as a dropdown list: it follows the element it
+  was drawn over, at that element's width, and still narrows with text that
+  wraps. (#242)
 - **An area drawn on an overlay records the overlay.** A rectangle or a
   drawing over a modal, a drawer or a dropdown highlights, and sends Claude,
   the overlay's elements, not those of the page hidden under it, wherever the
