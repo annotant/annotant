@@ -999,6 +999,32 @@ export const holderOf = (root: Element, area: ReviewArea) => nodeIn(root, area.w
 /** The element a drawing is placed from, when it is on the page. */
 export const aroundOf = (root: Element, area: ReviewArea) => nodeIn(root, area.around)
 
+/**
+ * True while `node` is on the page as recorded: its selector finds an element
+ * of its tag and text, not one that took its place (the next card, once the
+ * one before is removed).
+ */
+function stillShows(root: Element, node: ReviewNode): boolean {
+  const element = nodeIn(root, node)
+  return (
+    !!element &&
+    element.tagName.toLowerCase() === node.tag &&
+    shownText(element).slice(0, 80) === node.text
+  )
+}
+
+/**
+ * False once none of the elements a drawing was drawn on (`covers`,
+ * `pointsAt`) is on the page any more: its lines would circle something else.
+ * One left is enough to keep them. True for a rectangle, and for a drawing
+ * that covers and points at nothing: nothing to look for.
+ */
+export function drawnOnShows(root: Element, area: ReviewArea): boolean {
+  if (!area.strokes) return true
+  const drawnOn = [...area.covers, ...(area.pointsAt ? [area.pointsAt] : [])]
+  return !drawnOn.length || drawnOn.some((node) => stillShows(root, node))
+}
+
 /** `element`'s box while it is laid out: none once gone or hidden. */
 function shownBox(element: Element | undefined) {
   const box = element && boxOf(element)

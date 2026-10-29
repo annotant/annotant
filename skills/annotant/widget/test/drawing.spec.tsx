@@ -721,6 +721,54 @@ test('a drawing loses its rainbow once its agent has written a file', async () =
   expect(lines?.querySelector('linearGradient')).toBeNull()
 })
 
+const CARD_A = { selector: 'section > div:nth-of-type(1) > p', tag: 'p', text: 'Card A' }
+const CARD_B = { selector: 'section > div:nth-of-type(2) > p', tag: 'p', text: 'Card B' }
+
+test('a drawing loses its lines once nothing it was drawn on is on the page', async () => {
+  openPanel('page', 'c1')
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
+  await screen.findByTestId('an-area-mark')
+
+  // One of them gone: the other still tells where the lines belong.
+  document.querySelector(CARD_A.selector)?.remove()
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+
+  document.querySelector(CARD_B.selector)?.remove()
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+  // Its chip in the thread still shows it.
+  expect(screen.getByRole('button', { name: /1 line/ })).toBeTruthy()
+})
+
+test('a drawing does not follow what took the place of what it was drawn on', async () => {
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A] } })])
+  await screen.findByTestId('an-area-mark')
+
+  // Card B's paragraph is now the first card's: its selector finds Card B.
+  document.querySelector('section > div')?.remove()
+
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+})
+
+test('a rectangle keeps its frame once what it covers is gone', async () => {
+  const { strokes: _, ...rectangle } = DRAWING
+  renderCards([comment({ area: { ...rectangle, covers: [CARD_A] } })])
+  await screen.findByTestId('an-area-mark')
+
+  document.querySelector(CARD_A.selector)?.remove()
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+})
+
+test('a drawing over empty space keeps its lines', async () => {
+  renderCards([comment({ area: DRAWING })])
+  await screen.findByTestId('an-area-mark')
+
+  document.querySelector('section > div:nth-of-type(2)')?.remove()
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+})
+
 test("the drawing's chip in a resolved thread shows it again on the page", async () => {
   openPanel('page', 'c1')
   renderCards([comment({ area: DRAWING, state: 'resolved' })])

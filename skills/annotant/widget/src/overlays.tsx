@@ -13,6 +13,7 @@ import {
   boxOf,
   coveredBy,
   type DrawnPoint,
+  drawnOnShows,
   elementFromAnchor,
   aroundOf,
   framedArea,
@@ -296,6 +297,8 @@ function findAreas(root: Element, comments: ReviewComment[]) {
     const { area } = comment.anchor
     // An element picked since takes the area's place.
     if (wasResolved(comment) || !area || pickedMark(comment)) return []
+    // Its chip still shows the drawing, and the picture sent with it.
+    if (!drawnOnShows(root, area)) return []
     const holder = holderOf(root, area)
     const around = aroundOf(root, area)
     return [{ comment, area, holder, around, clippers: clippersOf(holder ?? null) }]
@@ -319,7 +322,8 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
  * A drawing has no frame: its lines carry the rainbow. Once its agent has
  * written a file, while it works or once stopped, the page under an area may
  * have changed: it greys out, as what the reader pointed at, not what is
- * there now.
+ * there now. Once none of what a drawing was drawn on is on the page, its
+ * lines go.
  */
 export function AreaMarks({
   root,
