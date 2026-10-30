@@ -27,6 +27,13 @@ released to the `stable` branch.
   over what it covers, a dropdown over a footer), each part cut by the boxes
   it scrolls in, as on screen. Black text shows in it again. (#241)
 
+### Security
+
+- **Each release carries its signed provenance.** Next to the plugin archive,
+  `annotant-x.y.z.intoto.jsonl` holds the attestation the Release workflow
+  signed, so `gh attestation verify --bundle` checks the archive without
+  fetching the attestation from GitHub. (#246)
+
 ## 0.3.0 - 2026-10-29
 
 ### Added

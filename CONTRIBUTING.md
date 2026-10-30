@@ -252,9 +252,17 @@ updates: merging to `main` ships nothing. To release:
    `release` environment. It then commits the verified tree with its built
    widget on `stable` (its parents: the previous release and the verified
    commit on `main`), tags that commit `vx.y.z`, and publishes the GitHub
-   release: the changelog section as notes, and the plugin archive with a
-   signed provenance attestation. Releases are immutable: once
-   published, neither the tag nor the files can change.
+   release: the changelog section as notes, the plugin archive, and its
+   signed provenance attestation as `annotant-x.y.z.intoto.jsonl`, checked
+   against the archive before the release is created. Releases are immutable:
+   once published, neither the tag nor the files can change.
+
+Verify a release's archive with
+`gh attestation verify annotant-x.y.z.tar.gz -R annotant/annotant --signer-workflow annotant/annotant/.github/workflows/release.yml`,
+adding `--bundle annotant-x.y.z.intoto.jsonl` to check it against the attached
+bundle instead of GitHub's attestation store (`gh` still fetches Sigstore's
+trust root). Releases up to 0.3.0 have no bundle attached; the command without
+`--bundle` works for them.
 
 ## Using Claude Code on this repository
 
