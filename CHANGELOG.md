@@ -45,6 +45,10 @@ released to the `stable` branch.
   the _Comment_ button: start a comment on the page with the panel's **New
   comment**, or the comment shortcut. A tool in progress keeps its icon next
   to its _Cancel_, and hovering the grip rings the whole strip. (#261)
+- **The comment cards say how long ago.** A card shows _now_, _5 min ago_,
+  _yesterday_ or _2 days ago_ in your languages, moving on while the panel is
+  open, and from a week on the date alone; the full date and time is in its
+  tooltip. The times in a thread are unchanged. (#270)
 
 ### Fixed
 
