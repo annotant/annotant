@@ -75,6 +75,27 @@ test('the strip takes the corner nearest to it, and stays fully in the window', 
   ).toEqual({ corner: 'bottom-right', x: 870, y: 0 })
 })
 
+test("what sticks out of the strip's top right corner stays on screen too", () => {
+  const bounds = { width: 1000, height: 800 }
+  const strip = { width: WIDTH, height: HEIGHT }
+  expect(fitPlace({ corner: 'top-right', x: 0, y: 0 }, strip, bounds, 9)).toEqual({
+    corner: 'top-right',
+    x: 9,
+    y: 9,
+  })
+  expect(fitPlace({ corner: 'bottom-left', x: 900, y: 800 }, strip, bounds, 9)).toEqual({
+    corner: 'bottom-left',
+    x: 1000 - WIDTH - 9,
+    y: 800 - HEIGHT - 9,
+  })
+  // Away from the edges, the strip stays where it is.
+  expect(fitPlace({ corner: 'bottom-right', x: 16, y: 16 }, strip, bounds, 9)).toEqual({
+    corner: 'bottom-right',
+    x: 16,
+    y: 16,
+  })
+})
+
 test('the strip dragged by its grip lands where it is dropped, kept for every tab', () => {
   const { tools, grip } = renderClosed()
   const start = tools.getBoundingClientRect()

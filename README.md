@@ -263,7 +263,11 @@ floats or is docked, hold for every tab of the app and the next sessions.
   reply's: its pointer button picks one with the panel still open ("this one
   too"). One per message: picking another replaces it. Its chip in the thread
   scrolls to it.
-- **All comments** lists every discussion, newest first, filtered by status.
+- **All comments** lists every discussion, newest first, filtered by status:
+  _Needs you_ keeps the threads where Claude waits on you. While one does, on
+  any page, an orange count on the corner of the closed tools opens that list
+  (or the thread, when only one waits), and the thread's bubble on the page
+  shows a **?**.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
   MCP calls, failed tools in red, its messages and its thinking), and

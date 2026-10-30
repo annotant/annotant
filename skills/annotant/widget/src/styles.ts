@@ -19,6 +19,9 @@ export const scrollBehavior = (): ScrollBehavior =>
   matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth'
 
 /** How long the panel takes to come in, or to widen and narrow. */
+/** How far the count of the threads that need the reader sticks out of the strip's top right corner. */
+export const NEEDS_YOU_REACH = 9
+
 export const PANEL_IN_MS = 200
 /** How long the panel takes to leave: shorter, it is on its way out. */
 export const PANEL_OUT_MS = 150
@@ -56,6 +59,9 @@ export const WIDGET_CSS = `
   --cb-ink: #e5306b;
   --cb-red-bg: #fdecec;
   --cb-yellow: #f0ad2e;
+  /* What waits on the reader: the strip's count and the page's pins, bright, with dark text on it. */
+  --cb-orange: #fd7e14;
+  --cb-on-orange: #13294b;
   --cb-amber-bg: #fdf3e1;
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
@@ -89,6 +95,8 @@ export const WIDGET_CSS = `
   --cb-green-bg: #12301f;
   --cb-red: #ff8f8f;
   --cb-red-bg: #3a1b1e;
+  --cb-orange: #fb923c;
+  --cb-on-orange: #0b1828;
   --cb-amber-bg: #33280f;
   --cb-amber-fg: #f2c46b;
   --cb-amber-ink: #f7e5bd;
@@ -169,6 +177,14 @@ code { font-family: var(--cb-mono); }
 .an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
 .an-dock[data-moving] .an-grip { cursor: grabbing; }
 .an-tool { border-radius: 7px; }
+/* Threads wait on the reader: how many, on the strip's top right corner. */
+.an-needs-you {
+  position: absolute; top: -${NEEDS_YOU_REACH}px; right: -${NEEDS_YOU_REACH}px; min-width: 20px; height: 20px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  border: 2px solid var(--cb-surface); border-radius: 10px; background: var(--cb-orange);
+  color: var(--cb-on-orange); font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.an-needs-you:hover { filter: brightness(1.1); }
 .an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
 .an-tool--idle svg { width: 18px; height: 18px; }
 .an-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
@@ -370,6 +386,7 @@ code { font-family: var(--cb-mono); }
 @media (prefers-reduced-motion: reduce) { .an-mark::before { animation: none; } }
 .an-quote-pin { position: fixed; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-top: -22px; padding: 0; border: 2px solid #fff; border-radius: 11px 11px 11px 3px; background: var(--cb-unicorn); color: #fff; cursor: pointer; box-shadow: var(--cb-shadow); transition: transform .15s; }
 .an-quote-pin svg { width: 12px; height: 12px; }
+.an-quote-pin--asking { background: var(--cb-orange); color: var(--cb-on-orange); font-size: 13px; font-weight: 700; line-height: 1; }
 .an-quote-pin:hover, .an-quote-pin:focus-visible { transform: scale(1.15); }
 .an-outline { position: fixed; pointer-events: none; border: 2px solid var(--cb-accent); background: rgba(var(--cb-accent-rgb), .12); box-shadow: 0 0 0 4px rgba(var(--cb-accent-rgb), .18); }
 /* It glides to the next element: its size, not a scale, so the border and the label keep theirs. */

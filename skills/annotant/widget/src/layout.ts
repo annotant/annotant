@@ -108,12 +108,24 @@ export function placeOf(box: Box, bounds: Size): StripPlace {
   }
 }
 
-/** The place within the window, all of the strip (`size`) on screen. */
-export function fitPlace(place: StripPlace, size: Size, bounds: Size): StripPlace {
+/**
+ * The place within the window, all of the strip (`size`) on screen, and
+ * `reach` more of it above and to its right: what sticks out of its top right
+ * corner.
+ */
+export function fitPlace(
+  place: StripPlace,
+  size: Size,
+  bounds: Size,
+  reach = 0,
+): StripPlace {
+  const [vertical, horizontal] = place.corner.split('-')
+  const top = vertical === 'top' ? reach : 0
+  const right = horizontal === 'right' ? reach : 0
   return {
     ...place,
-    x: clamp(place.x, bounds.width - size.width),
-    y: clamp(place.y, bounds.height - size.height),
+    x: right + clamp(place.x - right, bounds.width - size.width - reach),
+    y: top + clamp(place.y - top, bounds.height - size.height - reach),
   }
 }
 

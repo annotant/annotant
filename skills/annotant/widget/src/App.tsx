@@ -113,7 +113,13 @@ import {
   shortcutLabel,
   shortcutOf,
 } from './shortcuts'
-import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
+import {
+  NEEDS_YOU_REACH,
+  PANEL_IN_MS,
+  PANEL_OUT_MS,
+  REDUCED_MOTION,
+  scrollBehavior,
+} from './styles'
 import { useDark } from './theme'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
@@ -150,7 +156,7 @@ const STEPS = { next: 1, previous: -1 } as const satisfies Partial<
 >
 
 type View = 'page' | 'all'
-type StatusFilter = 'all' | 'open' | 'resolved'
+type StatusFilter = 'all' | 'open' | 'asking' | 'resolved'
 
 const STATUS_CHIPS: Record<Status, string> = {
   open: 'Open',
@@ -857,9 +863,16 @@ export default function App({ root }: { root: Element }) {
 
   const page = useComments(route)
   const comments = page.comments
-  const all = useAllComments(open && view === 'all')
-  // Some agent is on a comment right now.
-  const working = [...comments, ...all.comments].some(
+  // Closed, for the strip's badge: a thread of any page may need the reader.
+  const allShown = !open || view === 'all'
+  const all = useAllComments(allShown)
+  const asking = all.comments.filter(isAsking)
+  const needYou = asking.length
+  // Not while a tool is in use: the panel would open over it, inert while the reader draws.
+  const needYouShown = needYou > 0 && !drawing && !picking
+  // Some agent is on a comment right now. Not from the list of every comment
+  // once it stops reloading: it would say so long after.
+  const working = [...comments, ...(allShown ? all.comments : [])].some(
     (comment) => comment.state === 'working',
   )
   const watching = page.reachable
@@ -1036,13 +1049,13 @@ export default function App({ root }: { root: Element }) {
     refocus.current = true
   }
 
-  // Back to the button that opened the panel, or to the dock when it is gone with the panel.
+  // Back to the button that opened the panel, or to the strip's Comment when it is gone with the panel.
   useEffect(() => {
     if (open || !refocus.current) return
     refocus.current = false
     const back = opener.current?.isConnected
       ? opener.current
-      : dock.current?.querySelector<HTMLElement>('.an-tool')
+      : dock.current?.querySelector<HTMLElement>('.an-tool--comment')
     opener.current = undefined
     back?.focus()
   }, [open])
@@ -1078,7 +1091,11 @@ export default function App({ root }: { root: Element }) {
     return () => resizes.disconnect()
   }, [open])
 
-  const shownStrip = strip && stripSize ? fitPlace(strip, stripSize, windowSize) : strip
+  // The count of the threads that need the reader sticks out of the strip's corner: on screen too.
+  const shownStrip =
+    strip && stripSize
+      ? fitPlace(strip, stripSize, windowSize, needYouShown ? NEEDS_YOU_REACH : 0)
+      : strip
 
   /** Puts the tools at `box`, from the corner nearest to it, within the window. */
   const placeStrip = (box: Box) => {
@@ -2105,7 +2122,9 @@ export default function App({ root }: { root: Element }) {
     .filter(
       (comment) =>
         statusFilter === 'all' ||
-        (comment.state === 'resolved') === (statusFilter === 'resolved'),
+        (statusFilter === 'asking'
+          ? isAsking(comment)
+          : (comment.state === 'resolved') === (statusFilter === 'resolved')),
     )
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
 
@@ -2118,6 +2137,7 @@ export default function App({ root }: { root: Element }) {
         options={[
           { value: 'all', label: 'All' },
           { value: 'open', label: 'Open' },
+          { value: 'asking', label: 'Needs you' },
           { value: 'resolved', label: 'Resolved' },
         ]}
       />
@@ -2217,13 +2237,6 @@ export default function App({ root }: { root: Element }) {
             <Icon name="grip" />
           </button>
           <ToolButton
-            icon="chat"
-            label="Comment"
-            title={`Comment on the page (${keysOf('comment')})`}
-            aria-keyshortcuts={ariaKeysOf('comment')}
-            onClick={() => startDraft(PAGE_LEVEL)}
-          />
-          <ToolButton
             icon="frame"
             label="Draw area"
             active={drawing === 'area'}
@@ -2250,6 +2263,33 @@ export default function App({ root }: { root: Element }) {
               setPicking((value) => !value)
             }}
           />
+          <ToolButton
+            icon="chat"
+            label="Comment"
+            className="an-tool--comment"
+            title={`Comment on the page (${keysOf('comment')})`}
+            aria-keyshortcuts={ariaKeysOf('comment')}
+            onClick={() => startDraft(PAGE_LEVEL)}
+          />
+          {needYouShown && (
+            <button
+              type="button"
+              className="an-needs-you"
+              aria-label={`${needYou} ${needYou === 1 ? 'thread needs' : 'threads need'} you`}
+              title={`${needYou === 1 ? 'A thread needs' : `${needYou} threads need`} you`}
+              onClick={() => {
+                setView('all')
+                setStatusFilter('asking')
+                // A single thread: opened at once, the filtered list behind it.
+                setThreadId(needYou === 1 ? asking[0]?.id : undefined)
+                openPanel()
+                // The badge is gone with the strip: the focus goes into the panel.
+                setToTitle((times) => times + 1)
+              }}
+            >
+              {needYou}
+            </button>
+          )}
         </div>
       )}
 
