@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -22,7 +22,11 @@ let server
 
 before(async (t) => {
   if (!existsSync(WIDGET)) throw new Error('build the widget first: npm run build')
-  root = await tempProject(t)
+  root = await tempProject(t, { theme: { on: 'html', attribute: 'class', dark: 'dark' } })
+  execFileSync('git', ['init', '-q'], { cwd: root })
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/shop.git'], {
+    cwd: root,
+  })
   port = await freePort()
   const child = spawn(
     process.execPath,
@@ -143,6 +147,19 @@ async function listen(headers = {}) {
 test('answers the health check with the project it serves', async () => {
   const health = await json(await fetch(`${base}/api/health`))
   assert.equal(health.project, root)
+})
+
+test("tells the widget the app's light and dark switch", async () => {
+  const health = await json(await fetch(`${base}/api/health`))
+  assert.deepEqual(health.theme, { on: 'html', attribute: 'class', dark: 'dark' })
+})
+
+test("tells the widget the project's repository, from its origin remote", async () => {
+  const health = await json(await fetch(`${base}/api/health`))
+  assert.deepEqual(health.repository, {
+    kind: 'github',
+    url: 'https://github.com/acme/shop',
+  })
 })
 
 test('serves the widget', async () => {
@@ -426,15 +443,40 @@ test('keeps the lines drawn freehand in an area, in its box, and says how many',
     (await createArea({ width: 40, height: 40, pictured: true })).pictured,
     undefined,
   )
-  // No line at all is no drawing, and points at nothing.
+  // What the lines were drawn around, kept with where they lie from it and its size.
+  const around = {
+    selector: 'ul > li',
+    tag: 'li',
+    text: 'CNESST-1523',
+    offset: { top: -13.4, left: -18 },
+    size: { width: 200, height: 30 },
+  }
+  assert.deepEqual(
+    (await createArea({ width: 40, height: 40, strokes: [[[1, 1]]], around })).around,
+    { ...around, offset: { top: -13, left: -18 } },
+  )
+  assert.equal(
+    (
+      await createArea({
+        width: 40,
+        height: 40,
+        strokes: [[[1, 1]]],
+        around: { ...around, size: { width: 0, height: 30 } },
+      })
+    ).around,
+    undefined,
+  )
+  // No line at all is no drawing, points at nothing and was drawn around nothing.
   const none = await createArea({
     width: 40,
     height: 40,
     strokes: [[], 'x'],
     pointsAt: { selector: 'h3', tag: 'h3', text: 'Title' },
+    around,
   })
   assert.equal(none.strokes, undefined)
   assert.equal(none.pointsAt, undefined)
+  assert.equal(none.around, undefined)
 
   const event = await nextLine(`NEW ${created.id} `, printed)
   assert.match(
@@ -810,7 +852,7 @@ test('rejects a body with no length that outgrows the limit as it is read', asyn
     })
     request.on('error', (error) => (answered ? undefined : reject(error)))
     request.write('{"body":"')
-    for (let sent = 0; sent < 40; sent += 1) request.write(chunk)
+    for (let sent = 0; sent < 50; sent += 1) request.write(chunk)
   })
   assert.equal(status, 413)
 })
@@ -996,8 +1038,8 @@ test('refuses an image it does not take with 422, in words for the reader', asyn
     ],
     [[{ type: 'image/jpeg', data: PNG }], 'not a image/jpeg image'],
     [
-      Array.from({ length: 5 }, () => ({ type: 'image/png', data: PNG })),
-      'at most 4 images per message',
+      Array.from({ length: 101 }, () => ({ type: 'image/png', data: PNG })),
+      'at most 100 images per message',
     ],
     [{ type: 'image/png', data: PNG }, 'images must be a list'],
     [[{ type: 'image/png', data: 42 }], 'only PNG, JPEG, GIF and WebP images are taken'],
@@ -1112,18 +1154,38 @@ test('sends a stopped comment again with its image alone, the words removed', as
   assert.match(event, / body="" images=\[".*\/m1-1\.png"\]$/)
 })
 
-test('takes 4 images of 5 MB each in one message', async () => {
-  const full = Buffer.alloc(5 * 1024 * 1024)
+/** A PNG of `bytes`, as the widget sends it. */
+function pngOf(bytes) {
+  const full = Buffer.alloc(bytes)
   Buffer.from('89504e470d0a1a0a', 'hex').copy(full)
-  const image = { type: 'image/png', data: full.toString('base64') }
-  const response = await post(
+  return { type: 'image/png', data: full.toString('base64') }
+}
+
+test('takes any number of images in one message, up to 32 MB together', async () => {
+  const mb = 1024 * 1024
+  const five = pngOf(5 * mb)
+  const taken = await post(
     JSON.stringify({
       route: '/images',
       body: 'All of them',
-      images: Array.from({ length: 4 }, () => image),
+      images: [...Array.from({ length: 6 }, () => five), pngOf(2 * mb)],
     }),
   )
-  assert.equal(response.status, 201)
+  assert.equal(taken.status, 201)
+  assert.equal((await json(taken)).messages[0].images.length, 7)
+
+  const refused = await post(
+    JSON.stringify({
+      route: '/images',
+      body: 'Too much',
+      // Past 32 MB by a little: a request may hold that much, its text's room.
+      images: [...Array.from({ length: 6 }, () => five), pngOf(2 * mb), pngOf(60_000)],
+    }),
+  )
+  assert.equal(refused.status, 422)
+  assert.deepEqual(await json(refused), {
+    error: 'the images of a message may hold at most 32 MB together',
+  })
 })
 
 test('an image it cannot read is an error, not a missing image', async () => {
@@ -1217,7 +1279,7 @@ test('refuses a body over the images’ room by its length, before reading it', 
   const status = await new Promise((resolve, reject) => {
     const request = http.request(`${base}/api/comments`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'content-length': '30000000' },
+      headers: { 'content-type': 'application/json', 'content-length': '50000000' },
     })
     request.on('response', (response) => {
       response.resume()
@@ -1292,6 +1354,67 @@ test('takes a comment of the elements the reader picked alone, and tells the hoo
   assert.deepEqual(created.messages[0].elements, [{ ...title, route: '/help' }])
   const event = await nextLine(`NEW ${created.id} `, printed)
   assert.match(event, / page-level body="" elements=\["<h1> Cart on \/help"\]$/)
+})
+
+test('takes the area the reader drew with a reply, and tells the hooks', async () => {
+  const created = await json(
+    await post(JSON.stringify({ route: '/cart', body: 'Bigger' })),
+  )
+  const patch = (body) =>
+    fetch(`${base}/api/comments/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  await patch({ status: 'resolved' })
+  const area = {
+    top: 300,
+    left: 10,
+    width: 500,
+    height: 60,
+    viewport: { width: 1000, height: 800, scrollX: 0, scrollY: 0 },
+    covers: [{ selector: '#buy', tag: 'button', text: 'Buy' }],
+    crosses: [],
+  }
+  // The page it was on is unknown: dropped.
+  const unplaced = await json(await patch({ followUp: 'Here', area }))
+  assert.equal(unplaced.messages.at(-1).area, undefined)
+
+  await patch({ status: 'resolved' })
+  const printed = output.length
+  const reopened = await json(
+    await patch({ followUp: 'And here', area: { ...area, route: '/help' } }),
+  )
+  assert.deepEqual(reopened.messages.at(-1).area, { ...area, route: '/help' })
+  const event = await nextLine(`FOLLOWUP ${created.id} `, printed)
+  assert.match(
+    event,
+    / followup="And here" picked-area=500x60@10,300 covers=\["<button> Buy"\] crosses=\[\] on="\/help" messages=\d+$/,
+  )
+
+  // One target per message: with an element, the area is dropped; alone, it is a reply.
+  await patch({ status: 'resolved' })
+  const button = {
+    selector: '#buy',
+    tag: 'button',
+    text: 'Buy',
+    html: '',
+    route: '/cart',
+  }
+  const both = await json(
+    await patch({
+      followUp: 'Both',
+      elements: [button],
+      area: { ...area, route: '/cart' },
+    }),
+  )
+  assert.equal(both.messages.at(-1).area, undefined)
+  assert.equal(both.messages.at(-1).elements.length, 1)
+  await patch({ status: 'resolved' })
+  const alone = await json(await patch({ area: { ...area, route: '/cart' } }))
+  assert.equal(alone.state, 'open')
+  assert.equal(alone.messages.at(-1).body, '')
+  assert.equal(alone.messages.at(-1).area.route, '/cart')
 })
 
 test('takes the elements the reader picked with a reply, and tells the hooks', async () => {

@@ -124,6 +124,7 @@ jobs:
             rekor.sigstore.dev:443
             results-receiver.actions.githubusercontent.com:443
             tuf-repo-cdn.sigstore.dev:443
+            tuf-repo.github.com:443
             uploads.github.com:443
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -159,8 +160,21 @@ jobs:
             -o "$RUNNER_TEMP/annotant-$VERSION.tar.gz" "$commit"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
         with:
           subject-path: ${{ runner.temp }}/annotant-${{ inputs.version }}.tar.gz
+
+      # The attestation also ships as a release asset, which Scorecard's Signed-Releases
+      # counts as provenance by its .intoto.jsonl name. Same check as README.md documents.
+      - name: Stage and verify the provenance bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE" "$RUNNER_TEMP/annotant-$VERSION.intoto.jsonl"
+          gh attestation verify "$RUNNER_TEMP/annotant-$VERSION.tar.gz" \
+            --bundle "$RUNNER_TEMP/annotant-$VERSION.intoto.jsonl" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
 
       - name: Push stable
         env:
@@ -176,5 +190,6 @@ jobs:
           COMMIT: ${{ steps.stable.outputs.commit }}
         run: |
           gh release create "v$VERSION" "$RUNNER_TEMP/annotant-$VERSION.tar.gz" \
+            "$RUNNER_TEMP/annotant-$VERSION.intoto.jsonl" \
             --repo "$GITHUB_REPOSITORY" --target "$COMMIT" \
             --title "Annotant $VERSION" --notes-file "$RUNNER_TEMP/release/notes.md"

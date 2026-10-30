@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openThread } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 /** A PNG file's first bytes: the widget sends what it reads. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -23,6 +23,11 @@ const resolved = () =>
     messages: [{ author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' }],
   })
 
+/** The target slot's button pointing at an element: Element, or Repick once it holds one. */
+const pointButton = () =>
+  screen.queryByRole('button', { name: 'Element' }) ??
+  screen.getByRole('button', { name: 'Repick' })
+
 /** The pointer points at the page's title, as the picker reads it. */
 function pointAtTitle() {
   const title = document.querySelector('main h1')
@@ -39,7 +44,7 @@ test('an element picked in the page goes with the reply, the thread still open',
   const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
   const title = pointAtTitle()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+  fireEvent.click(pointButton())
   expect(screen.getByText(/Click an element to add it to your message/)).toBeTruthy()
   fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
 
@@ -67,7 +72,7 @@ test('an element alone is a reply, and the reader may remove it before sending',
   expect(send.disabled).toBe(true)
 
   for (const _ of [1, 2]) {
-    fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+    fireEvent.click(pointButton())
     fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   }
   // The same element twice is one.
@@ -76,7 +81,7 @@ test('an element alone is a reply, and the reader may remove it before sending',
   expect(screen.queryByTestId('an-picked')).toBeNull()
   expect(send.disabled).toBe(true)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+  fireEvent.click(pointButton())
   fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   expect(send.disabled).toBe(false)
   fireEvent.click(send)
@@ -91,7 +96,7 @@ test('Escape stops picking, and leaves the page as it was', async () => {
   renderWidget()
   await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
 
-  fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+  fireEvent.click(pointButton())
   fireEvent.keyDown(document, { key: 'Escape' })
 
   await waitFor(() => expect(screen.queryByText(/Click an element to add it/)).toBeNull())
@@ -129,7 +134,7 @@ test("the reader's message shows its elements: a click scrolls to one", async ()
 /** Picks the page's title for the reply `times` times. */
 function pickTitle(title: Element, times = 1) {
   for (let left = times; left > 0; left -= 1) {
-    fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+    fireEvent.click(pointButton())
     fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
   }
 }
@@ -178,7 +183,7 @@ test('a message holds one element: another picked takes its place', async () => 
   onTestFinished(() => pointed.mockRestore())
   for (const paragraph of page.querySelectorAll('p')) {
     pointed.mockReturnValue(paragraph)
-    fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
+    fireEvent.click(pointButton())
     fireEvent.click(paragraph, { clientX: 5, clientY: 5, detail: 1 })
   }
 
@@ -211,6 +216,39 @@ test('a stopped reply of elements alone goes again without words', async () => {
   )
 })
 
+test('a stopped reply of an area alone goes again without words', async () => {
+  const server = fakeServer([
+    comment({
+      state: 'stopped',
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' },
+        {
+          author: 'reader',
+          body: '',
+          at: '2026-01-01T10:02:00.000Z',
+          area: {
+            top: 10,
+            left: 10,
+            width: 100,
+            height: 40,
+            viewport: { width: 1000, height: 800, scrollX: 0, scrollY: 0 },
+            covers: [],
+            crosses: [],
+            route: '/',
+          },
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Send again' }))
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { text: '', cancelled: false } }]),
+  )
+})
+
 /** What the widget POSTed last, as the server reads it. */
 function posted(server: ReturnType<typeof fakeServer>): unknown {
   const call = server.fetch.mock.calls.findLast(([, init]) => init?.method === 'POST')
@@ -226,10 +264,12 @@ test('pointing at an element starts a comment whose message box holds it', async
   fireEvent.click(await screen.findByRole('button', { name: 'Point at element' }))
   fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
 
-  // A comment about the page, as one started otherwise: the element is in the box.
+  // A comment about the page, as one started otherwise: the element is its target,
+  // its card naming its selector, and it is about the page it is on.
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   expect(screen.getByTestId('an-picked').textContent).toContain('Playground')
-  expect(screen.getByRole('checkbox')).toBeTruthy()
+  expect(screen.getByTestId('an-picked').textContent).toContain('h1')
+  expect(screen.queryByRole('checkbox')).toBeNull()
   fireEvent.change(box, { target: { value: 'Bigger' } })
   fireEvent.keyDown(box, { key: 'Enter' })
 
@@ -250,7 +290,7 @@ test('pointing at an element starts a comment whose message box holds it', async
 test('a new comment picks elements in the page from its message box, and may hold them alone', async () => {
   const server = fakeServer([])
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   await screen.findByRole('textbox', { name: 'What should change?' })
   const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save' })
   expect(save.disabled).toBe(true)
@@ -268,7 +308,7 @@ test('a new comment picks elements in the page from its message box, and may hol
 test('pointing at an element with a comment under way adds it to that comment', async () => {
   const server = fakeServer([])
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   fireEvent.change(await screen.findByRole('textbox', { name: 'What should change?' }), {
     target: { value: 'Same size' },
   })
@@ -321,7 +361,7 @@ test.each([
 ])('a new comment holds %s, and goes with both', async (_, imageFirst) => {
   const server = fakeServer([])
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   if (imageFirst) await pasteImage(box)
   pickTitle(pointAtTitle())
@@ -337,4 +377,42 @@ test.each([
       images: [{ type: 'image/png' }],
     }),
   )
+})
+
+test('an older message with several elements still shows each of them', async () => {
+  fakeServer([
+    comment({
+      state: 'open',
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' },
+        {
+          author: 'reader',
+          body: 'These two',
+          at: '2026-01-01T10:02:00.000Z',
+          elements: [TITLE, { ...TITLE, selector: 'p', tag: 'p', text: 'Intro' }],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const shown = await screen.findByTestId('an-msg-elements')
+  expect(within(shown).getAllByRole('button')).toHaveLength(2)
+  expect(shown.textContent).toContain('Intro')
+})
+
+test("with no target, Only on the page sets the comment's scope", async () => {
+  const server = fakeServer([])
+  renderWidget()
+  await startPageComment()
+  const box = await screen.findByRole('textbox', { name: 'What should change?' })
+  expect(screen.getByRole('button', { name: 'Element' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Area' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Drawing' })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Only on /' }))
+  fireEvent.change(box, { target: { value: 'Everywhere' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() => expect(posted(server)).toMatchObject({ route: '*' }))
 })

@@ -61,6 +61,12 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @typedef {Element & { route: string }} PickedElement
  */
 
+/**
+ * An area the reader drew, or lines drawn freehand, with a reply: found as
+ * the comment's own, on `route`, the page they were on.
+ * @typedef {Area & { route: string }} PickedArea
+ */
+
 /** The most elements one message may hold: the one the page marks. */
 export const MAX_PICKED = 1
 
@@ -94,6 +100,13 @@ export const MAX_PICKED = 1
  */
 
 /**
+ * The element a drawing is placed from: where its area's corner lies from the
+ * element's corner, its scroll aside, and its size then, never 0, to scale the
+ * area's left offset and width with it.
+ * @typedef {AreaNode & { offset: { top: number, left: number }, size: Size }} Pin
+ */
+
+/**
  * A line the reader drew freehand: its points, `[x, y]` from its area's
  * corner, in CSS pixels, inside the area's box; 400 at most.
  * @typedef {[number, number][]} Stroke
@@ -102,7 +115,8 @@ export const MAX_PICKED = 1
 /**
  * A rectangle the reader drew, or the box of lines drawn freehand
  * (`strokes`, 40 at most, 4000 points in all; `pointsAt`, the element the
- * longest points at, under its end or next along it; `pictured` when the last
+ * longest points at, under its end or next along it; `around`, the element
+ * they are placed from; `pictured` when the last
  * image of the comment's first message is their picture), from the page's
  * corner, in CSS pixels, never empty. `covers` keeps at most 10 elements and
  * `crosses` 6, a drawing's those of a wider box around its lines;
@@ -115,6 +129,7 @@ export const MAX_PICKED = 1
  *   truncated?: true,
  *   strokes?: Stroke[],
  *   pointsAt?: AreaNode,
+ *   around?: Pin,
  *   pictured?: true,
  * }} Area
  */
@@ -141,6 +156,9 @@ export const MAX_PICKED = 1
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
  * @property {PickedElement[]} [elements] Reader only: the elements they picked
  *   in the page with it.
+ * @property {PickedArea} [area] Reader only, a reply only, never with
+ *   `elements`: the area they drew, or the lines, with it; `pictured` when the
+ *   last image of this message is their picture.
  * @property {string} [sentAt] Reader only, on a message that opened the
  *   comment (its first, an answer, a follow-up): when the reader sent it, anew
  *   when they send it again after a stop. The hooks start or message an agent once per `id` and

@@ -18,6 +18,13 @@ export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 export const scrollBehavior = (): ScrollBehavior =>
   matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth'
 
+/**
+ * How far the count of the threads that need the reader sticks out of the strip's
+ * top right corner: 8px past Comments' corner (`.an-needs-you`), 4px of which
+ * fall within the strip's padding and border (`.an-dock`). Change them together.
+ */
+export const NEEDS_YOU_REACH = 4
+
 /** How long the panel takes to come in, or to widen and narrow. */
 export const PANEL_IN_MS = 200
 /** How long the panel takes to leave: shorter, it is on its way out. */
@@ -40,6 +47,10 @@ export const WIDGET_CSS = `
   --cb-accent-strong: #1759ad;
   --cb-accent-weak: #e9f3fc;
   --cb-accent-rgb: 33, 110, 192;
+  /* Text and icons on an accent fill; a claimed comment's chip; a disabled button's text. */
+  --cb-on-accent: #ffffff;
+  --cb-accent-tint: #dcebf8;
+  --cb-disabled: #9cbfde;
   --cb-text: #13294b;
   --cb-muted: #5d6b80;
   --cb-border: #d6e4f0;
@@ -52,6 +63,11 @@ export const WIDGET_CSS = `
   --cb-ink: #e5306b;
   --cb-red-bg: #fdecec;
   --cb-yellow: #f0ad2e;
+  /* Dark amber on yellow, the same in either theme: the count of what waits on the reader. */
+  --cb-on-yellow: #4a2f06;
+  /* What waits on the reader on the page: the pins' ?, bright, with dark text on it. */
+  --cb-orange: #fd7e14;
+  --cb-on-orange: #13294b;
   --cb-amber-bg: #fdf3e1;
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
@@ -65,7 +81,35 @@ export const WIDGET_CSS = `
   --cb-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 * { box-sizing: border-box; }
-.an { font: 14px/1.45 var(--cb-font); color: var(--cb-text); }
+.an { font: 14px/1.45 var(--cb-font); color: var(--cb-text); color-scheme: light; }
+/* The dark palette (theme.ts says when): every colour below goes through these. */
+.an[data-theme='dark'] {
+  color-scheme: dark;
+  --cb-accent: #6cb0f5;
+  --cb-accent-strong: #93c6fa;
+  --cb-accent-weak: #172c44;
+  --cb-accent-rgb: 108, 176, 245;
+  --cb-on-accent: #0b1828;
+  --cb-accent-tint: #1d3858;
+  --cb-disabled: #4b6787;
+  --cb-text: #e3eaf4;
+  --cb-muted: #9aa9bd;
+  --cb-border: #2e3a4c;
+  --cb-surface: #161c27;
+  --cb-surface-2: #1f2735;
+  --cb-green: #5fd39b;
+  --cb-green-bg: #12301f;
+  --cb-red: #ff8f8f;
+  --cb-red-bg: #3a1b1e;
+  --cb-orange: #fb923c;
+  --cb-on-orange: #0b1828;
+  --cb-amber-bg: #33280f;
+  --cb-amber-fg: #f2c46b;
+  --cb-amber-ink: #f7e5bd;
+  --cb-amber-border: #5e4919;
+  --cb-bubble: #232c3a;
+  --cb-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
 .an-live { pointer-events: auto; }
 button, textarea, input { font: inherit; color: inherit; }
 p { margin: 0; white-space: pre-wrap; }
@@ -75,11 +119,11 @@ code { font-family: var(--cb-mono); }
   display: inline-flex; align-items: center; gap: 6px;
   height: 36px; padding: 0 14px; border-radius: var(--cb-radius);
   border: 1px solid transparent; cursor: pointer; font-weight: 600;
-  background: var(--cb-accent); color: #fff; white-space: nowrap;
+  background: var(--cb-accent); color: var(--cb-on-accent); white-space: nowrap;
   transition: background .15s, border-color .15s, color .15s;
 }
 .an-btn:hover { background: var(--cb-accent-strong); }
-.an-btn:disabled { cursor: default; background: var(--cb-accent-weak); color: #9cbfde; }
+.an-btn:disabled { cursor: default; background: var(--cb-accent-weak); color: var(--cb-disabled); }
 .an-btn--secondary { background: var(--cb-surface); color: var(--cb-accent); border-color: var(--cb-border); }
 .an-btn--secondary:hover { background: var(--cb-surface-2); border-color: var(--cb-accent); }
 .an-btn--tertiary { background: transparent; color: var(--cb-accent); }
@@ -100,7 +144,7 @@ code { font-family: var(--cb-mono); }
 
 .an-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .an-chip--open { background: var(--cb-accent-weak); color: var(--cb-accent); }
-.an-chip--claimed { background: #dcebf8; color: var(--cb-accent-strong); }
+.an-chip--claimed { background: var(--cb-accent-tint); color: var(--cb-accent-strong); }
 .an-chip--asking, .an-chip--answered { background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
 .an-chip--resolved { background: var(--cb-green-bg); color: var(--cb-green); }
 .an-chip--stopped { background: var(--cb-red-bg); color: var(--cb-red); }
@@ -139,6 +183,28 @@ code { font-family: var(--cb-mono); }
 .an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
 .an-dock[data-moving] .an-grip { cursor: grabbing; }
 .an-tool { border-radius: 7px; }
+.an-tool:not(.an-tool--idle) { background: var(--cb-accent-weak); border-color: transparent; }
+.an-tool:not(.an-tool--idle):hover { background: var(--cb-accent-tint); }
+/* Its grip moves the whole strip: hovered, it rings all of it. */
+.an-dock:has(.an-grip:hover), .an-dock[data-moving] {
+  box-shadow: 0 0 0 2px rgba(var(--cb-accent-rgb), .35), 0 4px 16px rgba(0,0,0,.15);
+}
+/* Between the page's tools and Comments: 4px on each side, with the strip's gap. */
+.an-dock-rule { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--cb-border); }
+.an-comments {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px;
+  background: var(--cb-accent); color: var(--cb-on-accent); cursor: pointer; transition: background .15s;
+}
+.an-comments:hover { background: var(--cb-accent-strong); }
+.an-comments > svg { width: 18px; height: 18px; }
+/* Threads wait on the reader: how many, on Comments' top right corner. */
+.an-needs-you {
+  position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  border: 2px solid var(--cb-surface); border-radius: 10px; background: var(--cb-yellow);
+  color: var(--cb-on-yellow); font-size: 11px; font-weight: 700; line-height: 1;
+}
 .an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
 .an-tool--idle svg { width: 18px; height: 18px; }
 .an-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
@@ -180,17 +246,30 @@ code { font-family: var(--cb-mono); }
 .an-attachments { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
 .an-attachment { position: relative; }
 .an-attachment img { display: block; width: 56px; height: 56px; object-fit: cover; border: 1px solid var(--cb-border); border-radius: 6px; }
-.an-attachment-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 999px; background: var(--cb-text); color: #fff; }
+.an-attachment-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 999px; background: var(--cb-text); color: var(--cb-surface); }
 .an-attachment-remove:hover { background: var(--cb-red); }
 .an-attachment-remove svg { width: 12px; height: 12px; }
-.an-picked { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-top: 4px; min-width: 0; }
-.an-pick { flex-shrink: 0; width: 36px; height: 36px; }
-.an-pick[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent); }
+/* The target slot, above the images and the text: what to point at, or the one target's card. */
+.an-target-slot { flex-basis: 100%; min-width: 0; padding-bottom: 6px; border-bottom: 1px solid var(--cb-border); }
+.an-target-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; color: var(--cb-muted); }
+.an-target-tool { padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; font: inherit; color: var(--cb-accent); cursor: pointer; }
+.an-target-tool:hover, .an-target-tool:focus-visible { background: var(--cb-surface-2); }
+.an-target-tool[aria-pressed="true"] { background: var(--cb-accent-weak); }
+.an-target { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 6px 4px 6px 10px; border: 1px solid var(--cb-border); border-radius: 8px; background: var(--cb-surface-2); }
+.an-target:hover { border-color: var(--cb-accent); }
+.an-target-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
+.an-target-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.an-target-title span, .an-target-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-target-title code { flex-shrink: 0; color: var(--cb-accent); font-variant-numeric: tabular-nums; }
+.an-target-title svg { flex-shrink: 0; width: 14px; height: 14px; color: var(--cb-accent); }
+.an-target-detail { font-size: 12px; color: var(--cb-muted); }
+.an-target .an-btn[aria-pressed="true"] { background: var(--cb-accent-weak); }
+.an-attach { flex-shrink: 0; width: 36px; height: 36px; }
 .an-composer-box textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; padding: 7px 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; font-size: 15px; line-height: 1.45; }
 .an-composer-box textarea::placeholder { color: var(--cb-muted); }
-.an-send { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: var(--cb-accent); color: #fff; cursor: pointer; transition: background .15s; }
+.an-send { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: var(--cb-accent); color: var(--cb-on-accent); cursor: pointer; transition: background .15s; }
 .an-send:hover { background: var(--cb-accent-strong); }
-.an-send:disabled { cursor: default; background: var(--cb-accent-weak); color: #9cbfde; }
+.an-send:disabled { cursor: default; background: var(--cb-accent-weak); color: var(--cb-disabled); }
 .an-send svg { width: 18px; height: 18px; }
 .an-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--cb-muted); }
 .an-composer-cancel { margin-left: -10px; }
@@ -261,9 +340,19 @@ code { font-family: var(--cb-mono); }
 .an-images img { display: block; max-width: 160px; max-height: 120px; border: 1px solid var(--cb-border); border-radius: 10px; object-fit: cover; }
 /* Long words, URLs and code break inside the bubble rather than spilling out of it. */
 .an-bubble { max-width: 100%; padding: 8px 14px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.an-bubble--reader { background: var(--cb-accent); color: #fff; border-bottom-right-radius: 4px; }
+.an-bubble--reader { background: var(--cb-accent); color: var(--cb-on-accent); border-bottom-right-radius: 4px; }
 .an-bubble--claude { width: 100%; background: var(--cb-bubble); color: var(--cb-text); }
 .an-ask { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--cb-amber-border); border-radius: 14px; background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A URL or an issue a message cites: in its bubble's colour, underlined. */
+.an-bubble a, .an-ask a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+/* The Markdown of Claude's message: blocks spaced like paragraphs, code on a tint of its text colour. */
+.an-md > * { margin: 0; }
+.an-md > * + * { margin-top: 8px; }
+.an-md ul, .an-md ol { padding-left: 20px; }
+.an-md li + li { margin-top: 2px; }
+.an-md code { padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, currentColor 10%, transparent); font-size: .92em; }
+.an-md pre { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); overflow-x: auto; white-space: pre; }
+.an-md pre code { padding: 0; background: none; }
 .an-ask-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-amber-fg); }
 /* The answers Claude offers: one button each, ticked once chosen. */
 .an-options { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; white-space: normal; }
@@ -276,11 +365,13 @@ code { font-family: var(--cb-mono); }
 .an-option-text span { font-size: 13px; color: var(--cb-muted); }
 .an-option > svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; color: var(--cb-accent); }
 .an-option-box { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-top: 2px; border: 1.5px solid var(--cb-muted); border-radius: 4px; background: var(--cb-surface); }
-.an-option--on .an-option-box { border-color: var(--cb-accent); background: var(--cb-accent); color: #fff; }
+.an-option--on .an-option-box { border-color: var(--cb-accent); background: var(--cb-accent); color: var(--cb-on-accent); }
 .an-option-box svg { width: 12px; height: 12px; }
 .an-message-time { font-size: 11px; color: var(--cb-muted); font-variant-numeric: tabular-nums; }
-.an-working { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cb-accent); }
-.an-working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Two lines at most, then an ellipsis, long words broken; the spinner (16px) sits beside the first line (18px). */
+.an-working { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; color: var(--cb-accent); }
+.an-working .an-spinner { margin-top: 1px; }
+.an-working span { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 /* Read by screen readers only. */
 .an-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* One line, the latest step: the previous one leaves right, the new one enters left. */
@@ -292,7 +383,7 @@ code { font-family: var(--cb-mono); }
 .an-current-line svg { width: 14px; height: 14px; flex-shrink: 0; }
 .an-current-line--failed { color: var(--cb-red); }
 /* The running step's icon: filled, with a pulsing ring. */
-.an-step-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--cb-accent); color: #fff; animation: an-pulse 1.6s ease-out infinite; }
+.an-step-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--cb-accent); color: var(--cb-on-accent); animation: an-pulse 1.6s ease-out infinite; }
 .an-current-line--failed .an-step-icon { background: var(--cb-red); animation: none; }
 @keyframes an-pulse { 0% { box-shadow: 0 0 0 0 rgba(var(--cb-accent-rgb), .45); } 70%, 100% { box-shadow: 0 0 0 7px rgba(var(--cb-accent-rgb), 0); } }
 .an-current-line--out { position: absolute; inset: 8px 10px; animation: an-slide-out .25s ease-in forwards; }
@@ -321,7 +412,6 @@ code { font-family: var(--cb-mono); }
 .an-element span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .an-area-chip svg { flex-shrink: 0; align-self: center; width: 14px; height: 14px; color: var(--cb-accent); }
 .an-area-chip code { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.an-area-draft { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .an-draft-scope { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 
 /* In progress: the comment is open, until Claude resolves its thread. A rainbow
@@ -340,6 +430,7 @@ code { font-family: var(--cb-mono); }
 @media (prefers-reduced-motion: reduce) { .an-mark::before { animation: none; } }
 .an-quote-pin { position: fixed; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-top: -22px; padding: 0; border: 2px solid #fff; border-radius: 11px 11px 11px 3px; background: var(--cb-unicorn); color: #fff; cursor: pointer; box-shadow: var(--cb-shadow); transition: transform .15s; }
 .an-quote-pin svg { width: 12px; height: 12px; }
+.an-quote-pin--asking { background: var(--cb-orange); color: var(--cb-on-orange); font-size: 13px; font-weight: 700; line-height: 1; }
 .an-quote-pin:hover, .an-quote-pin:focus-visible { transform: scale(1.15); }
 .an-outline { position: fixed; pointer-events: none; border: 2px solid var(--cb-accent); background: rgba(var(--cb-accent-rgb), .12); box-shadow: 0 0 0 4px rgba(var(--cb-accent-rgb), .18); }
 /* It glides to the next element: its size, not a scale, so the border and the label keep theirs. */
@@ -347,7 +438,7 @@ code { font-family: var(--cb-mono); }
 .an-hover[data-instant] { transition: none; }
 .an-hover[data-hidden] { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .an-hover { transition: none; animation: none; } }
-.an-hover span { position: absolute; top: -22px; left: -2px; padding: 1px 4px; border-radius: 3px; background: var(--cb-accent); color: #fff; font: 12px var(--cb-mono); white-space: nowrap; }
+.an-hover span { position: absolute; top: -22px; left: -2px; padding: 1px 4px; border-radius: 3px; background: var(--cb-accent); color: var(--cb-on-accent); font: 12px var(--cb-mono); white-space: nowrap; }
 /* A drawn area: square corners; its outline is dashed, where an element's is solid. */
 .an-outline--area, .an-mark--area { border-radius: 2px; }
 .an-outline--area { border-style: dashed; }
@@ -361,7 +452,7 @@ code { font-family: var(--cb-mono); }
 /* Drawing: the page under a veil, but for the area being drawn and what it covers. */
 .an-draw { position: fixed; inset: 0; cursor: crosshair; }
 .an-draw-box { position: fixed; border: 2px solid var(--cb-accent); border-radius: 2px; background: rgba(var(--cb-accent-rgb), .06); box-shadow: 0 0 0 100vmax rgba(16, 36, 74, .28); }
-.an-draw-box span { position: absolute; top: calc(100% + 6px); right: -2px; padding: 1px 6px; border-radius: 3px; background: var(--cb-accent); color: #fff; font: 12px var(--cb-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.an-draw-box span { position: absolute; top: calc(100% + 6px); right: -2px; padding: 1px 6px; border-radius: 3px; background: var(--cb-accent); color: var(--cb-on-accent); font: 12px var(--cb-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .an-draw-covered { position: fixed; pointer-events: none; border: 1px dashed rgba(var(--cb-accent-rgb), .7); border-radius: 2px; }
 /* While the reader draws, the panel steps back: the page is what they look at, and draw over. */
 .an-panel[data-drawing] { opacity: .35; pointer-events: none; }
@@ -372,17 +463,17 @@ code { font-family: var(--cb-mono); }
 /* The lines inherit their colour: a drawing in progress puts its rainbow in its place. */
 .an-sketch-lines, .an-strokes { stroke: var(--cb-ink); }
 .an-sketch-lines polyline, .an-strokes polyline { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.an-sketch-tools { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; cursor: default; }
+.an-sketch-tools { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: var(--cb-surface); font-size: 13px; cursor: default; }
 .an-sketch-tools span { margin-right: 6px; }
-.an-sketch-tools button { padding: 4px 10px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.an-sketch-tools button { padding: 4px 10px; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .an-sketch-tools button:disabled { opacity: .5; cursor: default; }
-.an-sketch-tools .an-sketch-done { border-color: var(--cb-accent); background: var(--cb-accent); }
-.an-hint { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; pointer-events: none; }
+.an-sketch-tools .an-sketch-done { border-color: var(--cb-accent); background: var(--cb-accent); color: var(--cb-on-accent); }
+.an-hint { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: var(--cb-surface); font-size: 13px; pointer-events: none; }
 
 .an-toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); }
 .an-toasts > div { display: flex; flex-direction: column; gap: 8px; }
 .an-toasts > :not(:empty) ~ :not(:empty) { margin-top: 8px; }
-.an-toast { padding: 10px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: #fff; font-size: 13px; box-shadow: var(--cb-shadow); }
+.an-toast { padding: 10px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: var(--cb-surface); font-size: 13px; box-shadow: var(--cb-shadow); }
 .an-toast--error { background: var(--cb-red); }
 `
 

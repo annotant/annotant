@@ -21,12 +21,12 @@ import {
   servedProject,
 } from './lib/project.mjs'
 import { errorCode } from './lib/errors.mjs'
+import { originOf } from './lib/remote.mjs'
 import {
   CONTENT_TYPES,
   IMAGE_NAME,
   ImageRefusal,
-  MAX_IMAGES,
-  MAX_IMAGE_BYTES,
+  MAX_MESSAGE_BYTES,
   imagesDir,
   parseImages,
 } from './lib/images.mjs'
@@ -63,6 +63,9 @@ const port = Number(process.env.ANNOTANT_PORT ?? config.port ?? 4599)
 // (some Docker, network or WSL ones).
 const pollMs = Number(process.env.ANNOTANT_POLL_MS ?? 5000)
 const store = createStore(project)
+// The `origin` remote, read once (a change needs a restart): the widget
+// links the issues a message cites to its repository.
+const repository = originOf(project.root)
 const WIDGET = path.join(SKILL_DIR, 'widget', 'dist', 'widget.js')
 // Releases ship the built widget; a clone of the repository builds it first.
 if (!existsSync(WIDGET)) {
@@ -123,7 +126,7 @@ class ClientError extends Error {
 /** The most a request's text may hold, its images aside. */
 const MAX_TEXT = 100_000
 /** The most a request may hold: its text, and its images in base64. */
-const MAX_BODY = MAX_TEXT + Math.ceil(MAX_IMAGE_BYTES / 3) * 4 * MAX_IMAGES
+const MAX_BODY = MAX_TEXT + Math.ceil(MAX_MESSAGE_BYTES / 3) * 4
 
 async function readJson(req) {
   if (Number(req.headers['content-length']) > MAX_BODY) throw new ClientError(413)
@@ -150,6 +153,7 @@ async function readJson(req) {
  * @typedef {import('./lib/format.mjs').AreaNode} AreaNode
  * @typedef {import('./lib/format.mjs').Box} Box
  * @typedef {import('./lib/format.mjs').Area} Area
+ * @typedef {import('./lib/format.mjs').Holder} Holder
  */
 
 /** The most elements an area records as covered, and as crossed, as the widget caps them. */
@@ -359,10 +363,28 @@ function sanitiseStrokes(strokes, box) {
 }
 
 /**
+ * An element an area is placed from (`within`, `around`): kept only with
+ * where the area lies from it and a size, never 0, to scale it by.
+ * @param {any} node
+ * @returns {Holder | undefined}
+ */
+function sanitiseHolder(node) {
+  const sanitised = sanitiseAreaNode(node)
+  const { offset, size } = node ?? {}
+  const width = pixels(size?.width)
+  const height = pixels(size?.height)
+  return sanitised && offset && typeof offset === 'object' && width && height
+    ? {
+        ...sanitised,
+        offset: { top: pixels(offset.top, true), left: pixels(offset.left, true) },
+        size: { width, height },
+      }
+    : undefined
+}
+
+/**
  * A rectangle the reader drew over the page, or the box of lines they drew
  * freehand; one with no surface is none.
- * Its holder (`within`) is kept only with where the area lies in it and a
- * size to scale it by.
  * @param {any} area
  * @returns {Area | undefined}
  */
@@ -370,15 +392,14 @@ function sanitiseArea(area) {
   if (!area || typeof area !== 'object') return undefined
   const box = sanitiseBox(area)
   if (!box.width || !box.height) return undefined
-  const within = sanitiseAreaNode(area.within)
-  const { offset, size } = area.within ?? {}
-  const holder = { width: pixels(size?.width), height: pixels(size?.height) }
+  const within = sanitiseHolder(area.within)
   const covers = Array.isArray(area.covers) ? area.covers : []
   const crosses = Array.isArray(area.crosses) ? area.crosses : []
   const truncated =
     area.truncated === true || covers.length > MAX_COVERS || crosses.length > MAX_CROSSES
   const strokes = sanitiseStrokes(area.strokes, box)
   const pointsAt = strokes && sanitiseAreaNode(area.pointsAt)
+  const around = strokes && sanitiseHolder(area.around)
   return {
     ...box,
     viewport: {
@@ -387,20 +408,13 @@ function sanitiseArea(area) {
       scrollX: pixels(area.viewport?.scrollX, true),
       scrollY: pixels(area.viewport?.scrollY, true),
     },
-    ...(within && offset && typeof offset === 'object' && holder.width && holder.height
-      ? {
-          within: {
-            ...within,
-            offset: { top: pixels(offset.top, true), left: pixels(offset.left, true) },
-            size: holder,
-          },
-        }
-      : {}),
+    ...(within ? { within } : {}),
     covers: sanitiseNodes(covers, MAX_COVERS),
     crosses: sanitiseNodes(crosses, MAX_CROSSES),
     ...(truncated ? { truncated: true } : {}),
     ...(strokes ? { strokes } : {}),
     ...(pointsAt ? { pointsAt } : {}),
+    ...(around ? { around } : {}),
     ...(strokes && area.pictured === true ? { pictured: true } : {}),
   }
 }
@@ -433,6 +447,18 @@ const sanitiseContext = (text) =>
   (typeof text === 'string' ? text : '')
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ ?\n\s*/g, '\n')
+
+/**
+ * The area the reader drew, or the lines, with a reply, with the page it was
+ * on; none without one, as the page it was on is unknown.
+ * @param {any} input
+ * @returns {import('./lib/format.mjs').PickedArea | undefined}
+ */
+function sanitisePickedArea(input) {
+  const area = sanitiseArea(input)
+  const route = typeof input?.route === 'string' ? input.route.slice(0, MAX_ROUTE) : ''
+  return area && route ? { ...area, route } : undefined
+}
 
 /** The anchor of a new comment: where on the page it is. */
 function sanitiseAnchor(anchor = {}) {
@@ -481,11 +507,14 @@ function sanitisePatch(input) {
   if (patch.followUp || patch.choices || !anotherMove) {
     const images = parseImages(input.images)
     if (images.length) patch.images = images
+    // One target per message: an element, or else an area.
     const elements = sanitisePicked(input.elements)
     if (elements.length) patch.elements = elements
+    const area = elements.length ? undefined : sanitisePickedArea(input.area)
+    if (area) patch.area = area
   }
   // Passed even empty: the store then clears the words of a message that has
-  // images or elements, which goes again with them alone.
+  // images, elements or an area, which goes again with them alone.
   if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }
@@ -567,11 +596,19 @@ async function handle(req, res) {
     return res.end(data)
   }
 
+  // `theme` tells the widget how the app switches between light and dark
+  // (theme.ts); `repository`, where the issues a message cites are (links.tsx).
   if (url.pathname === '/api/health') {
     return send(
       res,
       200,
-      { project: project.root, name: config.name, version: WIDGET_VERSION },
+      {
+        project: project.root,
+        name: config.name,
+        version: WIDGET_VERSION,
+        theme: config.theme,
+        repository: await repository,
+      },
       cors,
     )
   }
@@ -791,8 +828,12 @@ function describe(comment) {
   const picked = message?.elements?.length
     ? ` elements=${describePicked(message.elements, comment.route)}`
     : ''
+  // A reply's area: the comment's own is its anchor's, said above.
+  const drawn = reply?.area
+    ? ` picked-${describeArea(reply.area)}${reply.area.route === comment.route ? '' : ` on=${quoted(reply.area.route)}`}`
+    : ''
   const text = reply
-    ? `followup=${quoted(reply.body)}${choices}${picked} messages=${comment.messages.length}`
+    ? `followup=${quoted(reply.body)}${choices}${picked}${drawn} messages=${comment.messages.length}`
     : `body=${quoted(message?.body ?? '')}${picked}`
   // The images of that message, as files the agent opens with Read.
   const attached = message?.images ?? []

@@ -25,9 +25,6 @@ export interface ReviewPickedElement extends ReviewElement {
   route: string
 }
 
-/** The most elements one message may hold, as lib/format.mjs caps them. */
-export const MAX_PICKED = 1
-
 /** An element an area covers or cuts through: enough to find it in the code. */
 export type ReviewNode = Omit<ReviewElement, 'html'>
 
@@ -53,6 +50,15 @@ interface ReviewHolder extends ReviewNode {
   /** Where the area's corner lies in the holder's content, its scroll included. */
   offset: { top: number; left: number }
   /** The holder's size when the area was drawn; never 0. */
+  size: ReviewSize
+}
+
+/**
+ * The element a drawing is placed from: where its area's corner lies from the
+ * element's corner, its scroll aside, and the element's size then; never 0.
+ */
+interface ReviewPin extends ReviewNode {
+  offset: { top: number; left: number }
   size: ReviewSize
 }
 
@@ -88,9 +94,21 @@ export interface ReviewArea extends ReviewBox {
   strokes?: ReviewStroke[]
   /** With `strokes`: the element the longest line points at, under its end or next along it. */
   pointsAt?: ReviewNode
+  /**
+   * With `strokes`: the element the lines are placed from, the largest wholly
+   * in their box or else the one they point at. They follow it, their left
+   * offset and width scaled to its width, not the holder's.
+   */
+  around?: ReviewPin
   /** With `strokes`: the last image of the comment's first message is their picture. */
   pictured?: true
 }
+
+/**
+ * An area the reader drew, or lines drawn freehand, with a reply, on `route`,
+ * the page they were on.
+ */
+export type ReviewPickedArea = ReviewArea & { route: string }
 
 export interface ReviewAnchor {
   /** Heading the quote sits under, for a human reader of the JSON file. */
@@ -155,8 +173,10 @@ export interface ReviewMessage {
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */
   images?: string[]
-  /** Reader only: the elements they picked in the page with it. */
+  /** Reader only: the element they picked in the page with it, one at most; older messages may hold several. */
   elements?: ReviewPickedElement[]
+  /** Reader only, a reply only, never with `elements`: the area they drew, or the lines, with it. */
+  area?: ReviewPickedArea
   /** Reader only, on a message that opened the comment: when they sent it, anew on a re-send. */
   sentAt?: string
   /** With `sentAt`: when the server handed it over to the hooks. */
@@ -251,6 +271,8 @@ export interface ReviewCommentPatch {
   images?: NewImage[]
   /** The elements the reader picked in the page with their reply, as `images`. */
   elements?: ReviewPickedElement[]
+  /** The area the reader drew with their reply, as `images`; never with `elements`. */
+  area?: ReviewPickedArea
   /** With `cancelled: false`: replaces the reader's latest text before re-sending. */
   text?: string
 }
@@ -325,6 +347,15 @@ export function isAsking(comment: Lifecycle) {
 }
 
 /**
+ * The panel's order: the threads that need the reader first, then the
+ * others, each newest first.
+ */
+export const byPanelOrder = (
+  a: Pick<ReviewComment, 'state' | 'createdAt'>,
+  b: Pick<ReviewComment, 'state' | 'createdAt'>,
+) => Number(isAsking(b)) - Number(isAsking(a)) || b.createdAt.localeCompare(a.createdAt)
+
+/**
  * A comment whose run stopped, until the reader sends it again: they stopped
  * it, or its agent ended without finishing.
  */
@@ -369,15 +400,15 @@ export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
   return latestOwn(comment)?.body ?? ''
 }
 
-/** Whether the reader's latest message holds images or elements: it may go without words. */
+/** Whether the reader's latest message holds images, elements or an area: it may go without words. */
 export function latestAttached(comment: Pick<ReviewComment, 'messages'>): boolean {
   const own = latestOwn(comment)
-  return !!own?.images?.length || !!own?.elements?.length
+  return !!own?.images?.length || !!own?.elements?.length || !!own?.area
 }
 
-/** What a message says, in one line: its words, or the images or elements that are all it holds. */
+/** What a message says, in one line: its words, or the images, elements or area that are all it holds. */
 export function gist(
-  message: Pick<ReviewMessage, 'body' | 'images' | 'elements'> | undefined,
+  message: Pick<ReviewMessage, 'body' | 'images' | 'elements' | 'area'> | undefined,
 ): string {
   if (!message) return ''
   if (message.body) return message.body
@@ -386,6 +417,7 @@ export function gist(
   const parts = [
     images && (images === 1 ? 'an image' : `${images} images`),
     elements && (elements === 1 ? 'an element' : `${elements} elements`),
+    message.area && (message.area.strokes ? 'a drawing' : 'an area'),
   ].filter(Boolean)
   const said = parts.join(' and ')
   return said.charAt(0).toUpperCase() + said.slice(1)

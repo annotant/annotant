@@ -70,7 +70,7 @@ the same message.
 | `anchor.prefix`, `anchor.suffix` | string, optional | With a quote: the page's text just before and after it, up to 32 characters, whitespace collapsed, a line break where a block ends. |
 | `anchor.occurrences` | integer ≥ 1, optional | With a quote: how many copies of it the page had. |
 | `anchor.element` | object, optional | `selector` (500), `tag` (20), `text` (200) and `html` (600), truncated. The server leaves out of `html` the `value` and `content` attributes and the secret-looking ones (`nonce`, `data-token`…), and redacts the secret-looking parameters of its links (`href`, `src`, `srcset`, `data-*`…). |
-| `anchor.area` | object, optional | A rectangle drawn over the page, or the box of a drawing: its box, the `viewport`, the element it lies `within`, the elements it `covers` (10) and `crosses` (6), `truncated`. A drawing adds `strokes`: up to 40 lines, the last ones drawn, of up to 400 `[x, y]` points each and 4000 in all, rounded, from the area's corner and inside its box, its `covers` and `crosses` those of a wider box (a quarter of its size more on each side, 120 px at least) so what an arrow points at is in; `pointsAt`, the element the longest line points at: under its end, where an arrowhead usually is, or past a gap the next one along the line, never a container holding the whole drawing; `pictured` (`true`) when the last image of the comment's first message is their picture, the lines over the page close to how the reader saw it (colours, text, same-origin images; no SVG, video or stacking order). |
+| `anchor.area` | object, optional | A rectangle drawn over the page, or the box of a drawing: its box, the `viewport`, the element it lies `within`, the elements it `covers` (10) and `crosses` (6), `truncated`. A drawing adds `strokes`: up to 40 lines, the last ones drawn, of up to 400 `[x, y]` points each and 4000 in all, rounded, from the area's corner and inside its box, its `covers` and `crosses` those of a wider box (a quarter of its size more on each side, 120 px at least, never past the window's edges) so what an arrow points at is in; `pointsAt`, the element the longest line points at: under its end, where an arrowhead usually is, or past a gap the next one along the line, never a container holding the whole drawing; `around`, the element the lines are placed from (the largest element wholly in their box, else the one they point at), with where the box's corner lies from its corner, its scroll aside (`offset`), and its `size`: the widget places the lines from it, their left offset and width scaled to its width, not their height; hidden, it hides them; gone, `within` places them; `pictured` (`true`) when the last image of the comment's first message is their picture, the lines over the page close to how the reader saw it (colours, text, same-origin images, close to their stacking order and cut as on screen; no SVG, video, rotated boxes or clip-path). |
 | `state` | State | See [States](#states-and-moves). |
 | `createdAt` | ISO date | Lists sort by it. |
 | `messages` | Message[] | The whole thread, the reader's comment first. |
@@ -109,7 +109,8 @@ copy.
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
-| `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. |
+| `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. Older messages may hold several. |
+| `area` | PickedArea, reader only, a reply only | The area they drew, or the lines, with it, never with `elements`: as `anchor.area`, with `route`, the page it was on; `pictured` when the last image of this message is the lines' picture. |
 | `sentAt` | ISO date, reader only | On a message that opened the comment (its first, an answer, a follow-up): when the reader sent it, written again on a re-send. Absent from messages written before it existed, which key on `at`. |
 | `notifiedAt` | ISO date, with `sentAt` | When the server first printed the line handing it over (see [Hand-overs](#hand-overs)); a re-send drops it. |
 
@@ -180,8 +181,8 @@ stateDiagram-v2
 | `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
 | `working → stopped` | `hook.mjs ended`, run by the hooks once the comment's agent ended its turn without answering or asking, on a run it claimed or that names no agent | agent | The `cancellation`, with the `run`. |
-| `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` | reader | A `reader` message, with `sentAt`. |
-| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images or elements alone when it has some. |
+| `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` or `area` | reader | A `reader` message, with `sentAt`. |
+| `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images, elements or area alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
 The store refuses any other move, and writes nothing: the server answers 409
@@ -200,14 +201,26 @@ resolution). The page marks it only when it is on that page. A picked
 element's chip in the thread also outlines it while hovered, and scrolls to it
 and flashes it once clicked.
 
-### Elements picked in a message
+### A message's target
+
+A message has one target at most: an element, an area or a drawing. The
+composer's target slot, above its text, offers them (_Point at: Element ·
+Area · Drawing_), then shows the target's card with _Repick_, _Reframe_ or
+_Redraw_, which picks another in its place, and ✕. With no target, a new
+comment is about the page, or with _Only on_ unticked, the whole app.
 
 The reader may pick an element in the page for any message, the comment or a
-reply (the composer's pointer button; the widget's _Point at element_ starts
+reply (the slot's _Element_, or the widget's _Point at element_, which starts
 a comment with one): it goes with the message as `elements` (see
 [A message](#a-message)), alone or with words, images or choices. One per
 message: another picked takes its place in the message box, and the server
-keeps the first it can, dropping one with no `route`. The widget no longer writes `anchor.element`, which
+keeps the first it can, dropping one with no `route`. A new comment's area or
+drawing is its `anchor.area`; a reply's goes with it as `area`, with the
+page it was on (dropped without one, and with `elements`), and may go alone.
+The `FOLLOWUP` and `EDIT` lines name it after the reply's elements:
+` picked-area=500x60@10,300 covers=["<button> Buy"] crosses=[]`, its size,
+corner, lines and what it holds as for a new comment's area, then
+` on="/help"` when it is not the comment's page. The widget no longer writes `anchor.element`, which
 older comments keep. The `NEW` line for the hooks names them after the
 comment's `body`, the `FOLLOWUP` and `EDIT` lines after the reply's `choices`:
 ` elements=["<a> Help on /help"]`, the page added when it is
@@ -292,9 +305,10 @@ The reader pastes or drops an image in the widget's message box: it goes with
 the message, a new comment (`POST /api/comments`) or a reply (`PATCH` with
 `followUp` or `choices`, or alone), as `images`: `{ type, data }` objects,
 `data` in base64. An image alone is a message, with an empty `body`. The
-server takes up to 4 per message, PNG, JPEG, GIF or WebP, up to 5 MB each, and
-checks the bytes, not only the type; it refuses any other image with 422 and
-its reason, which the widget shows. These limits live in
+server takes up to 100 per message, PNG, JPEG, GIF or WebP, up to 5 MB each
+and 32 MB together, and checks the bytes, not only the type; it refuses any
+other image with 422 and its reason, which the widget shows. The message box
+takes them pasted, dropped or chosen with its image button. These limits live in
 `scripts/lib/image-limits.json`, which the widget bundles to refuse an image
 before sending it. A request may then hold up to 100,000 characters of text
 besides its images. Images sent with only another move (`status`, `cancelled`)

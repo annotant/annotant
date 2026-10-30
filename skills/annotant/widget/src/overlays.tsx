@@ -13,7 +13,9 @@ import {
   boxOf,
   coveredBy,
   type DrawnPoint,
+  drawnOnShows,
   elementFromAnchor,
+  aroundOf,
   framedArea,
   holderOf,
   rangesFromAnchors,
@@ -23,16 +25,19 @@ import {
   type ReviewArea,
   type ReviewBox,
   gist,
+  isAsking,
   markedElement,
   outdated,
   pickedMark,
   type ReviewComment,
   wasResolved,
 } from './domain'
+import { type Clipper, clipOf, clippersOf, type Edges, within } from './clips'
 import { setInlineStyle } from './inline'
 import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
 import { fieldOf } from './shortcuts'
-import { Icon } from './ui'
+import { pageIsDark } from './theme'
+import { Icon, type IconName } from './ui'
 
 const WIDGET = '[data-annotant]'
 
@@ -55,98 +60,6 @@ const cornersOf = (element: Element): Corners => {
     borderBottomRightRadius: style.borderBottomRightRadius || '0px',
     borderBottomLeftRadius: style.borderBottomLeftRadius || '0px',
   }
-}
-
-interface Edges {
-  top: number
-  left: number
-  right: number
-  bottom: number
-}
-
-/** Whether a side of a box shows from `from` to `to`: with no `size`, at a point. */
-const shows = (from: number, to: number, size: number) => (size ? to > from : to >= from)
-
-/** The part of `box` inside `clip`, if any: a box with no size shows where it is. */
-function within(box: Box, clip: Edges): Box | undefined {
-  const top = Math.max(box.top, clip.top)
-  const left = Math.max(box.left, clip.left)
-  const bottom = Math.min(box.top + box.height, clip.bottom)
-  const right = Math.min(box.left + box.width, clip.right)
-  return shows(top, bottom, box.height) && shows(left, right, box.width)
-    ? { top, left, width: right - left, height: bottom - top }
-    : undefined
-}
-
-/** An ancestor that cuts what overflows it, on one axis or both. */
-interface Clipper {
-  element: Element
-  x: boolean
-  y: boolean
-}
-
-const cuts = (overflow: string) => overflow !== '' && overflow !== 'visible'
-
-/** Whether its element holds its fixed descendants, as it holds its absolute ones. */
-const holdsFixed = (style: CSSStyleDeclaration) =>
-  [style.transform, style.filter, style.perspective].some(
-    (value) => value && value !== 'none',
-  ) ||
-  /paint|layout|strict|content/.test(style.contain) ||
-  /transform|filter|perspective/.test(style.willChange)
-
-/**
- * What cuts what `element` holds: `element` and each ancestor that clips its
- * overflow (a scrolling sidebar, a list) and contains it, up to `body`, whose
- * overflow is the viewport's. `position` is that of what it holds: absolute
- * or fixed, it escapes the ancestors that do not contain it. Read with the
- * page's changes, not on every scroll: a scroll leaves them as they are.
- */
-function clippersOf(element: Element | null, position = 'static'): Clipper[] {
-  const clippers: Clipper[] = []
-  for (
-    let ancestor = element;
-    ancestor && ancestor !== document.body && ancestor !== document.documentElement;
-    ancestor = ancestor.parentElement
-  ) {
-    const style = getComputedStyle(ancestor)
-    const contains =
-      position === 'fixed'
-        ? holdsFixed(style)
-        : position !== 'absolute' || style.position !== 'static' || holdsFixed(style)
-    if (!contains) continue
-    position = style.position
-    // Overflow cuts nothing on an inline box (a truncated `span`), nor on no box.
-    if (style.display === 'inline' || style.display === 'contents') continue
-    const x = cuts(style.overflowX)
-    const y = cuts(style.overflowY)
-    if (x || y) clippers.push({ element: ancestor, x, y })
-  }
-  return clippers
-}
-
-/** Where what `clippers` cut shows on screen: the viewport, cut by their padding boxes. */
-function clipOf(clippers: Clipper[]): Edges {
-  const clip = { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight }
-  for (const { element, x, y } of clippers) {
-    const rect = element.getBoundingClientRect()
-    // Its padding box, scaled as its box is: its border and scrollbars hide what scrolls too.
-    const scaled =
-      element instanceof HTMLElement && element.offsetWidth && element.offsetHeight
-    const scaleX = scaled ? rect.width / element.offsetWidth : 1
-    const scaleY = scaled ? rect.height / element.offsetHeight : 1
-    if (x) {
-      const left = rect.left + element.clientLeft * scaleX
-      clip.left = Math.max(clip.left, left)
-      clip.right = Math.min(clip.right, left + element.clientWidth * scaleX)
-    }
-    if (y) {
-      const top = rect.top + element.clientTop * scaleY
-      clip.top = Math.max(clip.top, top)
-      clip.bottom = Math.min(clip.bottom, top + element.clientHeight * scaleY)
-    }
-  }
-  return clip
 }
 
 const sameBox = (a?: Box, b?: Box) =>
@@ -296,14 +209,12 @@ export function ElementMarks({
           {/* On its top left corner, the tail towards it: on the part that shows. */}
           <button
             type="button"
-            className="an-quote-pin an-live"
+            {...pinOf(comment, 'chat')}
             style={{ top: shown.top, left: shown.left }}
             aria-label={`Open the comment on <${tag}>`}
             title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
-          >
-            <Icon name="chat" />
-          </button>
+          />
         </Fragment>
       ))}
     </>
@@ -386,17 +297,20 @@ function findAreas(root: Element, comments: ReviewComment[]) {
     const { area } = comment.anchor
     // An element picked since takes the area's place.
     if (wasResolved(comment) || !area || pickedMark(comment)) return []
+    // Its chip still shows the drawing, and the picture sent with it.
+    if (!drawnOnShows(root, area)) return []
     const holder = holderOf(root, area)
-    return [{ comment, area, holder, clippers: clippersOf(holder ?? null) }]
+    const around = aroundOf(root, area)
+    return [{ comment, area, holder, around, clippers: clippersOf(holder ?? null) }]
   })
 }
 
 const holdersOf = (found: ReturnType<typeof findAreas>) =>
-  found.map(({ holder }) => holder)
+  found.flatMap(({ holder, around }) => [holder, around])
 
 function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
-  return found.flatMap(({ comment, area, holder, clippers }) => {
-    const frame = framedArea(area, holder)
+  return found.flatMap(({ comment, area, holder, around, clippers }) => {
+    const frame = framedArea(area, holder, around)
     const shown = frame && within(frame, clipOf(clippers))
     return shown ? [{ comment, area, frame, shown }] : []
   })
@@ -408,7 +322,8 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
  * A drawing has no frame: its lines carry the rainbow. Once its agent has
  * written a file, while it works or once stopped, the page under an area may
  * have changed: it greys out, as what the reader pointed at, not what is
- * there now.
+ * there now. Once none of what a drawing was drawn on is on the page, its
+ * lines go.
  */
 export function AreaMarks({
   root,
@@ -445,14 +360,12 @@ export function AreaMarks({
           </div>
           <button
             type="button"
-            className="an-quote-pin an-live"
+            {...pinOf(comment, 'frame')}
             style={{ top: shown.top, left: shown.left }}
             aria-label={`Open the comment on the ${area.strokes ? 'drawing' : 'drawn area'}`}
             title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
-          >
-            <Icon name="frame" />
-          </button>
+          />
         </Fragment>
       ))}
     </>
@@ -529,22 +442,6 @@ const quotedOf = (found: ReturnType<typeof findQuotes>) =>
   found.flatMap(({ parts }) =>
     parts.map(({ range }) => range.startContainer.parentElement),
   )
-
-/** Under this luminance, the page is dark: a rainbow lightens it rather than tints it. */
-const DARK = 0.4
-
-/** The page's background, from the first of `body` and `html` that has one. */
-function pageIsDark(): boolean {
-  for (const element of [document.body, document.documentElement]) {
-    const channels = getComputedStyle(element)
-      .backgroundColor.match(/[\d.]+/g)
-      ?.map(Number)
-    const [r = 0, g = 0, b = 0, alpha = 1] = channels ?? []
-    if (!channels || alpha === 0) continue
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < DARK
-  }
-  return false
-}
 
 /**
  * A layer in the page itself, over its content: the shadow root's stacking
@@ -658,21 +555,26 @@ export function QuoteBubbles({
           <button
             key={comment.id}
             type="button"
-            className="an-quote-pin an-live"
+            {...pinOf(comment, 'chat')}
             style={bubble}
             aria-label={`Open the comment on “${comment.anchor.quote}”`}
             title={gist(comment.messages[0])}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onOpen(comment)}
-          >
-            <Icon name="chat" />
-          </button>
+          />
         ) : (
           []
         ),
       )}
     </>
   )
+}
+
+/** A pin's class and mark: a question mark, in orange, while its thread waits on the reader. */
+function pinOf(comment: ReviewComment, icon: IconName) {
+  return isAsking(comment)
+    ? { className: 'an-quote-pin an-quote-pin--asking an-live', children: '?' }
+    : { className: 'an-quote-pin an-live', children: <Icon name={icon} /> }
 }
 
 /** The box `measure` gives, once per frame, while it is on screen. */
@@ -720,9 +622,12 @@ export function TargetOutline({ element }: { element: Element }) {
   )
 }
 
-/** Outlines a drawn area while it is on screen, in the element it was drawn in. */
+/** Outlines a drawn area while it is on screen, where `framedArea` places it. */
 export function AreaOutline({ root, area }: { root: Element; area: ReviewArea }) {
-  const measure = useCallback(() => framedArea(area, holderOf(root, area)), [root, area])
+  const measure = useCallback(
+    () => framedArea(area, holderOf(root, area), aroundOf(root, area)),
+    [root, area],
+  )
   const box = useOnScreen(measure)
   if (!box) return null
   return (

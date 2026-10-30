@@ -1,7 +1,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openPanel, openThread } from './server'
-import { renderWidget } from './widget'
+import { pick } from '../src/images'
+import { renderWidget, startPageComment } from './widget'
 
 /** A PNG file's first bytes: the widget sends what it reads. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -24,7 +25,7 @@ function sent(server: ReturnType<typeof fakeServer>, method: string): unknown {
 
 async function newComment() {
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   return screen.getByRole('textbox', { name: 'What should change?' })
 }
 
@@ -72,16 +73,53 @@ test('an image dropped in the box is attached, and can be removed before sending
   )
 })
 
-test('pastes in quick succession count each other against the limit', async () => {
-  fakeServer([])
+test('a message takes any number of images, pasted in quick succession or chosen', async () => {
+  const server = fakeServer([])
   const box = await newComment()
   paste(box, [png(), png(), png()])
   await screen.findByRole('img', { name: 'Attached image 3' })
-  // Both before either is read: the second finds no room.
+  // Both before either is read.
   paste(box, [png()])
   paste(box, [png()])
-  expect(await screen.findByText('At most 4 images per message.')).toBeTruthy()
-  await screen.findByRole('img', { name: 'Attached image 4' })
+  await screen.findByRole('img', { name: 'Attached image 5' })
+  // The button inside the box chooses more.
+  expect(screen.getByRole('button', { name: 'Attach images' })).toBeTruthy()
+  fireEvent.change(screen.getByTestId('an-image-input'), {
+    target: { files: [png(), png()] },
+  })
+  await screen.findByRole('img', { name: 'Attached image 7' })
+
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(sent(server, 'POST')).toMatchObject({
+      images: Array(7).fill(expect.anything()),
+    }),
+  )
+})
+
+/** A file of `size` bytes, as the browser reports it, without holding them. */
+function sized(size: number) {
+  const file = png()
+  Object.defineProperty(file, 'size', { value: size })
+  return file
+}
+
+test('the images of a message stay within the bytes the server takes together', () => {
+  const mb = 1 << 20
+  // Seven of 5 MB: past 32 MB, the last two are left out, and the reader told why.
+  const picked = pick(
+    0,
+    Array.from({ length: 7 }, () => sized(5 * mb)),
+  )
+  expect(picked.files).toHaveLength(6)
+  expect(picked.refused).toBe('The images of a message may hold at most 32 MB together.')
+  // What is attached already, or still being read, counts.
+  expect(pick(30 * mb, [sized(mb), sized(2 * mb)]).files).toHaveLength(1)
+  // Past the server's bound on their number, far beyond what a reader attaches.
+  expect(pick(0, [png(), png()], 99)).toEqual({
+    files: [expect.any(File)],
+    refused: 'At most 100 images per message.',
+  })
 })
 
 test("the server's refusal of an image shows in its words, and keeps the draft", async () => {

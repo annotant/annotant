@@ -70,6 +70,11 @@ follow up; cancel to stop it.
   ("haiku · trivial"). A comment of images alone is not classified: it
   starts on the session's model at a medium effort. See
   [Models](docs/comments-file.md#models).
+- **The widget follows your app's theme.** `init` finds how your app switches
+  between light and dark (Tailwind's `darkMode`, `next-themes`, a `.dark`
+  class or a `data-theme` attribute, the OS setting) and writes it as `theme`
+  in `.annotant.json`: the widget turns dark with your app's toggle, at once.
+  Without it, the widget picks dark on a dark page.
 
 ## Install
 
@@ -139,8 +144,8 @@ to use.
 
 (`/annotant web` for a folder.) Then open your dev app in the browser, its
 dev server running as usual: a small strip of icons shows in the bottom right
-corner of the page. Click the **Comment** icon (hover one for its name),
-write what to change and send it: an agent starts, its progress shows live
+corner of the page. Click **Comments**, the blue icon at its end, then
+**New comment** (hover an icon for its name), write what to change and send it: an agent starts, its progress shows live
 under your comment, and it answers in the same thread. [In the widget](#in-the-widget) tells the rest.
 
 No icons? See [the widget does not show](#the-widget-does-not-show).
@@ -181,6 +186,14 @@ marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
 After an update, `/annotant:annotant update` migrates a project installed
 by an older version.
 
+Each [release](https://github.com/annotant/annotant/releases) carries the
+plugin archive and its signed provenance (`annotant-x.y.z.intoto.jsonl`): the
+Release workflow built it from a verified commit of `main` and its built
+widget. Check it with
+`gh attestation verify annotant-x.y.z.tar.gz -R annotant/annotant --signer-workflow annotant/annotant/.github/workflows/release.yml`,
+adding `--bundle annotant-x.y.z.intoto.jsonl` to use the attached file
+(releases up to 0.3.0 have none).
+
 **Coming from Code Buddy**, Annotant's former name: remove the old plugin and
 its marketplace (`claude plugin uninstall code-buddy@code-buddy`, then
 `claude plugin marketplace remove code-buddy`), install Annotant as in
@@ -201,12 +214,14 @@ or from `/plugin`.
 
 While the panel is closed, the tools sit in a small strip of icons in the
 bottom right corner, their names and shortcuts in the tooltips; a tool in
-progress shows its _Cancel_ there. Drag the strip by its grip, or move it with
+progress shows its _Cancel_ after its icon. Drag the strip by its grip, or move it with
 the arrow keys once the grip has the focus, wherever it covers nothing; a
 double-click on the grip puts it back. Where it is, and whether the panel
 floats or is docked, hold for every tab of the app and the next sessions.
 
-- **Comment** opens a new comment for the page, or the whole app.
+- **Comments**, at the strip's end, opens the panel. Its **New comment**
+  (`+`) starts a comment for the page, or the whole app; so does the comment
+  shortcut.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.
 - **Point at element** starts a comment with that element in its message
@@ -228,24 +243,38 @@ floats or is docked, hold for every tab of the app and the next sessions.
   detail, a line along an alignment that is off. Draw with the mouse, a pen or
   a finger; _Undo_ takes the last line back, _Clear_ all of them, _Done_ (or
   Enter) ends the drawing. A page-level comment can get one too, with _Draw on
-  the page_. The drawing stays on the page while you write, and is placed as
-  an area is: in the element its lines lie in, stretching with its width.
+  the page_. The drawing stays on the page while you write, and is placed
+  from what it was drawn over: the largest element wholly in its lines' box,
+  else the one they point at, following that element's width. Over a list of
+  a fixed width it moves with the list and keeps its size when the page
+  narrows; over text that wraps it narrows with the text. With none, it is
+  placed as an area is: in the element its lines lie in.
   Claude receives the lines, the elements around them (a margin past their
   box, so what an arrow points at is in) and the one the longest line points
   at (under its end, or the next one along it when it ends in a gap), and a
   picture of the lines over the page, close to what you saw: its colours,
-  text and same-origin images where they are.
+  text and same-origin images where they are, stacked and cut as on screen,
+  within the window.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or an area, on a drawing's lines or behind a text, marks
   a comment Claude has yet to resolve; once its thread is first resolved, the mark goes away.
-- **Paste or drop an image** (a screenshot, a mockup) in the message box of a
-  comment or a reply: it goes with the message, or alone, and Claude opens
-  it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
-- **Pick an element in the page** from any message box, a new comment's or a
-  reply's: its pointer button picks one with the panel still open ("this one
-  too"). One per message: picking another replaces it. Its chip in the thread
-  scrolls to it.
-- **All comments** lists every discussion, newest first, filtered by status.
+- **Paste, drop or choose images** (a screenshot, a mockup) in the message
+  box of a comment or a reply, with its image button: they go with the
+  message, or alone, and Claude opens them. As many as you like, PNG, JPEG,
+  GIF or WebP, 5 MB each and 32 MB together.
+- **One target per message**: above the text, _Point at: Element · Area ·
+  Drawing_ picks what in the page a new comment or a reply is about, with the
+  panel still open ("this one too"). Its card offers _Repick_, _Reframe_ or
+  _Redraw_, which replaces it, and ✕; picking another replaces it too. Each
+  message in the thread shows its own target, which hovering outlines on the
+  page and clicking scrolls to. With no target, _Only on_ says whether a new
+  comment is about this page or the whole app.
+- **All comments** lists every discussion, filtered by status: the threads
+  that need you first, then the others, each newest first, as on the page.
+  _Needs you_ keeps the threads where Claude waits on you. While one does, on
+  any page, a yellow count on the corner of **Comments** says how many, and
+  Comments opens that list (or the thread, when only one waits); the thread's
+  bubble on the page shows a **?**.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
   MCP calls, failed tools in red, its messages and its thinking), and
@@ -256,6 +285,13 @@ floats or is docked, hold for every tab of the app and the next sessions.
   the comment and send it again to hand it to a new agent.
 - Once answered: reply in the thread to follow up, reusing the same agent and
   its context when it is still around.
+- **Links in the thread**: the URLs a message cites, and its issues (`#12`,
+  `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
+  remote is on GitHub or GitLab, open in a new tab.
+- **Formatted answers**: Claude's answers and questions show a small subset
+  of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
+  code blocks); anything else, HTML included, shows as its text. Your own
+  messages stay as you typed them.
 - **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
   focus is but in a field of your app: `,` comments on the selected text (or
   on the page), `.` points at an element (while you write a comment or a

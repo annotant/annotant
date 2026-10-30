@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
+import { parseRepository, type Repository } from './links'
+import { parseTheme, type ThemeSetting } from './theme'
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
 const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
 const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
+const HEALTH = new URL('api/health', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -198,6 +201,45 @@ export function useCommentHistory(enabled: boolean) {
   return useCommentList(enabled ? `${API}?all=1&history=1` : undefined, {
     merge: false,
   })
+}
+
+/**
+ * What the server tells the widget about the project: how the app switches
+ * between light and dark, as it read it in `.annotant.json`, and the
+ * repository of its `origin` remote. Each undefined until it answers, and
+ * when it has none.
+ */
+export function useServerSettings() {
+  const [settings, setSettings] = useState<{
+    theme?: ThemeSetting | undefined
+    repository?: Repository | undefined
+  }>({})
+  useEffect(() => {
+    let live = true
+    const load = async () => {
+      const health = await request<unknown>(HEALTH)
+      if (!live || !health || typeof health !== 'object') return
+      const theme = 'theme' in health ? health.theme : undefined
+      const parsed = parseTheme(theme)
+      // A hand-edited setting the widget cannot read: said, then the page's background.
+      if (theme !== undefined && !parsed) {
+        console.warn('Annotant: ignoring `theme` in .annotant.json:', theme)
+      }
+      const remote = 'repository' in health ? health.repository : undefined
+      const repository = parseRepository(remote)
+      // A server from another release: its issues stay text.
+      if (remote !== undefined && !repository) {
+        console.warn("Annotant: ignoring the server's `repository`:", remote)
+      }
+      setSettings({ theme: parsed, repository })
+    }
+    // No server: the lists say so; the page's background picks the theme meanwhile.
+    load().catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
+  return settings
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {

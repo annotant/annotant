@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
 import { comment, fakeEvents, fakeServer, openPanel } from './server'
@@ -31,7 +31,7 @@ test('the panel stays on screen while it leaves', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))
   expect(panel.hasAttribute('data-closing')).toBe(true)
-  expect(screen.getByRole('button', { name: 'Comment' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Comments' })).toBeTruthy()
 
   await waitFor(() => expect(screen.queryByTestId('annotant-panel')).toBeNull())
 })
@@ -42,14 +42,14 @@ test('the panel restored open after a reload does not slide in, but slides in on
 
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(screen.queryByTestId('annotant-panel')).toBeNull())
-  fireEvent.click(screen.getByRole('button', { name: 'Comment' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
   expect(screen.getByTestId('annotant-panel').hasAttribute('data-restored')).toBe(false)
 })
 
 test('the panel reopened while it leaves stays', async () => {
   const { panel } = renderOpenPanel()
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Comment' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
 
   expect(panel.hasAttribute('data-closing')).toBe(false)
   await new Promise((resolve) => setTimeout(resolve, 300))
@@ -257,12 +257,20 @@ test('the closed panel leaves icons only, and a tool in progress its Cancel', as
 
   const tools = await screen.findByRole('group', { name: 'Annotant tools' })
   expect(tools.textContent).toBe('')
-  for (const name of ['Comment', 'Draw area', 'Draw', 'Point at element'])
-    expect(screen.getByRole('button', { name })).toBeTruthy()
+  // In this order: the page's tools, then Comments.
+  expect(
+    within(tools)
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label')),
+  ).toEqual(['Move Annotant tools', 'Draw area', 'Draw', 'Point at element', 'Comments'])
 
   for (const name of ['Draw area', 'Draw', 'Point at element']) {
-    fireEvent.click(screen.getByRole('button', { name }))
+    const tool = screen.getByRole('button', { name })
+    const icon = tool.innerHTML
+    fireEvent.click(tool)
+    // Its icon stays, before its Cancel.
     expect(tools.textContent).toBe('Cancel')
+    expect(tool.innerHTML).toBe(`${icon}Cancel`)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(tools.textContent).toBe('')
   }

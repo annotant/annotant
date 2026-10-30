@@ -7,6 +7,90 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-30
+
+https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1
+
+### Added
+
+- **The widget follows your app's light and dark theme.** It has a dark
+  palette, and switches with your app's toggle at once. `init` finds how your
+  app switches (Tailwind, `next-themes`, Mantine, Chakra, a `.dark` class or a
+  `data-theme` attribute, the OS setting) and writes it as `theme` in
+  `.annotant.json`; `update` adds it to an older install. Without it, the
+  widget turns dark on a dark page. (#227)
+- **The tools tell you when a thread needs you.** While Claude waits on you
+  in a thread, on any page, a yellow count shows on the corner of
+  **Comments**, in the closed tools. Comments then opens every comment
+  filtered to _Needs you_, a new filter next to _All_, _Open_ and _Resolved_,
+  or the thread itself when only one waits. On the page, that thread's bubble
+  shows an orange **?**. (#240, #261)
+- **A thread links what its messages cite.** URLs, and the issues of your
+  project (`#12`, `owner/repo#12`, `GH-12`, GitLab's `!12`) when its `origin`
+  remote is on GitHub or GitLab, are links that open in a new tab. (#249)
+- **Claude's answers are formatted.** Its answers and questions show `code`,
+  **bold**, *italic*, links, lists and code blocks; headings, tables, images
+  and HTML show as their text. Your own messages stay as you typed them, and
+  the agents are told which Markdown they may use. (#268)
+
+### Changed
+
+- **The threads that need you come first.** The page's list and the list of
+  every comment show the threads where Claude waits on you first, then the
+  others, each newest first; the next and previous shortcuts follow the same
+  order. Once you answer, the thread goes back to its place by date. (#259)
+- **One target per message, and as many images as you like.** Above the
+  text, the message box offers _Point at: Element · Area · Drawing_, then
+  shows the target's card with _Repick_, _Reframe_ or _Redraw_ and ✕; picking
+  another replaces it. A reply may now be about an area or a drawing too, and
+  each message in a thread shows its own target, outlined on the page while
+  hovered. With no target, _Only on_ sets a new comment's scope. Images are
+  no longer capped at 4: an image button sits in the text field, 5 MB each
+  and 32 MB per message. (#260)
+- **Comments ends the strip of tools, and starts a comment.** The strip reads
+  grip, _Draw area_, _Draw_, _Point at element_, then **Comments** after a
+  rule: a blue button that replaces the _Comment_ button. It opens the panel
+  on a new comment about the page, its message box focused, or on the comment
+  you were writing; nothing is saved before its first message. While a thread
+  needs you, it opens that thread, or the _Needs you_ list. A tool in
+  progress keeps its icon next to its _Cancel_, and hovering the grip rings
+  the whole strip. (#261, #264)
+- **The comment cards say how long ago.** A card shows _now_, _5 min ago_,
+  _yesterday_ or _2 days ago_ in your languages, moving on while the panel is
+  open, and from a week on the date alone; the full date and time is in its
+  tooltip. The times in a thread are unchanged. (#270)
+
+### Fixed
+
+- **A drawing leaves the page once what you drew it on is gone.** When none
+  of the elements a drawing covers or points at is on the page any more, its
+  lines no longer circle whatever took their place; its chip in the thread
+  still shows it. (#239)
+- **A drawing stays on what you drew it over when the page narrows.** Resizing
+  the docked panel or the window no longer shifts and stretches a drawing over
+  content of a fixed width, such as a dropdown list: it follows the element it
+  was drawn over, at that element's width, and still narrows with text that
+  wraps. (#242)
+- **An area drawn on an overlay records the overlay.** A rectangle or a
+  drawing over a modal, a drawer or a dropdown highlights, and sends Claude,
+  the overlay's elements, not those of the page hidden under it, wherever the
+  overlay is in the DOM and even when it is smaller than the area. (#248)
+- **A drawing's picture shows only what you saw.** The picture Claude gets
+  stays within the window, and paints the page in its stacking order (a modal
+  over what it covers, a dropdown over a footer), each part cut by the boxes
+  it scrolls in, as on screen. Black text shows in it again. (#241)
+- **The waiting messages read in full.** While a comment waits for its agent,
+  its message wraps onto two lines, the spinner beside the first, instead of
+  being cut after one: _No agent has started. Check the Claude Code session
+  watching._ no longer loses what to do. (#271)
+
+### Security
+
+- **Each release carries its signed provenance.** Next to the plugin archive,
+  `annotant-x.y.z.intoto.jsonl` holds the attestation the Release workflow
+  signed, so `gh attestation verify --bundle` checks the archive without
+  fetching the attestation from GitHub. (#246)
+
 ## 0.3.0 - 2026-10-29
 
 ### Added

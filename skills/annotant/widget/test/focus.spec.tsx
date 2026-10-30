@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openPanel, openThread } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 const TITLE = {
   selector: 'h1',
@@ -45,19 +45,21 @@ test('a bubble moves the focus into the panel, and closing gives it back to the 
   expect(document.activeElement).toBe(bubble)
 })
 
-test('closing the panel opened from the dock gives the focus to the dock', () => {
+test('closing the panel opened from the dock gives the focus to the dock', async () => {
   fakeServer([])
   renderWidget()
 
-  const dock = screen.getByRole('button', { name: 'Comment' })
+  const dock = screen.getByRole('button', { name: 'Comments' })
   dock.focus()
   fireEvent.click(dock)
-  expect(document.activeElement).toBe(
-    screen.getByRole('textbox', { name: 'What should change?' }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByPlaceholderText('What should change?'),
+    ),
   )
 
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Comment' }))
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Comments' }))
 })
 
 test('Escape closes the panel and gives the focus to the dock', async () => {
@@ -70,13 +72,13 @@ test('Escape closes the panel and gives the focus to the dock', async () => {
   fireEvent.keyDown(card, { key: 'Escape' })
 
   expect(panel().hasAttribute('data-closing')).toBe(true)
-  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Comment' }))
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Comments' }))
 })
 
 test("Escape in a new comment's message box is the box's, not the panel's", async () => {
   fakeServer([])
   renderWidget()
-  fireEvent.click(screen.getByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const box = screen.getByRole('textbox', { name: 'What should change?' })
 
   fireEvent.change(box, { target: { value: 'Bigger' } })
@@ -100,19 +102,18 @@ test("Escape in a new comment's message box is the box's, not the panel's", asyn
   expect(panel().hasAttribute('data-closing')).toBe(true)
 })
 
-test('Escape while picking an element for the message cancels the picker only', () => {
+test('Escape while picking an element for the message cancels the picker only', async () => {
   fakeServer([])
   renderWidget()
-  fireEvent.click(screen.getByRole('button', { name: 'Comment' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
-  expect(screen.getByRole('button', { name: 'Stop picking' })).toBeTruthy()
+  await startPageComment()
+  const point = screen.getByRole('button', { name: 'Element' })
+  fireEvent.click(point)
+  expect(point.getAttribute('aria-pressed')).toBe('true')
 
-  fireEvent.keyDown(screen.getByRole('button', { name: 'Stop picking' }), {
-    key: 'Escape',
-  })
+  fireEvent.keyDown(point, { key: 'Escape' })
 
   expect(panel().hasAttribute('data-closing')).toBe(false)
-  expect(screen.getByRole('button', { name: 'Pick an element in the page' })).toBeTruthy()
+  expect(point.getAttribute('aria-pressed')).toBe('false')
 })
 
 test('Escape while composing a word with an input method leaves the panel open', async () => {

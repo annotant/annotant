@@ -1,9 +1,16 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { anchorFromDrawing } from '../src/anchors'
+import {
+  anchorFromDrawing,
+  aroundOf,
+  framedArea,
+  holderOf,
+  rectFromArea,
+} from '../src/anchors'
+import { drawingImage } from '../src/drawing'
 import type { NewReviewComment, ReviewArea, ReviewComment } from '../src/domain'
-import { comment, fakeServer, openPanel } from './server'
-import { renderWidget } from './widget'
+import { comment, fakeServer, openPanel, openThread } from './server'
+import { renderWidget, startPageComment } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
 const PAGE = `
@@ -123,17 +130,20 @@ test('what a drawing records reaches past its lines, to what an arrow stops shor
     ],
   ])
 
-  // The comment's box stays the lines', what Claude gets is 120px wider each way.
+  // The comment's box stays the lines', what Claude gets is 120px wider each way,
+  // cut to the window: none of it past its left edge.
   expect(drawn?.rect).toEqual({ left: 92, top: 242, width: 16, height: 96 })
-  expect(drawn?.reach).toEqual({ left: -28, top: 122, width: 256, height: 336 })
+  expect(drawn?.reach).toEqual({ left: 0, top: 122, width: 228, height: 336 })
+  // In the section, its box crosses the cards and their text.
   expect(drawn?.anchor.area?.crosses.map((node) => node.selector)).toEqual([
-    'section',
+    'section > div:nth-of-type(1)',
     'section > div:nth-of-type(1) > p',
+    'section > div:nth-of-type(2)',
     'section > div:nth-of-type(2) > p',
   ])
   // Its tip is on the section only: it points at what is next along it, card B's text.
   expect(drawn?.anchor.area?.pointsAt?.selector).toBe('section > div:nth-of-type(2) > p')
-  // A wide drawing gets a quarter of its width on each side.
+  // A wide drawing gets a quarter of its width on each side, in the 1024px window.
   expect(
     anchorFromDrawing(root, [
       [
@@ -141,7 +151,133 @@ test('what a drawing records reaches past its lines, to what an arrow stops shor
         { x: 900, y: 200 },
       ],
     ])?.reach,
-  ).toEqual({ left: -112, top: 72, width: 1224, height: 256 })
+  ).toEqual({ left: 0, top: 72, width: 1024, height: 256 })
+})
+
+/** A form, and a dropdown list of a fixed width on its right. */
+function dropdown() {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">
+    <section data-box="0,100,1000,400">
+      <p data-box="20,120,500,40">Form</p>
+      <ul data-box="700,120,200,300">
+        <li data-box="700,120,200,30">CNESST-1505</li>
+        <li data-box="700,150,200,30">CNESST-1523</li>
+      </ul>
+    </section>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+  return root
+}
+
+/** A loop around the second item of the dropdown. */
+function loopAroundItem(root: Element) {
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 690, y: 145 },
+      { x: 910, y: 145 },
+      { x: 910, y: 185 },
+      { x: 690, y: 185 },
+      { x: 690, y: 150 },
+    ],
+  ])?.anchor.area
+  if (!area) throw new Error('no area')
+  return area
+}
+
+test('a drawing over an element of a fixed width keeps its place and size over it in a narrower holder', () => {
+  const root = dropdown()
+  const area = loopAroundItem(root)
+  expect(area.around).toEqual({
+    selector: 'section > ul > li:nth-of-type(2)',
+    tag: 'li',
+    text: 'CNESST-1523',
+    offset: { top: -13, left: -18 },
+    size: { width: 200, height: 30 },
+  })
+
+  // The panel squeezes the page: the section narrows, the list moves but keeps its width.
+  const box = (selector: string, value: string) =>
+    root.querySelector(selector)?.setAttribute('data-box', value)
+  box('section', '0,100,600,400')
+  box('p', '20,120,300,40')
+  box('ul', '300,120,200,300')
+  box('li:first-child', '300,120,200,30')
+  box('li:last-child', '300,150,200,30')
+
+  expect(rectFromArea(area, holderOf(root, area), aroundOf(root, area))).toEqual({
+    left: 282,
+    top: 137,
+    width: 236,
+    height: 56,
+  })
+})
+
+test('a drawing is placed from the largest element wholly in its lines', () => {
+  const root = dropdown()
+  root.querySelector('li:last-child')?.setAttribute('data-box', '700,150,200,60')
+
+  // A loop around both items: the second, the taller, places it.
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 690, y: 115 },
+      { x: 910, y: 115 },
+      { x: 910, y: 215 },
+      { x: 690, y: 215 },
+    ],
+  ])?.anchor.area
+
+  expect(area?.around?.text).toBe('CNESST-1523')
+})
+
+test('a drawing hides while what it is placed from hides, and goes back to its holder once that is gone', () => {
+  const root = dropdown()
+  const area = loopAroundItem(root)
+  const framed = () => framedArea(area, holderOf(root, area), aroundOf(root, area))
+  const item = root.querySelector('li:last-child')
+
+  // Placed from the item, the section hidden or not.
+  root.querySelector('section')?.setAttribute('data-box', '0,0,0,0')
+  expect(framed()).toEqual({ left: 682, top: 137, width: 236, height: 56 })
+  // The dropdown closed: nothing framed, not the section's spot it was in.
+  root.querySelector('section')?.setAttribute('data-box', '0,100,1000,400')
+  item?.setAttribute('data-box', '0,0,0,0')
+  expect(framed()).toBeUndefined()
+  // The item gone from the page: placed in the section, as before.
+  item?.remove()
+  expect(framed()).toEqual({ left: 682, top: 137, width: 236, height: 56 })
+  root.querySelector('section')?.setAttribute('data-box', '0,0,0,0')
+  expect(framed()).toBeUndefined()
+})
+
+test('a drawing over text that stretches with its holder still follows it', () => {
+  layout()
+  document.body.innerHTML = `<main data-box="0,0,1000,2000">${PAGE}</main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  // Underlines card A's text: no element wholly under it, it points at the text.
+  const area = anchorFromDrawing(root, [
+    [
+      { x: 100, y: 150 },
+      { x: 200, y: 150 },
+    ],
+  ])?.anchor.area
+  if (!area) throw new Error('no area')
+  expect(area.around?.selector).toBe('section > div:nth-of-type(1) > p')
+
+  // On a narrower window, the text halves with the card and the section.
+  root.querySelector('section')?.setAttribute('data-box', '0,100,500,400')
+  root.querySelector('section > div')?.setAttribute('data-box', '20,120,200,200')
+  root.querySelector('section > div > p')?.setAttribute('data-box', '30,130,150,40')
+
+  expect(rectFromArea(area, holderOf(root, area), aroundOf(root, area))).toEqual({
+    left: 61,
+    top: 142,
+    width: 58,
+    height: 16,
+  })
 })
 
 test("a drawing records its elements' text as the page shows it, blocks apart", () => {
@@ -276,9 +412,9 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
 
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   expect(screen.queryByTestId('an-sketch')).toBeNull()
-  expect(screen.getByTestId('an-area-chip').textContent).toBe(
-    '2 linespoints at <p> Card B',
-  )
+  expect(
+    screen.getByTestId('an-target-area').querySelector('.an-target-text')?.textContent,
+  ).toBe('2 linespoints at "Card B"')
   const drawn = await screen.findByTestId('an-area-target')
   expect(drawn.querySelectorAll('polyline')).toHaveLength(2)
 
@@ -299,8 +435,12 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
   expect(mark.querySelectorAll('polyline')).toHaveLength(2)
 })
 
-test("the drawing's picture goes with the comment, for Claude", async () => {
-  // What the canvas paints: each fill's colour, each word at its place.
+/**
+ * A canvas that draws nothing: what counts is what it is told to paint, each
+ * fill's colour and each word at its place, and the size of each picture.
+ * A word is where its element's text starts, 20px wide each.
+ */
+function paintingCanvas() {
   const painted: string[] = []
   const state = { fillStyle: '' }
   const context = new Proxy(state, {
@@ -319,8 +459,7 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
     },
   })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-    // A canvas that draws nothing: what counts here is what it is told to paint.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a canvas that only records what it paints
     context as unknown as CanvasRenderingContext2D,
   )
   const sizes: [number, number][] = []
@@ -330,7 +469,6 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
     sizes.push([this.width, this.height])
     return 'data:image/png;base64,iVBORw0KGgo='
   })
-  // A word is where its element's text starts, 20px wide each.
   vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (
     this: Range,
   ) {
@@ -343,6 +481,119 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
       height: 20,
     })
   })
+  return { painted, sizes }
+}
+
+/** The picture of `points`, one line, drawn over `root`, and what it paints. */
+function picture(root: Element, ...points: [number, number][]) {
+  const canvas = paintingCanvas()
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+  })
+  const drawn = anchorFromDrawing(root, [points.map(([x, y]) => ({ x, y }))])
+  if (!drawn) throw new Error('nothing drawn')
+  const image = drawingImage(drawn.reach, drawn.rect, drawn.strokes, root)
+  return {
+    ...canvas,
+    image,
+    words: canvas.painted.filter((one) => !one.startsWith('ground')),
+  }
+}
+
+test("a drawing near the window's edge is pictured with what the window shows only", () => {
+  layout()
+  document.body.innerHTML = `<main style="color: rgb(0, 0, 0)" data-box="0,0,1400,1000">
+    <p data-box="900,700,100,20">Seen</p>
+    <p data-box="900,780,100,20">Below</p>
+    <p data-box="1030,700,100,20">Right</p>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  // Lines in the window's corner, 1024 × 768: 120px of room up and left, down
+  // and right up to the window's edges only.
+  const { sizes, words } = picture(root, [950, 700], [1000, 740])
+
+  expect(sizes).toEqual([[202, 196]])
+  expect(words.map((word) => word.split(' ')[0])).toEqual(['Seen'])
+})
+
+test('a drawing over a modal is pictured in the stacking order, cut as the page is', () => {
+  layout()
+  document.body.innerHTML = `<main style="color: rgb(0, 0, 0)" data-box="0,0,1000,700">
+    <div style="position: fixed; z-index: 10; background-color: rgb(255, 255, 255)" data-box="100,100,600,500">
+      <div id="list" style="overflow-x: auto; overflow-y: auto" data-box="120,150,300,100">
+        <p data-box="120,160,300,20">Item1505</p>
+        <p data-box="120,300,300,20">Item1523</p>
+        <ul style="position: absolute; background-color: rgb(0, 0, 255)" data-box="120,240,300,200">
+          <li data-box="120,400,300,20">Escaped</li>
+        </ul>
+      </div>
+      <footer data-box="100,520,600,60"><button data-box="500,530,80,30">Cancel</button></footer>
+    </div>
+    <table style="position: relative" data-box="0,0,1000,700">
+      <tbody><tr><td data-box="100,140,200,20">Row1844</td></tr></tbody>
+    </table>
+  </main>`
+  const root = document.querySelector('main')
+  const list = document.getElementById('list')
+  if (!root || !list) throw new Error('no root')
+  // Its padding box, what its scrollbars and border leave of it.
+  Object.defineProperties(list, {
+    clientWidth: { value: 300, configurable: true },
+    clientHeight: { value: 100, configurable: true },
+  })
+
+  const { painted } = picture(root, [200, 200], [400, 450])
+
+  // The table, after the modal in the page but under it, then the modal: its
+  // ground, its list cut where it scrolls, its footer, then its dropdown, which
+  // the list does not hold, over them.
+  expect(painted.map((one) => one.replace(/ at .*/, ''))).toEqual([
+    'ground #fff',
+    'Row1844',
+    'ground rgb(255, 255, 255)',
+    'Item1505',
+    'Cancel',
+    'ground rgb(0, 0, 255)',
+    'Escaped',
+  ])
+})
+
+test('a layer under the rest is painted first, one in a see-through block stays in it, a flex item stacks', () => {
+  layout()
+  document.body.innerHTML = `<main style="color: rgb(0, 0, 0)" data-box="0,0,1000,700">
+    <div style="display: flex" data-box="100,100,400,300">
+      <div style="z-index: 20; background-color: rgb(255, 255, 0)" data-box="100,100,400,300"></div>
+    </div>
+    <div style="position: relative" data-box="100,100,400,300">
+      <p data-box="120,120,200,20">Front</p>
+      <div style="position: absolute; z-index: -1; background-color: rgb(0, 128, 0)" data-box="100,100,400,300"></div>
+    </div>
+    <div style="opacity: 0.5" data-box="100,100,400,300">
+      <div style="position: absolute; z-index: 100; background-color: rgb(255, 0, 0)" data-box="100,100,400,300"></div>
+    </div>
+    <div style="position: absolute; z-index: 10; background-color: rgb(0, 0, 255)" data-box="100,100,400,300"></div>
+  </main>`
+  const root = document.querySelector('main')
+  if (!root) throw new Error('no root')
+
+  const { painted } = picture(root, [200, 200], [300, 300])
+
+  // Its z-index of 100 counts in its block only, which stacks at 0: under the
+  // z-index of 10. A flex item's counts, positioned or not: over them all.
+  expect(painted.map((one) => one.replace(/ at .*/, ''))).toEqual([
+    'ground #fff',
+    'ground rgb(0, 128, 0)',
+    'Front',
+    'ground rgb(255, 0, 0)',
+    'ground rgb(0, 0, 255)',
+    'ground rgb(255, 255, 0)',
+  ])
+})
+
+test("the drawing's picture goes with the comment, for Claude", async () => {
+  const { painted, sizes } = paintingCanvas()
   onTestFinished(() => {
     vi.restoreAllMocks()
     document.body.style.removeProperty('background-color')
@@ -372,16 +623,17 @@ test("the drawing's picture goes with the comment, for Claude", async () => {
   const sent = JSON.parse(body) as NewReviewComment
   expect(sent.images).toEqual([{ type: 'image/png', data: 'iVBORw0KGgo=' }])
   expect(sent.anchor.area?.pictured).toBe(true)
-  // The picture is wider than the lines' box, 36 × 126: 120px more on each side.
-  expect(sizes).toEqual([[276, 366]])
+  // The picture is wider than the lines' box, 36 × 126: 120px more on each side,
+  // but none past the window's left edge, 82px from the lines.
+  expect(sizes).toEqual([[238, 366]])
   // The page under it, its ground and its text where it is, in its colour:
   // card A, which the arrow leaves, is in, the heading above is not.
   expect(painted).toEqual([
     'ground rgb(16, 24, 40)',
-    'Card at 68,18 in rgb(240, 200, 120)',
-    'A at 88,18 in rgb(240, 200, 120)',
-    'Card at 68,238 in rgb(240, 200, 120)',
-    'B at 88,238 in rgb(240, 200, 120)',
+    'Card at 30,18 in rgb(240, 200, 120)',
+    'A at 50,18 in rgb(240, 200, 120)',
+    'Card at 30,238 in rgb(240, 200, 120)',
+    'B at 50,238 in rgb(240, 200, 120)',
   ])
 })
 
@@ -425,21 +677,21 @@ test('Clear takes every line back, and Escape leaves the drawing', async () => {
 
 test('a drawing made from a page comment keeps what the reader wrote, and goes with its removal', async () => {
   renderCards()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const text = await screen.findByRole('textbox', { name: 'What should change?' })
   fireEvent.change(text, { target: { value: 'This goes there' } })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Draw on the page' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Drawing' }))
   arrow()
   fireEvent.click(screen.getByRole('button', { name: 'Done' }))
 
-  await screen.findByTestId('an-area-chip')
+  await screen.findByTestId('an-target-area')
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'What should change?' })
       .value,
   ).toBe('This goes there')
   fireEvent.click(screen.getByRole('button', { name: 'Remove the drawing' }))
-  expect(screen.queryByTestId('an-area-chip')).toBeNull()
+  expect(screen.queryByTestId('an-target-area')).toBeNull()
   expect(screen.getByRole('checkbox')).toBeTruthy()
 })
 
@@ -469,6 +721,54 @@ test('a drawing loses its rainbow once its agent has written a file', async () =
   expect(lines?.querySelector('linearGradient')).toBeNull()
 })
 
+const CARD_A = { selector: 'section > div:nth-of-type(1) > p', tag: 'p', text: 'Card A' }
+const CARD_B = { selector: 'section > div:nth-of-type(2) > p', tag: 'p', text: 'Card B' }
+
+test('a drawing loses its lines once nothing it was drawn on is on the page', async () => {
+  openPanel('page', 'c1')
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
+  await screen.findByTestId('an-area-mark')
+
+  // One of them gone: the other still tells where the lines belong.
+  document.querySelector(CARD_A.selector)?.remove()
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+
+  document.querySelector(CARD_B.selector)?.remove()
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+  // Its chip in the thread still shows it.
+  expect(screen.getByRole('button', { name: /1 line/ })).toBeTruthy()
+})
+
+test('a drawing does not follow what took the place of what it was drawn on', async () => {
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A] } })])
+  await screen.findByTestId('an-area-mark')
+
+  // Card B's paragraph is now the first card's: its selector finds Card B.
+  document.querySelector('section > div')?.remove()
+
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+})
+
+test('a rectangle keeps its frame once what it covers is gone', async () => {
+  const { strokes: _, ...rectangle } = DRAWING
+  renderCards([comment({ area: { ...rectangle, covers: [CARD_A] } })])
+  await screen.findByTestId('an-area-mark')
+
+  document.querySelector(CARD_A.selector)?.remove()
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+})
+
+test('a drawing over empty space keeps its lines', async () => {
+  renderCards([comment({ area: DRAWING })])
+  await screen.findByTestId('an-area-mark')
+
+  document.querySelector('section > div:nth-of-type(2)')?.remove()
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+})
+
 test("the drawing's chip in a resolved thread shows it again on the page", async () => {
   openPanel('page', 'c1')
   renderCards([comment({ area: DRAWING, state: 'resolved' })])
@@ -480,4 +780,37 @@ test("the drawing's chip in a resolved thread shows it again on the page", async
   fireEvent.mouseEnter(chip)
   const shown = await screen.findByTestId('an-area-target')
   expect(shown.querySelector('polyline')?.getAttribute('points')).toBe('8,8 8,118')
+})
+
+test("lines drawn from a reply's target slot go with it, their picture last", async () => {
+  paintingCanvas()
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+  })
+  openThread('c1')
+  const server = renderCards([
+    comment({
+      state: 'answered',
+      messages: [{ author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' }],
+    }),
+  ])
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Drawing' }))
+  arrow()
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+  const card = await screen.findByTestId('an-target-area')
+  expect(card.querySelector('.an-target-text')?.textContent).toBe(
+    '2 linespoints at "Card B"',
+  )
+  expect(screen.getByRole('button', { name: 'Redraw' })).toBeTruthy()
+  fireEvent.change(box, { target: { value: 'Swap them' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+
+  await waitFor(() => expect(server.patches).toHaveLength(1))
+  const { patch } = server.patches[0] ?? {}
+  expect(patch?.images).toEqual([{ type: 'image/png', data: 'iVBORw0KGgo=' }])
+  expect(patch?.area).toMatchObject({ pictured: true, route: '/' })
+  expect(patch?.area?.strokes).toHaveLength(2)
 })

@@ -1,6 +1,6 @@
 {
   "name": "annotant",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Comment on your dev app in the browser; one background agent per comment makes the change and answers in the thread",
   "author": {
     "name": "Kevin Manson",

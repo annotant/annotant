@@ -505,22 +505,60 @@ const overlaps = (a: ReviewBox, b: ReviewBox) =>
   a.top < b.top + b.height &&
   b.top < a.top + a.height
 
-/** The page's elements under `parent`: a `display: contents` one has no box, its children do. */
-function laidOut(parent: Element): { element: Element; box: ReviewBox }[] {
+/**
+ * The page's elements under `parent`: a `display: contents` one has no box, its
+ * children do; nor has a wrapper `through` picks (a portal's).
+ */
+function laidOut(
+  parent: Element,
+  through: (element: Element) => boolean = () => false,
+): { element: Element; box: ReviewBox }[] {
   return Array.from(parent.children).flatMap((element) => {
     if (element.closest(WIDGET) || element.matches(UNREAD)) return []
     const box = boxOf(element)
     if (box.width && box.height) return [{ element, box }]
-    return getComputedStyle(element).display === 'contents' ? laidOut(element) : []
+    return getComputedStyle(element).display === 'contents' || through(element)
+      ? laidOut(element, through)
+      : []
   })
 }
 
+/** Where a box is hit-tested: its centre first, then four points around it. */
+const SAMPLES = [
+  [0.5, 0.5],
+  [0.25, 0.25],
+  [0.75, 0.25],
+  [0.25, 0.75],
+  [0.75, 0.75],
+] as const
+
+/** The points of `box` that `SAMPLES` names. */
+const samplesOf = (box: ReviewBox): DrawnPoint[] =>
+  SAMPLES.map(([x, y]) => ({ x: box.left + box.width * x, y: box.top + box.height * y }))
+
+/** The page's elements painted on top in `rect`, at its centre first; none off screen. */
+function paintedIn(root: Element, rect: ReviewBox): Element[] {
+  return samplesOf(rect)
+    .map((point) => hitAt(root, point))
+    .filter((element) => element !== undefined)
+}
+
 /**
- * The smallest element under `root` that holds all of `rect`, `root` when none
- * does. Of two siblings that both hold it, the later one, which usually paints
- * on top: a modal's portal, not the page under it.
+ * The element `rect` lies in: from the first element painted in it, its centre
+ * first, the first element up that holds all of it, `root` when none does (a
+ * dropdown smaller than it); an overlay, not the page under it, wherever it is
+ * in the DOM. Where nothing is hit, by layout alone: the smallest element that
+ * holds it, the later of two siblings.
  */
-function holderFor(root: Element, rect: ReviewBox): Element {
+function holderFor(root: Element, rect: ReviewBox, painted: Element[]): Element {
+  const [top] = painted
+  if (top) {
+    for (let element: Element | null = top; element && element !== root;) {
+      if (holds(boxOf(element), rect)) return element
+      element = element.parentElement
+    }
+    return root
+  }
   let holder = root
   for (;;) {
     const child = laidOut(holder).findLast(({ box }) => holds(box, rect))
@@ -529,13 +567,65 @@ function holderFor(root: Element, rect: ReviewBox): Element {
   }
 }
 
+/** Drawn over what is behind: a background, or an image. */
+const OPAQUE = 'img, video, canvas, iframe, svg, picture, object, embed'
+const clear = (color: string) =>
+  !color || color === 'transparent' || /,\s*0\)$/.test(color)
+
 /**
- * What `rect` covers in `holder`: the outermost elements wholly inside it; the
- * children of `holder` it cuts through, and the innermost ones in them (the
- * section, and the two buttons around a gap in it); `truncated` when there
- * were more than it keeps.
+ * Whether `layer`, or what holds it short of the branch it shares with
+ * `element`, paints over `element`: a modal's panel, not a transparent link
+ * stretched over a card to make all of it a click target.
  */
-function elementsIn(holder: Element, rect: ReviewBox) {
+function paintsOver(layer: Element, element: Element): boolean {
+  for (let node: Element | null = layer; node && !node.contains(element);) {
+    if (node.matches(OPAQUE)) return true
+    const { backgroundColor, backgroundImage } = getComputedStyle(node)
+    if (!clear(backgroundColor) || (backgroundImage && backgroundImage !== 'none'))
+      return true
+    node = node.parentElement
+  }
+  return false
+}
+
+/**
+ * Whether `element` shows in `rect`: at one of a few points of its part there,
+ * what is painted is itself, in it, holds it (a box that lets clicks through),
+ * or does not paint over it; one that clicks go through (`pointer-events:
+ * none`) shows whatever is under it. Unknown off screen, or where nothing is
+ * hit: shown.
+ */
+function shownIn(root: Element, element: Element, box: ReviewBox, rect: ReviewBox) {
+  const left = Math.max(box.left, rect.left, 0)
+  const top = Math.max(box.top, rect.top, 0)
+  const right = Math.min(box.left + box.width, rect.left + rect.width, window.innerWidth)
+  const bottom = Math.min(
+    box.top + box.height,
+    rect.top + rect.height,
+    window.innerHeight,
+  )
+  if (right <= left || bottom <= top) return true
+  const part = { left, top, width: right - left, height: bottom - top }
+  const covered = samplesOf(part).every((point) => {
+    const hit = hitAt(root, point)
+    return (
+      !!hit &&
+      !element.contains(hit) &&
+      !hit.contains(element) &&
+      paintsOver(hit, element)
+    )
+  })
+  return !covered || getComputedStyle(element).pointerEvents === 'none'
+}
+
+/**
+ * What `rect` covers in `holder`, of what shows there: the outermost elements
+ * wholly inside it; the children of `holder` it cuts through, and the innermost
+ * ones in them (the section, and the two buttons around a gap in it);
+ * `truncated` when there were more than it keeps. A layer painted in it
+ * (`painted`) is looked for past its parent's box: a dropdown that overflows it.
+ */
+function elementsIn(root: Element, holder: Element, rect: ReviewBox, painted: Element[]) {
   const covers: Element[] = []
   const crosses: Element[] = []
   let truncated = false
@@ -543,12 +633,19 @@ function elementsIn(holder: Element, rect: ReviewBox) {
     if (list.length < max) list.push(element)
     else truncated = true
   }
+  const holdsPainted = (element: Element) =>
+    painted.some((hit) => element !== hit && element.contains(hit))
   // Whether `rect` cuts through an element under `parent`.
   const visit = (parent: Element): boolean => {
     let cuts = false
-    for (const { element, box } of laidOut(parent)) {
+    for (const { element, box } of laidOut(parent, holdsPainted)) {
+      if (!overlaps(rect, box)) {
+        if (holdsPainted(element)) cuts = visit(element) || cuts
+        continue
+      }
+      if (!shownIn(root, element, box, rect)) continue
       if (holds(rect, box)) keep(covers, MAX_COVERS, element)
-      else if (overlaps(rect, box)) {
+      else {
         cuts = true
         const outer = parent === holder
         if (outer) keep(crosses, MAX_CROSSES, element)
@@ -563,7 +660,8 @@ function elementsIn(holder: Element, rect: ReviewBox) {
 
 /** The elements an area drawn over `rect` would record as covered. */
 export function coveredBy(root: Element, rect: ReviewBox): Element[] {
-  return elementsIn(holderFor(root, rect), rect).covers
+  const painted = paintedIn(root, rect)
+  return elementsIn(root, holderFor(root, rect, painted), rect, painted).covers
 }
 
 /** An element's text as the page shows it: a card's label and title apart, not run together. */
@@ -591,10 +689,14 @@ export function anchorFromArea(
   rect: ReviewBox,
   reach: ReviewBox = rect,
 ): ReviewAnchor {
-  const holder = holderFor(root, rect)
+  const painted = paintedIn(root, rect)
+  const holder = holderFor(root, rect, painted)
+  const reached = reach === rect ? painted : paintedIn(root, reach)
   const { covers, crosses, truncated } = elementsIn(
-    reach === rect ? holder : holderFor(root, reach),
+    root,
+    reach === rect ? holder : holderFor(root, reach, reached),
     reach,
+    reached,
   )
   const box = boxOf(holder)
   const size = { width: Math.round(box.width), height: Math.round(box.height) }
@@ -651,16 +753,24 @@ const DRAWING_MARGIN = 8
 const DRAWING_REACH = 0.25
 const MIN_DRAWING_REACH = 120
 
-/** `rect` with a drawing's room around it. */
+/**
+ * `rect` with a drawing's room around it, cut to the window: what lies past
+ * its edges, the reader did not see. The lines' box stays whole.
+ */
 function reachOf(rect: ReviewBox): ReviewBox {
   const x = Math.max(MIN_DRAWING_REACH, rect.width * DRAWING_REACH)
   const y = Math.max(MIN_DRAWING_REACH, rect.height * DRAWING_REACH)
-  return {
-    left: rect.left - x,
-    top: rect.top - y,
-    width: rect.width + 2 * x,
-    height: rect.height + 2 * y,
-  }
+  const left = Math.min(rect.left, Math.max(0, rect.left - x))
+  const top = Math.min(rect.top, Math.max(0, rect.top - y))
+  const right = Math.max(
+    rect.left + rect.width,
+    Math.min(window.innerWidth, rect.left + rect.width + x),
+  )
+  const bottom = Math.max(
+    rect.top + rect.height,
+    Math.min(window.innerHeight, rect.top + rect.height + y),
+  )
+  return { left, top, width: right - left, height: bottom - top }
 }
 
 function lengthOf(line: DrawnPoint[]): number {
@@ -798,12 +908,43 @@ function keptLines(lines: DrawnPoint[][]): DrawnPoint[][] {
   return kept
 }
 
+const surface = (element: Element) => {
+  const { width, height } = boxOf(element)
+  return width * height
+}
+
+/**
+ * The element lines are placed from: the largest wholly in their box `rect`,
+ * of those `coveredBy` keeps, else the one they point at (`target`). A dropdown
+ * of a fixed width moves with the layout but does not narrow with its holder.
+ * Several that move apart: the lines follow this one.
+ */
+function drawnAround(root: Element, rect: ReviewBox, target: Element | undefined) {
+  const element =
+    coveredBy(root, rect).reduce<Element | undefined>(
+      (largest, covered) =>
+        !largest || surface(covered) > surface(largest) ? covered : largest,
+      undefined,
+    ) ?? target
+  const box = element && boxOf(element)
+  if (!element || !box?.width || !box.height) return undefined
+  return {
+    ...nodeOf(root, element),
+    offset: {
+      top: Math.round(rect.top - box.top),
+      left: Math.round(rect.left - box.left),
+    },
+    size: { width: Math.round(box.width), height: Math.round(box.height) },
+  }
+}
+
 /**
  * Describes lines drawn freehand over the page (in viewport pixels) as an
  * area, the box of the lines it keeps (`rect`, in viewport pixels), which
  * records what they lie in as a rectangle does, with the lines from its
- * corner. What they cover and cross is that of `reach`, a wider box, and
- * `pointsAt` is the element they point at.
+ * corner. What they cover and cross is that of `reach`, a wider box,
+ * `pointsAt` is the element they point at, and `around` the one they are
+ * placed from.
  */
 export function anchorFromDrawing(
   root: Element,
@@ -822,6 +963,7 @@ export function anchorFromDrawing(
   const reach = reachOf(rect)
   const anchor = anchorFromArea(root, rect, reach)
   const target = pointedAt(root, kept, rect)
+  const around = drawnAround(root, rect, target)
   const strokes = kept.map((line) =>
     line.map(({ x, y }): [number, number] => [
       Math.round(x - rect.left),
@@ -832,6 +974,7 @@ export function anchorFromDrawing(
     ...anchor.area,
     strokes,
     ...(target ? { pointsAt: nodeOf(root, target) } : {}),
+    ...(around ? { around } : {}),
   }
   return {
     anchor: area ? { ...anchor, area } : anchor,
@@ -841,23 +984,78 @@ export function anchorFromDrawing(
   }
 }
 
-/** The element the area was drawn in, when it is on the page. */
-export function holderOf(root: Element, area: ReviewArea): Element | undefined {
-  if (!area.within) return undefined
+function nodeIn(root: Element, node: ReviewNode | undefined): Element | undefined {
+  if (!node) return undefined
   try {
-    return root.querySelector(area.within.selector) ?? undefined
+    return root.querySelector(node.selector) ?? undefined
   } catch {
     return undefined
   }
 }
 
+/** The element the area was drawn in, when it is on the page. */
+export const holderOf = (root: Element, area: ReviewArea) => nodeIn(root, area.within)
+
+/** The element a drawing is placed from, when it is on the page. */
+export const aroundOf = (root: Element, area: ReviewArea) => nodeIn(root, area.around)
+
 /**
- * Where the area is now, in viewport pixels: in the element it was drawn in,
- * which may have moved or scrolled since; its width follows the holder's (a
- * narrower window), its height does not (content added further down).
- * Without its holder, where it was on the page.
+ * True while `node` is on the page as recorded: its selector finds an element
+ * of its tag and text, not one that took its place (the next card, once the
+ * one before is removed).
  */
-export function rectFromArea(area: ReviewArea, holder?: Element): ReviewBox {
+function stillShows(root: Element, node: ReviewNode): boolean {
+  const element = nodeIn(root, node)
+  return (
+    !!element &&
+    element.tagName.toLowerCase() === node.tag &&
+    shownText(element).slice(0, 80) === node.text
+  )
+}
+
+/**
+ * False once none of the elements a drawing was drawn on (`covers`,
+ * `pointsAt`) is on the page any more: its lines would circle something else.
+ * One left is enough to keep them. True for a rectangle, and for a drawing
+ * that covers and points at nothing: nothing to look for.
+ */
+export function drawnOnShows(root: Element, area: ReviewArea): boolean {
+  if (!area.strokes) return true
+  const drawnOn = [...area.covers, ...(area.pointsAt ? [area.pointsAt] : [])]
+  return !drawnOn.length || drawnOn.some((node) => stillShows(root, node))
+}
+
+/** `element`'s box while it is laid out: none once gone or hidden. */
+function shownBox(element: Element | undefined) {
+  const box = element && boxOf(element)
+  return box?.width && box.height ? box : undefined
+}
+
+/**
+ * Where the area is now, in viewport pixels. A drawing, from the element it
+ * is placed from (`around`) while it shows, which may have moved since; its
+ * left offset and width follow that element's width, not its height: a list
+ * of a fixed width keeps them, text that wraps narrows them. Else in the element it was drawn in, which may have moved
+ * or scrolled since; its width follows the holder's (a narrower window), its
+ * height does not (content added further down). Without either, where it was
+ * on the page.
+ */
+export function rectFromArea(
+  area: ReviewArea,
+  holder?: Element,
+  around?: Element,
+): ReviewBox {
+  const pin = area.around && shownBox(around)
+  if (area.around && pin) {
+    const { offset, size } = area.around
+    const scale = pin.width / size.width
+    return {
+      top: pin.top + offset.top,
+      left: pin.left + offset.left * scale,
+      width: area.width * scale,
+      height: area.height,
+    }
+  }
   const box = holder && boxOf(holder)
   if (area.within && holder && box?.width && box.height) {
     const { offset, size } = area.within
@@ -879,13 +1077,20 @@ export function rectFromArea(area: ReviewArea, holder?: Element): ReviewBox {
 
 /**
  * Where to frame the area now: as `rectFromArea`, but nowhere while the
- * element it was drawn in is gone or hidden (a closed modal, another tab):
- * its old place on the page would frame something else.
+ * element a drawing is placed from is hidden (a closed dropdown), nor while the
+ * element it was drawn in is gone or hidden (a closed modal, another tab) and
+ * no `around` shows: its old place would frame something else. An `around`
+ * gone from the page leaves it to its holder.
  */
-export function framedArea(area: ReviewArea, holder?: Element): ReviewBox | undefined {
-  const box = holder && boxOf(holder)
-  if (area.within && !(box?.width && box.height)) return undefined
-  return rectFromArea(area, holder)
+export function framedArea(
+  area: ReviewArea,
+  holder?: Element,
+  around?: Element,
+): ReviewBox | undefined {
+  const pinned = area.around && shownBox(around)
+  if (area.around && around && !pinned) return undefined
+  if (area.within && !shownBox(holder) && !pinned) return undefined
+  return rectFromArea(area, holder, around)
 }
 
 /**
@@ -899,7 +1104,7 @@ export function areaReady(root: Element, area: ReviewArea): boolean {
 
 /** Scrolls the page to the area: centred, or its top in view when it is taller than the window. */
 export function scrollToArea(root: Element, area: ReviewArea): void {
-  const rect = rectFromArea(area, holderOf(root, area))
+  const rect = rectFromArea(area, holderOf(root, area), aroundOf(root, area))
   const margin = 40
   const top =
     rect.height > window.innerHeight - 2 * margin

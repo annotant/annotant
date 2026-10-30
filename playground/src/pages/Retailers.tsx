@@ -1,14 +1,35 @@
-import { useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { OPENING_SOON, RETAILERS } from '../data'
+
+const SORT_KEYS = ['name', 'city', 'since'] as const
+type Sort = (typeof SORT_KEYS)[number]
+const SORTS: Record<Sort, string> = { name: 'Name', city: 'City', since: 'Since' }
+
+/** Mounted before the app's root, as some modal libraries do: earlier in the DOM than the page it covers. */
+function Portal({ children }: { children: ReactNode }) {
+  const [host] = useState(() => document.createElement('div'))
+  useEffect(() => {
+    document.body.prepend(host)
+    return () => host.remove()
+  }, [host])
+  return createPortal(children, host)
+}
 
 export function Retailers() {
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<Sort>('name')
+  const [sorting, setSorting] = useState(false)
+  const [newest, setNewest] = useState(false)
   const needle = query.trim().toLowerCase()
   const shown = RETAILERS.filter((retailer) =>
     [retailer.name, retailer.city, retailer.country].some((text) =>
       text.toLowerCase().includes(needle),
     ),
+  ).toSorted((a, b) =>
+    sort === 'since' ? a.since - b.since : a[sort].localeCompare(b[sort]),
   )
+  const latest = RETAILERS.toSorted((a, b) => b.since - a.since).slice(0, 3)
 
   return (
     <>
@@ -30,6 +51,42 @@ export function Retailers() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        <div className="toolbar">
+          <div className="menu">
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              aria-expanded={sorting}
+              onClick={() => setSorting(!sorting)}
+            >
+              Sort by: {SORTS[sort]}
+            </button>
+            {sorting && (
+              <ul className="menu-list">
+                {SORT_KEYS.map((key) => (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSort(key)
+                        setSorting(false)
+                      }}
+                    >
+                      {SORTS[key]}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setNewest(true)}
+          >
+            Newest cafés
+          </button>
+        </div>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -79,6 +136,28 @@ export function Retailers() {
           ))}
         </ul>
       </section>
+
+      {newest && (
+        <Portal>
+          <div className="overlay">
+            <div className="modal card" role="dialog" aria-labelledby="newest-title">
+              <h2 id="newest-title">Newest cafés</h2>
+              <ul className="list">
+                {latest.map((retailer) => (
+                  <li key={retailer.name}>
+                    {retailer.name}, {retailer.city} (since {retailer.since})
+                  </li>
+                ))}
+              </ul>
+              <div className="actions">
+                <button type="button" className="btn" onClick={() => setNewest(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
     </>
   )
 }
