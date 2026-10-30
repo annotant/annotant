@@ -288,6 +288,10 @@ floats or is docked, hold for every tab of the app and the next sessions.
 - **Links in the thread**: the URLs a message cites, and its issues (`#12`,
   `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
   remote is on GitHub or GitLab, open in a new tab.
+- **Formatted answers**: Claude's answers and questions show a small subset
+  of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
+  code blocks); anything else, HTML included, shows as its text. Your own
+  messages stay as you typed them.
 - **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
   focus is but in a field of your app: `,` comments on the selected text (or
   on the page), `.` points at an element (while you write a comment or a
