@@ -85,16 +85,21 @@ export function comment({
 /**
  * Stands in for the Annotant server: serves `comments`, adds the ones POSTed
  * and records each PATCH. `reachable: false` fails the page's list, as when no session runs;
- * `theme` is the app's light and dark switch, as `.annotant.json` gives it.
+ * `theme` is the app's light and dark switch, as `.annotant.json` gives it;
+ * `repository`, the project's, as its `origin` remote gives it.
  */
 export function fakeServer(
   comments: ReviewComment[],
-  { reachable = true, theme }: { reachable?: boolean; theme?: unknown } = {},
+  {
+    reachable = true,
+    theme,
+    repository,
+  }: { reachable?: boolean; theme?: unknown; repository?: unknown } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
   const fetch = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input)
-    if (url.pathname.endsWith('/api/health')) return Response.json({ theme })
+    if (url.pathname.endsWith('/api/health')) return Response.json({ theme, repository })
     if (init?.method === 'PATCH') {
       const id = url.pathname.split('/').at(-1) ?? ''
       const body = typeof init.body === 'string' ? init.body : ''

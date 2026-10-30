@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -23,6 +23,10 @@ let server
 before(async (t) => {
   if (!existsSync(WIDGET)) throw new Error('build the widget first: npm run build')
   root = await tempProject(t, { theme: { on: 'html', attribute: 'class', dark: 'dark' } })
+  execFileSync('git', ['init', '-q'], { cwd: root })
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/shop.git'], {
+    cwd: root,
+  })
   port = await freePort()
   const child = spawn(
     process.execPath,
@@ -148,6 +152,14 @@ test('answers the health check with the project it serves', async () => {
 test("tells the widget the app's light and dark switch", async () => {
   const health = await json(await fetch(`${base}/api/health`))
   assert.deepEqual(health.theme, { on: 'html', attribute: 'class', dark: 'dark' })
+})
+
+test("tells the widget the project's repository, from its origin remote", async () => {
+  const health = await json(await fetch(`${base}/api/health`))
+  assert.deepEqual(health.repository, {
+    kind: 'github',
+    url: 'https://github.com/acme/shop',
+  })
 })
 
 test('serves the widget', async () => {

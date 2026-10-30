@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
+import { parseRepository, type Repository } from './links'
 import { parseTheme, type ThemeSetting } from './theme'
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
@@ -203,22 +204,33 @@ export function useCommentHistory(enabled: boolean) {
 }
 
 /**
- * How the app switches between light and dark, as the server read it in
- * `.annotant.json`: undefined until it answers, and when it has none.
+ * What the server tells the widget about the project: how the app switches
+ * between light and dark, as it read it in `.annotant.json`, and the
+ * repository of its `origin` remote. Each undefined until it answers, and
+ * when it has none.
  */
-export function useThemeSetting(): ThemeSetting | undefined {
-  const [setting, setSetting] = useState<ThemeSetting>()
+export function useServerSettings() {
+  const [settings, setSettings] = useState<{
+    theme?: ThemeSetting | undefined
+    repository?: Repository | undefined
+  }>({})
   useEffect(() => {
     let live = true
     const load = async () => {
       const health = await request<unknown>(HEALTH)
-      if (!live || !health || typeof health !== 'object' || !('theme' in health)) return
-      const parsed = parseTheme(health.theme)
+      if (!live || !health || typeof health !== 'object') return
+      const theme = 'theme' in health ? health.theme : undefined
+      const parsed = parseTheme(theme)
       // A hand-edited setting the widget cannot read: said, then the page's background.
-      if (health.theme !== undefined && !parsed) {
-        console.warn('Annotant: ignoring `theme` in .annotant.json:', health.theme)
+      if (theme !== undefined && !parsed) {
+        console.warn('Annotant: ignoring `theme` in .annotant.json:', theme)
       }
-      setSetting(parsed)
+      setSettings({
+        theme: parsed,
+        repository: parseRepository(
+          'repository' in health ? health.repository : undefined,
+        ),
+      })
     }
     // No server: the lists say so; the page's background picks the theme meanwhile.
     load().catch(() => undefined)
@@ -226,7 +238,7 @@ export function useThemeSetting(): ThemeSetting | undefined {
       live = false
     }
   }, [])
-  return setting
+  return settings
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {
