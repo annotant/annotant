@@ -17,7 +17,7 @@ export function renderWidget() {
   }
 }
 
-/** A comment on the page: the strip's Comments opens the panel, then its New comment. */
+/** A comment on the page: the strip's Comments, then New comment when it showed threads that need the reader. */
 export async function startPageComment() {
   fireEvent.click(await screen.findByRole('button', { name: /^Comments/ }))
   fireEvent.click(screen.getByRole('button', { name: 'New comment' }))

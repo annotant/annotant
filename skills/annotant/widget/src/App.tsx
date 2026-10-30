@@ -1665,6 +1665,14 @@ export default function App({ root }: { root: Element }) {
     )
   }
 
+  // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
+  const showDraft = useCallback(() => {
+    setDrawing(false)
+    setView('page')
+    setThreadId(undefined)
+    openPanel()
+  }, [openPanel])
+
   /** Comments, from the strip or its shortcut: the panel, on the threads that need the reader if any. */
   const openComments = () => {
     // A tool in progress stops: the panel would open over it, inert while the reader draws.
@@ -1681,16 +1689,23 @@ export default function App({ root }: { root: Element }) {
     setToTitle((times) => times + 1)
   }
 
+  /**
+   * The strip's Comments: the threads that need the reader if any, else a new
+   * comment on the page, or the one the reader was writing, its box focused.
+   */
+  const commentFromStrip = () => {
+    if (needYou > 0) {
+      openComments()
+      return
+    }
+    setPicking(false)
+    if (draft && written(draft)) showDraft()
+    else startDraft(PAGE_LEVEL)
+  }
+
   /** What each keyboard shortcut does, with the state of this render. */
   const onShortcut = useRef<(shortcut: Shortcut) => void>(undefined)
   useLayoutEffect(() => {
-    // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
-    const showDraft = () => {
-      setDrawing(false)
-      setView('page')
-      setThreadId(undefined)
-      openPanel()
-    }
     onShortcut.current = (shortcut) => {
       if (shortcut === 'comment') {
         if (draft && written(draft)) showDraft()
@@ -2495,7 +2510,7 @@ export default function App({ root }: { root: Element }) {
             aria-label={commentsName}
             title={`${commentsName} (${keysOf('panel')})`}
             aria-keyshortcuts={ariaKeysOf('panel')}
-            onClick={openComments}
+            onClick={commentFromStrip}
           >
             <Icon name="chat" />
             {needYou > 0 && (
