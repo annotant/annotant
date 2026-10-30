@@ -28,6 +28,8 @@ for (const { name, devUrl, port } of APPS) {
     // Ports of their own: /playground and /playground demo run side by side.
     const config = JSON.parse(readFileSync(path.join(project, '.annotant.json'), 'utf8'))
     assert.equal(config.port, port)
+    // The playground switches light, dark and system; the demo is light only.
+    assert.deepEqual(report.theme?.setting, config.theme)
     assert.equal(report.installed?.version, report.installed?.current)
   })
 

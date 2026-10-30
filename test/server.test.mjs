@@ -22,7 +22,7 @@ let server
 
 before(async (t) => {
   if (!existsSync(WIDGET)) throw new Error('build the widget first: npm run build')
-  root = await tempProject(t)
+  root = await tempProject(t, { theme: { on: 'html', attribute: 'class', dark: 'dark' } })
   port = await freePort()
   const child = spawn(
     process.execPath,
@@ -143,6 +143,11 @@ async function listen(headers = {}) {
 test('answers the health check with the project it serves', async () => {
   const health = await json(await fetch(`${base}/api/health`))
   assert.equal(health.project, root)
+})
+
+test("tells the widget the app's light and dark switch", async () => {
+  const health = await json(await fetch(`${base}/api/health`))
+  assert.deepEqual(health.theme, { on: 'html', attribute: 'class', dark: 'dark' })
 })
 
 test('serves the widget', async () => {

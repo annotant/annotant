@@ -578,11 +578,17 @@ async function handle(req, res) {
     return res.end(data)
   }
 
+  // `theme` tells the widget how the app switches between light and dark (theme.ts).
   if (url.pathname === '/api/health') {
     return send(
       res,
       200,
-      { project: project.root, name: config.name, version: WIDGET_VERSION },
+      {
+        project: project.root,
+        name: config.name,
+        version: WIDGET_VERSION,
+        theme: config.theme,
+      },
       cors,
     )
   }

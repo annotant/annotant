@@ -70,6 +70,11 @@ follow up; cancel to stop it.
   ("haiku · trivial"). A comment of images alone is not classified: it
   starts on the session's model at a medium effort. See
   [Models](docs/comments-file.md#models).
+- **The widget follows your app's theme.** `init` finds how your app switches
+  between light and dark (Tailwind's `darkMode`, `next-themes`, a `.dark`
+  class or a `data-theme` attribute, the OS setting) and writes it as `theme`
+  in `.annotant.json`: the widget turns dark with your app's toggle, at once.
+  Without it, the widget picks dark on a dark page.
 
 ## Install
 
