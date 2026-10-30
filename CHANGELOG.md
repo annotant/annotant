@@ -7,6 +7,10 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-30
+
+https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1
+
 ### Added
 
 - **The widget follows your app's light and dark theme.** It has a dark
@@ -43,12 +47,14 @@ released to the `stable` branch.
   hovered. With no target, _Only on_ sets a new comment's scope. Images are
   no longer capped at 4: an image button sits in the text field, 5 MB each
   and 32 MB per message. (#260)
-- **Comments ends the strip of tools, and opens the panel.** The strip reads
+- **Comments ends the strip of tools, and starts a comment.** The strip reads
   grip, _Draw area_, _Draw_, _Point at element_, then **Comments** after a
-  rule: a blue button that opens the panel, as its shortcut does. It replaces
-  the _Comment_ button: start a comment on the page with the panel's **New
-  comment**, or the comment shortcut. A tool in progress keeps its icon next
-  to its _Cancel_, and hovering the grip rings the whole strip. (#261)
+  rule: a blue button that replaces the _Comment_ button. It opens the panel
+  on a new comment about the page, its message box focused, or on the comment
+  you were writing; nothing is saved before its first message. While a thread
+  needs you, it opens that thread, or the _Needs you_ list. A tool in
+  progress keeps its icon next to its _Cancel_, and hovering the grip rings
+  the whole strip. (#261, #264)
 - **The comment cards say how long ago.** A card shows _now_, _5 min ago_,
   _yesterday_ or _2 days ago_ in your languages, moving on while the panel is
   open, and from a week on the date alone; the full date and time is in its
