@@ -197,6 +197,8 @@ const BUSY_AFTER_MS = 15_000
  * may refuse agents (background tasks turned off), or have three long ones.
  */
 const NO_AGENT_AFTER_MS = 60_000
+/** How often the cards' relative dates (_5 min ago_) move on. */
+const DATES_EVERY_MS = 60_000
 
 function StepLine({
   step,
@@ -911,10 +913,19 @@ export default function App({ root }: { root: Element }) {
   // The list of the keyboard shortcuts, in the panel.
   const [showKeys, setShowKeys] = useState(false)
 
+  // The cards' relative dates move on while the panel is open: one timer for
+  // every card, and the time gone by while it was closed shows as it opens.
+  const [now, setNow] = useState(Date.now)
   const openPanel = useCallback(() => {
     if (!layout.current.open) opener.current = focusedElement()
     setOpen(true)
+    setNow(Date.now())
   }, [])
+  useEffect(() => {
+    if (!open) return undefined
+    const timer = setInterval(() => setNow(Date.now()), DATES_EVERY_MS)
+    return () => clearInterval(timer)
+  }, [open])
 
   // Once the browser says what the keys type, the shortcuts' labels name them so.
   const [keyboard, setKeyboard] = useState<KeyboardLayout>()
@@ -2356,7 +2367,7 @@ export default function App({ root }: { root: Element }) {
               {comment.anchor.section}
             </span>
           )}
-          <DateTime at={comment.createdAt} />
+          <DateTime at={comment.createdAt} now={now} />
           {deleteButton(comment)}
         </div>
         <p>{gist(comment.messages[0])}</p>
