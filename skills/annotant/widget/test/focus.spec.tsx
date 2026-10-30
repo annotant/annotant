@@ -54,7 +54,7 @@ test('closing the panel opened from the dock gives the focus to the dock', async
   fireEvent.click(dock)
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      screen.getByRole('heading', { name: 'Comments' }),
+      screen.getByPlaceholderText('What should change?'),
     ),
   )
 
