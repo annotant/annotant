@@ -63,7 +63,8 @@ const port = Number(process.env.ANNOTANT_PORT ?? config.port ?? 4599)
 // (some Docker, network or WSL ones).
 const pollMs = Number(process.env.ANNOTANT_POLL_MS ?? 5000)
 const store = createStore(project)
-// Read once: the widget links the issues a message cites to it.
+// The `origin` remote, read once (a change needs a restart): the widget
+// links the issues a message cites to its repository.
 const repository = originOf(project.root)
 const WIDGET = path.join(SKILL_DIR, 'widget', 'dist', 'widget.js')
 // Releases ship the built widget; a clone of the repository builds it first.

@@ -225,12 +225,13 @@ export function useServerSettings() {
       if (theme !== undefined && !parsed) {
         console.warn('Annotant: ignoring `theme` in .annotant.json:', theme)
       }
-      setSettings({
-        theme: parsed,
-        repository: parseRepository(
-          'repository' in health ? health.repository : undefined,
-        ),
-      })
+      const remote = 'repository' in health ? health.repository : undefined
+      const repository = parseRepository(remote)
+      // A server from another release: its issues stay text.
+      if (remote !== undefined && !repository) {
+        console.warn("Annotant: ignoring the server's `repository`:", remote)
+      }
+      setSettings({ theme: parsed, repository })
     }
     // No server: the lists say so; the page's background picks the theme meanwhile.
     load().catch(() => undefined)

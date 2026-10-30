@@ -8,9 +8,11 @@ import { execFile } from 'node:child_process'
 
 /**
  * A remote's url as a page of its repository, `https://host/owner/repo`:
- * from its HTTPS form or either SSH one (`git@host:owner/repo.git`,
- * `ssh://git@host/owner/repo`), without its credentials. Undefined for any
- * other host than GitHub's or a GitLab.
+ * from its HTTP(S) form (keeping its scheme and port), its `git://` one or
+ * either SSH one (`git@host:owner/repo.git`, `ssh://git@host/owner/repo`),
+ * without its credentials. Undefined for any other host than `github.com` or
+ * one named `gitlab.*` or `*.gitlab.*` (a GitLab under another name, or GitHub
+ * Enterprise, is not known), and for a path that is not a project's.
  * @param {string} remote
  * @returns {Repository | undefined}
  */
@@ -40,14 +42,18 @@ export function repositoryOf(remote) {
   if (!kind || parts.length < 2 || (kind === 'github' && parts.length !== 2))
     return undefined
   if (!parts.every((part) => /^[\w.-]+$/.test(part))) return undefined
-  // An SSH remote's port is SSH's, not the site's.
-  const site = parsed.protocol.startsWith('http') ? parsed.host.toLowerCase() : host
-  return { kind, url: `https://${site}/${repo}` }
+  // A git or SSH remote's port is not the site's.
+  const site = parsed.protocol.startsWith('http')
+    ? `${parsed.protocol}//${parsed.host.toLowerCase()}`
+    : `https://${host}`
+  return { kind, url: `${site}/${repo}` }
 }
 
 /**
- * The repository of the project's `origin` remote, undefined when it has none
- * (or git is missing) or a host {@link repositoryOf} does not know.
+ * The repository of the project's `origin` remote, undefined when it has none,
+ * when git cannot read it (said on stderr, but for a project outside git) or
+ * when {@link repositoryOf} cannot read it (said too, by its host only: the
+ * url may hold credentials).
  * @param {string} root
  * @returns {Promise<Repository | undefined>}
  */
@@ -57,7 +63,24 @@ export function originOf(root) {
       'git',
       ['remote', 'get-url', 'origin'],
       { cwd: root, timeout: 5000 },
-      (error, stdout) => resolve(error ? undefined : repositoryOf(stdout)),
+      (error, stdout, stderr) => {
+        if (error) {
+          if (!/no such remote|not a git repository/i.test(stderr)) {
+            console.error(
+              `annotant server: cannot read the origin remote, issues stay text: ${error.message.trim()}`,
+            )
+          }
+          return resolve(undefined)
+        }
+        const repository = repositoryOf(stdout)
+        if (!repository) {
+          const host = /^(?:[\w+]+:\/\/)?(?:[^@/]*@)?([^:/\s]+)/.exec(stdout.trim())?.[1]
+          console.error(
+            `annotant server: the origin remote (${host ?? 'unknown host'}) is neither on GitHub nor on a GitLab, issues stay text`,
+          )
+        }
+        resolve(repository)
+      },
     )
   })
 }

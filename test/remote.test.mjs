@@ -29,6 +29,11 @@ test('reads a GitLab remote, in subgroups and on its own host', () => {
     kind: 'gitlab',
     url: 'https://gitlab.acme.dev:8443/web/shop',
   })
+  // A plain-HTTP GitLab keeps its scheme: its pages are not served over HTTPS.
+  assert.deepEqual(repositoryOf('http://gitlab.lan:8080/web/shop.git'), {
+    kind: 'gitlab',
+    url: 'http://gitlab.lan:8080/web/shop',
+  })
 })
 
 test('knows no other host, nor a path that is not a repository', () => {

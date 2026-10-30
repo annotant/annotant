@@ -1,17 +1,36 @@
 import { Fragment } from 'react'
 
-/** The project's repository, as the server read it from its `origin` remote. */
-export type Repository = { kind: 'github' | 'gitlab'; url: string }
+/**
+ * The project's repository, as the server read it from its `origin` remote
+ * (remote.mjs): its site (`https://github.com`) and its path there
+ * (`owner/repo`; on GitLab, maybe in subgroups).
+ */
+export type Repository = { kind: 'github' | 'gitlab'; site: string; path: string }
 
-/** The server's `repository`, when it is one the widget can link to. */
+/**
+ * The server's `repository`, `{ kind, url }`, when it is one the widget can
+ * link to: an http(s) page of a project, `owner/repo` on GitHub.
+ */
 export function parseRepository(value: unknown): Repository | undefined {
   if (!value || typeof value !== 'object' || !('kind' in value) || !('url' in value)) {
     return undefined
   }
   const { kind, url } = value
-  if ((kind !== 'github' && kind !== 'gitlab') || typeof url !== 'string')
+  if ((kind !== 'github' && kind !== 'gitlab') || typeof url !== 'string') {
     return undefined
-  return url.startsWith('https://') ? { kind, url: url.replace(/\/+$/, '') } : undefined
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return undefined
+  }
+  const path = parsed.pathname.replace(/^\/+|\/+$/g, '')
+  const parts = path.split('/')
+  if (!/^https?:$/.test(parsed.protocol) || parsed.search || parsed.hash) return undefined
+  if (!parts.every((part) => /^[\w.-]+$/.test(part))) return undefined
+  if (parts.length < 2 || (kind === 'github' && parts.length !== 2)) return undefined
+  return { kind, site: parsed.origin, path }
 }
 
 /** A piece of a message: text, a link when it has an `href`. */
@@ -21,34 +40,48 @@ export type Token = { text: string; href?: string }
 const CODE = /```[\s\S]*?```|`[^`\n]+`/g
 
 /**
- * A URL, or a reference: `owner/repo#12` (GitLab's `group/project!12` too),
- * `#12`, `GH-12` or `!12`. Neither inside a word or a path, nor followed by
- * one: `#fff`, `a#1` and `#1a` stay text.
+ * A URL, or a reference: `owner/repo#12` (on GitLab, `group/sub/project#12`
+ * and `group/project!12` too), `#12`, `GH-12` or `!12`. Neither inside a word
+ * or after a path's slash, nor followed by a word, a path or a decimal:
+ * `#fff`, `a#1`, `#1a` and `#1.2` stay text. A relative path such as
+ * `src/app#3` reads as `owner/repo#3`.
  */
 const REFERENCE =
-  /(?<!\w)(https?:\/\/[^\s<>"'`]+)|(?<![\w/.&#!-])(?:([\w-]+(?:\/[\w.-]+)+)([#!])(\d+)|(#|GH-|!)(\d+))(?![\w/-])/g
+  /(?<!\w)(https?:\/\/[^\s<>"'`]+)|(?<![\w/.&#!-])(?:([\w-]+(?:\/[\w.-]+)+)([#!])(\d+)|(#|GH-|!)(\d+))(?![\w/-]|\.\d)/g
 
-/** What ends a sentence after a URL, not the URL itself. */
-const TRAILING = /[.,;:!?'"*_]$/
+/** Sentence punctuation or Markdown emphasis after a URL, not part of it. */
+const TRAILING = /[.,;:!?*_]/
 
 /** `url` without the punctuation after it, and a bracket it does not open. */
 function trimUrl(url: string) {
+  // Each bracket's balance in the whole URL, updated as its end is cut.
+  const open = { ')': 0, ']': 0 }
+  for (const char of url) {
+    if (char === '(') open[')'] += 1
+    else if (char === ')') open[')'] -= 1
+    else if (char === '[') open[']'] += 1
+    else if (char === ']') open[']'] -= 1
+  }
   let end = url.length
-  const count = (char: string) => url.slice(0, end).split(char).length - 1
   for (;;) {
-    const last = url.slice(end - 1, end)
+    const last = url.charAt(end - 1)
     if (TRAILING.test(last)) end -= 1
-    else if (last === ')' && count(')') > count('(')) end -= 1
-    else if (last === ']' && count(']') > count('[')) end -= 1
-    else return url.slice(0, end)
+    else if ((last === ')' || last === ']') && open[last] < 0) {
+      open[last] += 1
+      end -= 1
+    } else return url.slice(0, end)
   }
 }
 
-/** The page of issue (or merge request, `!`) `number` of the project at `path`. */
+/**
+ * The page of issue (or merge request, `!`) `number` of the project at
+ * `path`, or undefined when the host has no such page.
+ */
 function issueUrl(repository: Repository, path: string, mark: string, number: string) {
-  const site = new URL(repository.url).origin
+  const { site } = repository
   if (repository.kind === 'github') {
-    // GitHub sends an issue's number to its pull request when it is one.
+    // `!` and subgroups are GitLab's only. A pull request's number goes to
+    // `issues/` too: GitHub redirects it.
     return mark === '!' || path.split('/').length !== 2
       ? undefined
       : `${site}/${path}/issues/${number}`
@@ -56,11 +89,13 @@ function issueUrl(repository: Repository, path: string, mark: string, number: st
   return `${site}/${path}/-/${mark === '!' ? 'merge_requests' : 'issues'}/${number}`
 }
 
-/** The page a bare reference (`#12`, `GH-12`, `!12`) names in `repository`. */
+/**
+ * The page a bare reference (`#12`, `GH-12`, `!12`) names in `repository`,
+ * or undefined when the host has no such page.
+ */
 function bareUrl(repository: Repository, mark: string, number: string) {
-  const path = new URL(repository.url).pathname.slice(1)
   if (mark === 'GH-' && repository.kind !== 'github') return undefined
-  return issueUrl(repository, path, mark === '!' ? '!' : '#', number)
+  return issueUrl(repository, repository.path, mark === '!' ? '!' : '#', number)
 }
 
 /**

@@ -4,8 +4,16 @@ import { type Repository, parseRepository, tokenize } from '../src/links'
 import { comment, fakeServer, openThread } from './server'
 import { renderWidget } from './widget'
 
-const GITHUB: Repository = { kind: 'github', url: 'https://github.com/acme/shop' }
-const GITLAB: Repository = { kind: 'gitlab', url: 'https://gitlab.com/acme/web/shop' }
+const GITHUB: Repository = {
+  kind: 'github',
+  site: 'https://github.com',
+  path: 'acme/shop',
+}
+const GITLAB: Repository = {
+  kind: 'gitlab',
+  site: 'https://gitlab.com',
+  path: 'acme/web/shop',
+}
 
 /** The links in `body`, as text and target. */
 const links = (body: string, repository?: Repository) =>
@@ -71,6 +79,13 @@ describe('tokenize', () => {
     )
   })
 
+  test('cuts a long run of brackets after a URL at once', () => {
+    const body = `https://x.dev/a${')'.repeat(50_000)}`
+    const started = performance.now()
+    expect(links(body)).toEqual([['https://x.dev/a', 'https://x.dev/a']])
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
   test('without a repository, links only the URLs', () => {
     expect(links('#12, acme/shop#3, GH-7 and https://example.com')).toEqual([
       ['https://example.com', 'https://example.com'],
@@ -80,7 +95,7 @@ describe('tokenize', () => {
   test('leaves code, words, colours, entities and headings as text', () => {
     const body = [
       '`#12` and ```\nfix #13\nhttps://example.com\n```',
-      'issue#14 #15a #fff &#16; ## Title #',
+      'issue#14 #15a #fff &#16; ## Title # in #1.2',
       'x/#18 a/b/#19 javascript:alert(1) ftp://example.com',
     ].join('\n')
     expect(links(body, GITHUB)).toEqual([])
@@ -94,7 +109,20 @@ test('parses only a repository the widget can link to', () => {
   expect(parseRepository({ kind: 'bitbucket', url: 'https://bitbucket.org/a/b' })).toBe(
     undefined,
   )
+  expect(
+    parseRepository({ kind: 'gitlab', url: 'http://gitlab.lan:8080/a/b/c' }),
+  ).toEqual({
+    kind: 'gitlab',
+    site: 'http://gitlab.lan:8080',
+    path: 'a/b/c',
+  })
   expect(parseRepository({ kind: 'github', url: 'javascript:alert(1)' })).toBe(undefined)
+  // Not a project's page: its links would lead nowhere, or not parse at all.
+  expect(parseRepository({ kind: 'github', url: 'https://' })).toBe(undefined)
+  expect(parseRepository({ kind: 'gitlab', url: 'https://gitlab.com' })).toBe(undefined)
+  expect(parseRepository({ kind: 'github', url: 'https://github.com/a/b/c' })).toBe(
+    undefined,
+  )
   expect(parseRepository('https://github.com/acme/shop')).toBe(undefined)
   expect(parseRepository(undefined)).toBe(undefined)
 })
@@ -144,4 +172,30 @@ test('without a known repository, an issue stays text', async () => {
 
   await screen.findByText('Done, see #12.')
   await waitFor(() => expect(screen.queryByRole('link', { name: '#12' })).toBeNull())
+})
+
+test("Claude's question links the issues it cites", async () => {
+  fakeServer(
+    [
+      comment({
+        state: 'asking',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Should it follow #34?',
+            question: true,
+            options: [{ label: 'Yes' }, { label: 'No' }],
+            at: '2026-01-01T10:01:00.000Z',
+          },
+        ],
+      }),
+    ],
+    { repository: { kind: 'github', url: 'https://github.com/acme/shop' } },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const issue = await screen.findByRole('link', { name: '#34' })
+  expect(issue.closest('.an-ask')).not.toBeNull()
+  expect(issue.getAttribute('href')).toBe('https://github.com/acme/shop/issues/34')
 })
