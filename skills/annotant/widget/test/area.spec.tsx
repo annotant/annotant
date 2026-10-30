@@ -2,7 +2,8 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { anchorFromArea, coveredBy, holderOf, rectFromArea } from '../src/anchors'
 import type { ReviewArea, ReviewComment } from '../src/domain'
-import { comment, fakeEvents, fakeServer, openPanel } from './server'
+import { MAC } from '../src/shortcuts'
+import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, startPageComment } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
@@ -67,22 +68,26 @@ function page() {
 const GAP = { left: 10, top: 300, width: 500, height: 60 }
 
 test.each([
-  ['a gap', GAP, 'across <div> <div> <p>'],
-  ['a card', { left: 10, top: 110, width: 450, height: 230 }, 'covers <div>'],
+  ['a gap', GAP, 'across "Card A", "Card B"'],
+  ['a card', { left: 10, top: 110, width: 450, height: 230 }, 'covers "Card A"'],
   [
     'the empty corner of a section',
     { left: 500, top: 150, width: 100, height: 100 },
-    'in <section>',
+    'in "Card A Card B"',
   ],
-])('the chip says what %s holds', async (_, rect, label) => {
+])('the target card says what %s holds', async (_, rect, label) => {
   renderCards()
   fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
   drag([rect.left, rect.top], [rect.left + rect.width, rect.top + rect.height])
 
-  expect((await screen.findByTestId('an-area-chip')).textContent).toBe(
+  expect(targetText(await screen.findByTestId('an-target-area'))).toBe(
     `${rect.width} × ${rect.height}${label}`,
   )
 })
+
+/** What a target card says, its buttons aside. */
+const targetText = (card: HTMLElement) =>
+  card.querySelector('.an-target-text')?.textContent
 
 test('an area records the element it lies in, and what it cuts through', () => {
   layout()
@@ -444,7 +449,7 @@ test('scrolling the page while drawing stretches the area', async () => {
   fireEvent.mouseUp(document, { clientX: 510, clientY: 360 })
 
   // From 300px down the page to 360px down the window, 200px further down.
-  expect((await screen.findByTestId('an-area-chip')).textContent).toMatch(/^500 × 260/)
+  expect((await screen.findByTestId('an-target-area')).textContent).toMatch(/^500 × 260/)
 })
 
 /** Drags from one corner to the other over the drawing layer. */
@@ -466,8 +471,8 @@ test('a drawn area is commented on, and stays outlined while the comment is writ
 
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   expect(screen.queryByTestId('an-draw')).toBeNull()
-  expect(screen.getByTestId('an-area-chip').textContent).toBe(
-    '500 × 60across <div> <div> <p>',
+  expect(targetText(screen.getByTestId('an-target-area'))).toBe(
+    '500 × 60across "Card A", "Card B"',
   )
   await screen.findByTestId('an-area-target')
 
@@ -528,10 +533,10 @@ test('an area drawn from a page comment keeps what the reader wrote and attached
   })
   await screen.findByRole('img', { name: 'Attached image 1' })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Draw an area' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Area' }))
   drag([10, 300], [510, 360])
 
-  await screen.findByTestId('an-area-chip')
+  await screen.findByTestId('an-target-area')
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'What should change?' })
       .value,
@@ -540,7 +545,7 @@ test('an area drawn from a page comment keeps what the reader wrote and attached
 
   // Removed, the comment is about the page again.
   fireEvent.click(screen.getByRole('button', { name: 'Remove the area' }))
-  expect(screen.queryByTestId('an-area-chip')).toBeNull()
+  expect(screen.queryByTestId('an-target-area')).toBeNull()
   expect(screen.getByRole('checkbox')).toBeTruthy()
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'What should change?' })
@@ -548,7 +553,7 @@ test('an area drawn from a page comment keeps what the reader wrote and attached
   ).toBe('Too much space')
 })
 
-test('an area drawn after pointing at an element keeps the element and the words', async () => {
+test("an area drawn after pointing at an element takes the element's place, and keeps the words", async () => {
   renderCards()
   const title = document.querySelector('h1')
   if (!title) throw new Error('no title')
@@ -564,9 +569,9 @@ test('an area drawn after pointing at an element keeps the element and the words
   fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
   drag([10, 300], [510, 360])
 
-  // The element is in the message, as an image would be: it stays with the words.
-  await screen.findByTestId('an-area-chip')
-  expect(screen.getByTestId('an-picked').textContent).toContain('<h1>')
+  // One target per message: the area takes the element's place.
+  await screen.findByTestId('an-target-area')
+  expect(screen.queryByTestId('an-picked')).toBeNull()
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'What should change?' })
       .value,
@@ -759,4 +764,98 @@ test("the area's chip centres it at once when motion is reduced", async () => {
     top: 300 + 30 - window.innerHeight / 2,
     behavior: 'auto',
   })
+})
+
+/** A thread Claude answered: its message box replies to it. */
+const answeredThread = () =>
+  comment({
+    state: 'answered',
+    messages: [{ author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' }],
+  })
+
+test("an area drawn from a reply's target slot goes with it, with the page it was on", async () => {
+  openThread('c1')
+  const server = renderCards([answeredThread()])
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Area' }))
+  drag([10, 300], [510, 360])
+
+  // Back in the thread, the area is the reply's target, outlined on the page.
+  expect(targetText(await screen.findByTestId('an-target-area'))).toBe(
+    '500 × 60across "Card A", "Card B"',
+  )
+  expect(screen.getByTestId('an-area-target')).toBeTruthy()
+  fireEvent.change(box, { target: { value: 'Tighter' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+
+  await waitFor(() => expect(server.patches).toHaveLength(1))
+  const { patch } = server.patches[0] ?? {}
+  expect(patch?.followUp).toBe('Tighter')
+  expect(patch?.area).toMatchObject({ width: 500, height: 60, route: '/' })
+  expect(patch?.elements).toBeUndefined()
+})
+
+test("a reply's area alone is a reply, and an element picked next takes its place", async () => {
+  openThread('c1')
+  const server = renderCards([answeredThread()])
+  await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+  const send = screen.getByRole<HTMLButtonElement>('button', { name: 'Send' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Area' }))
+  drag([10, 300], [510, 360])
+  await screen.findByTestId('an-target-area')
+  expect(send.disabled).toBe(false)
+
+  // Reframed, the new area takes the place of the first.
+  fireEvent.click(screen.getByRole('button', { name: 'Reframe' }))
+  drag([10, 110], [460, 340])
+  expect(targetText(await screen.findByTestId('an-target-area'))).toMatch(/^450 × 230/)
+
+  const title = document.querySelector('h1')
+  if (!title) throw new Error('no title')
+  const pointed = vi.spyOn(document, 'elementFromPoint').mockReturnValue(title)
+  onTestFinished(() => pointed.mockRestore())
+  // The card has no Element button: the shortcut picks for the message box.
+  fireEvent.keyDown(document.body, {
+    code: 'Period',
+    key: '.',
+    shiftKey: true,
+    ...(MAC ? { metaKey: true } : { ctrlKey: true }),
+  })
+  await screen.findByText(/Click an element to add it to your message/)
+  fireEvent.click(title, { clientX: 50, clientY: 20, detail: 1 })
+
+  expect(screen.queryByTestId('an-target-area')).toBeNull()
+  expect(screen.getByTestId('an-picked').textContent).toContain('Playground')
+  fireEvent.click(send)
+  await waitFor(() => expect(server.patches).toHaveLength(1))
+  expect(server.patches[0]?.patch.area).toBeUndefined()
+  expect(server.patches[0]?.patch.elements).toHaveLength(1)
+})
+
+test("each message shows its own target: hovering a reply's area chip outlines it", async () => {
+  openThread('c1')
+  renderCards([
+    comment({
+      state: 'open',
+      messages: [
+        { author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' },
+        {
+          author: 'reader',
+          body: 'This gap too',
+          at: '2026-01-01T10:02:00.000Z',
+          area: { ...DRAWN, route: '/' },
+        },
+      ],
+    }),
+  ])
+
+  const chip = await screen.findByTestId('an-area-chip')
+  expect(chip.closest('[data-testid="an-msg-elements"]')).toBeTruthy()
+  expect(screen.queryByTestId('an-area-target')).toBeNull()
+  fireEvent.mouseEnter(chip)
+  expect(screen.getByTestId('an-area-target')).toBeTruthy()
+  fireEvent.mouseLeave(chip)
+  expect(screen.queryByTestId('an-area-target')).toBeNull()
 })

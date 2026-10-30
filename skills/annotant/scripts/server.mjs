@@ -25,8 +25,7 @@ import {
   CONTENT_TYPES,
   IMAGE_NAME,
   ImageRefusal,
-  MAX_IMAGES,
-  MAX_IMAGE_BYTES,
+  MAX_MESSAGE_BYTES,
   imagesDir,
   parseImages,
 } from './lib/images.mjs'
@@ -123,7 +122,7 @@ class ClientError extends Error {
 /** The most a request's text may hold, its images aside. */
 const MAX_TEXT = 100_000
 /** The most a request may hold: its text, and its images in base64. */
-const MAX_BODY = MAX_TEXT + Math.ceil(MAX_IMAGE_BYTES / 3) * 4 * MAX_IMAGES
+const MAX_BODY = MAX_TEXT + Math.ceil(MAX_MESSAGE_BYTES / 3) * 4
 
 async function readJson(req) {
   if (Number(req.headers['content-length']) > MAX_BODY) throw new ClientError(413)
@@ -445,6 +444,18 @@ const sanitiseContext = (text) =>
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ ?\n\s*/g, '\n')
 
+/**
+ * The area the reader drew, or the lines, with a reply, with the page it was
+ * on; none without one, as the page it was on is unknown.
+ * @param {any} input
+ * @returns {import('./lib/format.mjs').PickedArea | undefined}
+ */
+function sanitisePickedArea(input) {
+  const area = sanitiseArea(input)
+  const route = typeof input?.route === 'string' ? input.route.slice(0, MAX_ROUTE) : ''
+  return area && route ? { ...area, route } : undefined
+}
+
 /** The anchor of a new comment: where on the page it is. */
 function sanitiseAnchor(anchor = {}) {
   const element = sanitiseElement(anchor.element)
@@ -492,11 +503,14 @@ function sanitisePatch(input) {
   if (patch.followUp || patch.choices || !anotherMove) {
     const images = parseImages(input.images)
     if (images.length) patch.images = images
+    // One target per message: an element, or else an area.
     const elements = sanitisePicked(input.elements)
     if (elements.length) patch.elements = elements
+    const area = elements.length ? undefined : sanitisePickedArea(input.area)
+    if (area) patch.area = area
   }
   // Passed even empty: the store then clears the words of a message that has
-  // images or elements, which goes again with them alone.
+  // images, elements or an area, which goes again with them alone.
   if (typeof input.text === 'string') patch.text = input.text.trim()
   return patch
 }
@@ -808,8 +822,12 @@ function describe(comment) {
   const picked = message?.elements?.length
     ? ` elements=${describePicked(message.elements, comment.route)}`
     : ''
+  // A reply's area: the comment's own is its anchor's, said above.
+  const drawn = reply?.area
+    ? ` picked-${describeArea(reply.area)}${reply.area.route === comment.route ? '' : ` on=${quoted(reply.area.route)}`}`
+    : ''
   const text = reply
-    ? `followup=${quoted(reply.body)}${choices}${picked} messages=${comment.messages.length}`
+    ? `followup=${quoted(reply.body)}${choices}${picked}${drawn} messages=${comment.messages.length}`
     : `body=${quoted(message?.body ?? '')}${picked}`
   // The images of that message, as files the agent opens with Read.
   const attached = message?.images ?? []

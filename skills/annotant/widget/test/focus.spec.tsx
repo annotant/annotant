@@ -106,15 +106,14 @@ test('Escape while picking an element for the message cancels the picker only', 
   fakeServer([])
   renderWidget()
   await startPageComment()
-  fireEvent.click(screen.getByRole('button', { name: 'Pick an element in the page' }))
-  expect(screen.getByRole('button', { name: 'Stop picking' })).toBeTruthy()
+  const point = screen.getByRole('button', { name: 'Element' })
+  fireEvent.click(point)
+  expect(point.getAttribute('aria-pressed')).toBe('true')
 
-  fireEvent.keyDown(screen.getByRole('button', { name: 'Stop picking' }), {
-    key: 'Escape',
-  })
+  fireEvent.keyDown(point, { key: 'Escape' })
 
   expect(panel().hasAttribute('data-closing')).toBe(false)
-  expect(screen.getByRole('button', { name: 'Pick an element in the page' })).toBeTruthy()
+  expect(point.getAttribute('aria-pressed')).toBe('false')
 })
 
 test('Escape while composing a word with an input method leaves the panel open', async () => {

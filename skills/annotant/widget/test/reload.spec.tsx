@@ -102,9 +102,9 @@ test('a draft with a drawn area and its text comes back once the page reloads', 
 
   const box = await messageBox()
   expect(box.value).toBe('Tighten this gap')
-  expect(screen.getByTestId('an-area-chip').textContent).toBe(
-    '500 × 60across <div> <div> <p>',
-  )
+  expect(
+    screen.getByTestId('an-target-area').querySelector('.an-target-text')?.textContent,
+  ).toBe('500 × 60across "Card A", "Card B"')
   fireEvent.keyDown(box, { key: 'Enter' })
   await waitFor(() => expect(comments).toHaveLength(1))
   expect(comments[0]?.anchor.area).toMatchObject({ width: 500, height: 60 })
@@ -140,9 +140,9 @@ test('the lines of a drawing in progress come back once the page reloads', async
   expect(layer.querySelectorAll('polyline')).toHaveLength(2)
   fireEvent.click(screen.getByRole('button', { name: 'Done' }))
   await messageBox()
-  expect(screen.getByTestId('an-area-chip').textContent).toBe(
-    '2 linespoints at <p> Card B',
-  )
+  expect(
+    screen.getByTestId('an-target-area').querySelector('.an-target-text')?.textContent,
+  ).toBe('2 linespoints at "Card B"')
 })
 
 test('the area being drawn, or the element being pointed at, is still the tool after a reload', async () => {
@@ -182,8 +182,8 @@ test('a draft whose area is gone from the page comes back with its text alone, o
   })
 
   expect((await messageBox()).value).toBe('Tighten this gap')
-  expect(screen.queryByTestId('an-area-chip')).toBeNull()
-  expect(screen.getByText(/^Linked to the current page/)).toBeTruthy()
+  expect(screen.queryByTestId('an-target-area')).toBeNull()
+  expect(screen.getByText(/^Only on /)).toBeTruthy()
 })
 
 test('a draft on selected text comes back with its quote', async () => {
@@ -224,7 +224,7 @@ test('a draft started while the kept one waits for the page is the one kept', as
   await new Promise((done) => requestAnimationFrame(done))
 
   expect((await messageBox()).value).toBe('Something else')
-  expect(screen.queryByTestId('an-area-chip')).toBeNull()
+  expect(screen.queryByTestId('an-target-area')).toBeNull()
 })
 
 test('a draft cancelled, or a drawing left, is not back after a reload', async () => {
@@ -250,7 +250,7 @@ test('a drawing started from a comment on the page keeps what the reader wrote, 
   const { view } = renderCards()
   await startPageComment()
   fireEvent.change(await messageBox(), { target: { value: 'Arrow here' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Draw on the page' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Drawing' }))
   line([100, 250], [100, 300], [100, 360])
 
   view.unmount()
@@ -258,7 +258,9 @@ test('a drawing started from a comment on the page keeps what the reader wrote, 
 
   fireEvent.click(await screen.findByRole('button', { name: 'Done' }))
   await waitFor(async () => expect((await messageBox()).value).toBe('Arrow here'))
-  expect(screen.getByTestId('an-area-chip').textContent).toMatch(/^1 line/)
+  expect(
+    screen.getByTestId('an-target-area').querySelector('.an-target-text')?.textContent,
+  ).toMatch(/^1 line/)
 })
 
 const IMAGE = { type: 'image/png', data: 'iVBORw0KGgo=' }
@@ -341,7 +343,8 @@ test('an agent answering never cancels the area being drawn', async () => {
 
   fireEvent.mouseMove(document, { clientX: 510, clientY: 360 })
   fireEvent.mouseUp(document, { clientX: 510, clientY: 360 })
-  expect((await screen.findByTestId('an-area-chip')).textContent).toBe(
-    '500 × 60across <div> <div> <p>',
-  )
+  expect(
+    (await screen.findByTestId('an-target-area')).querySelector('.an-target-text')
+      ?.textContent,
+  ).toBe('500 × 60across "Card A", "Card B"')
 })

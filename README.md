@@ -258,13 +258,17 @@ floats or is docked, hold for every tab of the app and the next sessions.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or an area, on a drawing's lines or behind a text, marks
   a comment Claude has yet to resolve; once its thread is first resolved, the mark goes away.
-- **Paste or drop an image** (a screenshot, a mockup) in the message box of a
-  comment or a reply: it goes with the message, or alone, and Claude opens
-  it. Up to 4 per message, PNG, JPEG, GIF or WebP, 5 MB each.
-- **Pick an element in the page** from any message box, a new comment's or a
-  reply's: its pointer button picks one with the panel still open ("this one
-  too"). One per message: picking another replaces it. Its chip in the thread
-  scrolls to it.
+- **Paste, drop or choose images** (a screenshot, a mockup) in the message
+  box of a comment or a reply, with its image button: they go with the
+  message, or alone, and Claude opens them. As many as you like, PNG, JPEG,
+  GIF or WebP, 5 MB each and 32 MB together.
+- **One target per message**: above the text, _Point at: Element · Area ·
+  Drawing_ picks what in the page a new comment or a reply is about, with the
+  panel still open ("this one too"). Its card offers _Repick_, _Reframe_ or
+  _Redraw_, which replaces it, and ✕; picking another replaces it too. Each
+  message in the thread shows its own target, which hovering outlines on the
+  page and clicking scrolls to. With no target, _Only on_ says whether a new
+  comment is about this page or the whole app.
 - **All comments** lists every discussion, newest first, filtered by status:
   _Needs you_ keeps the threads where Claude waits on you. While one does, on
   any page, a yellow count on the corner of **Comments** says how many, and

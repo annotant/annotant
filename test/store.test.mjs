@@ -675,6 +675,26 @@ test('a stopped reply with picked elements goes again with its words removed', a
   assert.deepEqual([last.body, last.elements], ['', [element]])
 })
 
+test('a stopped reply with an area goes again with its words and choices removed', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await update(comments, comment.id, { status: 'resolved' })
+  const area = {
+    top: 10,
+    left: 10,
+    width: 100,
+    height: 40,
+    viewport: { width: 1000, height: 800, scrollX: 0, scrollY: 0 },
+    covers: [],
+    crosses: [],
+    route: '/',
+  }
+  await update(comments, comment.id, { followUp: 'Here', area })
+  await update(comments, comment.id, { cancelled: true })
+  const resent = await update(comments, comment.id, { cancelled: false, text: '' })
+  const last = lastOf(resent.messages)
+  assert.deepEqual([last.body, last.area], ['', area])
+})
+
 test('a stopped comment without an image keeps its words when sent again with none', async (t) => {
   const { comments, comment } = await setUp(t)
   await update(comments, comment.id, { cancelled: true })

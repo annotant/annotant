@@ -9,7 +9,7 @@ import {
 } from '../src/anchors'
 import { drawingImage } from '../src/drawing'
 import type { NewReviewComment, ReviewArea, ReviewComment } from '../src/domain'
-import { comment, fakeServer, openPanel } from './server'
+import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, startPageComment } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
@@ -412,9 +412,9 @@ test('lines drawn on the page are commented on, and stay drawn while the comment
 
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   expect(screen.queryByTestId('an-sketch')).toBeNull()
-  expect(screen.getByTestId('an-area-chip').textContent).toBe(
-    '2 linespoints at <p> Card B',
-  )
+  expect(
+    screen.getByTestId('an-target-area').querySelector('.an-target-text')?.textContent,
+  ).toBe('2 linespoints at "Card B"')
   const drawn = await screen.findByTestId('an-area-target')
   expect(drawn.querySelectorAll('polyline')).toHaveLength(2)
 
@@ -681,17 +681,17 @@ test('a drawing made from a page comment keeps what the reader wrote, and goes w
   const text = await screen.findByRole('textbox', { name: 'What should change?' })
   fireEvent.change(text, { target: { value: 'This goes there' } })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Draw on the page' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Drawing' }))
   arrow()
   fireEvent.click(screen.getByRole('button', { name: 'Done' }))
 
-  await screen.findByTestId('an-area-chip')
+  await screen.findByTestId('an-target-area')
   expect(
     screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'What should change?' })
       .value,
   ).toBe('This goes there')
   fireEvent.click(screen.getByRole('button', { name: 'Remove the drawing' }))
-  expect(screen.queryByTestId('an-area-chip')).toBeNull()
+  expect(screen.queryByTestId('an-target-area')).toBeNull()
   expect(screen.getByRole('checkbox')).toBeTruthy()
 })
 
@@ -780,4 +780,37 @@ test("the drawing's chip in a resolved thread shows it again on the page", async
   fireEvent.mouseEnter(chip)
   const shown = await screen.findByTestId('an-area-target')
   expect(shown.querySelector('polyline')?.getAttribute('points')).toBe('8,8 8,118')
+})
+
+test("lines drawn from a reply's target slot go with it, their picture last", async () => {
+  paintingCanvas()
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+  })
+  openThread('c1')
+  const server = renderCards([
+    comment({
+      state: 'answered',
+      messages: [{ author: 'claude', body: 'Done.', at: '2026-01-01T10:01:00.000Z' }],
+    }),
+  ])
+  const box = await screen.findByPlaceholderText('Follow up, clarify, ask for a change…')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Drawing' }))
+  arrow()
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+  const card = await screen.findByTestId('an-target-area')
+  expect(card.querySelector('.an-target-text')?.textContent).toBe(
+    '2 linespoints at "Card B"',
+  )
+  expect(screen.getByRole('button', { name: 'Redraw' })).toBeTruthy()
+  fireEvent.change(box, { target: { value: 'Swap them' } })
+  fireEvent.keyDown(box, { key: 'Enter' })
+
+  await waitFor(() => expect(server.patches).toHaveLength(1))
+  const { patch } = server.patches[0] ?? {}
+  expect(patch?.images).toEqual([{ type: 'image/png', data: 'iVBORw0KGgo=' }])
+  expect(patch?.area).toMatchObject({ pictured: true, route: '/' })
+  expect(patch?.area?.strokes).toHaveLength(2)
 })

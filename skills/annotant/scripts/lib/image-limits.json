@@ -1,5 +1,6 @@
 {
-  "maxImages": 4,
+  "maxImages": 100,
+  "maxMessageBytes": 33554432,
   "maxImageBytes": 5242880,
   "types": {
     "image/png": "png",
