@@ -31,7 +31,7 @@ import {
   useAllComments,
   useComments,
   useRoute,
-  useThemeSetting,
+  useServerSettings,
 } from './api'
 import {
   APP_ROUTE,
@@ -123,6 +123,7 @@ import {
   scrollBehavior,
 } from './styles'
 import { useDark } from './theme'
+import { Linked, type Repository } from './links'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -412,6 +413,7 @@ function Message({
  */
 function Question({
   message,
+  repository,
   live,
   chosen,
   picked,
@@ -420,6 +422,8 @@ function Question({
   onAnswer,
 }: {
   message: ReviewMessage
+  /** Where the issues the question cites are. */
+  repository: Repository | undefined
   /** The thread waits on the reader's answer to this question. */
   live: boolean
   /** What the reader answered, once they did. */
@@ -434,7 +438,9 @@ function Question({
   return (
     <div className="an-ask">
       <span className="an-ask-label">Question</span>
-      <span>{message.body}</span>
+      <span>
+        <Linked text={message.body} repository={repository} />
+      </span>
       {!!message.options?.length && (
         <div
           className="an-options"
@@ -795,7 +801,8 @@ function focusedElement() {
 
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
-  const dark = useDark(useThemeSetting())
+  const { theme, repository } = useServerSettings()
+  const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
   // Open since the page loaded, as the tab kept it: it shows up in place, without sliding in.
@@ -2141,6 +2148,7 @@ export default function App({ root }: { root: Element }) {
               {message.question ? (
                 <Question
                   message={message}
+                  repository={repository}
                   live={index === messages.length - 1 && isAsking(comment)}
                   chosen={messages[index + 1]?.choices ?? []}
                   picked={ticked(comment, message)}
@@ -2149,7 +2157,9 @@ export default function App({ root }: { root: Element }) {
                   onAnswer={(choices, withText) => sendReply(comment, choices, withText)}
                 />
               ) : (
-                <div className="an-bubble an-bubble--claude">{message.body}</div>
+                <div className="an-bubble an-bubble--claude">
+                  <Linked text={message.body} repository={repository} />
+                </div>
               )}
             </Message>
           ) : (
@@ -2197,7 +2207,9 @@ export default function App({ root }: { root: Element }) {
                 </div>
               ) : null}
               {message.body && (
-                <div className="an-bubble an-bubble--reader">{message.body}</div>
+                <div className="an-bubble an-bubble--reader">
+                  <Linked text={message.body} repository={repository} />
+                </div>
               )}
             </Message>
           ),

@@ -21,6 +21,7 @@ import {
   servedProject,
 } from './lib/project.mjs'
 import { errorCode } from './lib/errors.mjs'
+import { originOf } from './lib/remote.mjs'
 import {
   CONTENT_TYPES,
   IMAGE_NAME,
@@ -62,6 +63,9 @@ const port = Number(process.env.ANNOTANT_PORT ?? config.port ?? 4599)
 // (some Docker, network or WSL ones).
 const pollMs = Number(process.env.ANNOTANT_POLL_MS ?? 5000)
 const store = createStore(project)
+// The `origin` remote, read once (a change needs a restart): the widget
+// links the issues a message cites to its repository.
+const repository = originOf(project.root)
 const WIDGET = path.join(SKILL_DIR, 'widget', 'dist', 'widget.js')
 // Releases ship the built widget; a clone of the repository builds it first.
 if (!existsSync(WIDGET)) {
@@ -592,7 +596,8 @@ async function handle(req, res) {
     return res.end(data)
   }
 
-  // `theme` tells the widget how the app switches between light and dark (theme.ts).
+  // `theme` tells the widget how the app switches between light and dark
+  // (theme.ts); `repository`, where the issues a message cites are (links.tsx).
   if (url.pathname === '/api/health') {
     return send(
       res,
@@ -602,6 +607,7 @@ async function handle(req, res) {
         name: config.name,
         version: WIDGET_VERSION,
         theme: config.theme,
+        repository: await repository,
       },
       cors,
     )

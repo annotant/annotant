@@ -21,6 +21,9 @@ released to the `stable` branch.
   filtered to _Needs you_, a new filter next to _All_, _Open_ and _Resolved_,
   or the thread itself when only one waits. On the page, that thread's bubble
   shows an orange **?**. (#240, #261)
+- **A thread links what its messages cite.** URLs, and the issues of your
+  project (`#12`, `owner/repo#12`, `GH-12`, GitLab's `!12`) when its `origin`
+  remote is on GitHub or GitLab, are links that open in a new tab. (#249)
 
 ### Changed
 

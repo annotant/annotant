@@ -285,6 +285,9 @@ floats or is docked, hold for every tab of the app and the next sessions.
   the comment and send it again to hand it to a new agent.
 - Once answered: reply in the thread to follow up, reusing the same agent and
   its context when it is still around.
+- **Links in the thread**: the URLs a message cites, and its issues (`#12`,
+  `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
+  remote is on GitHub or GitLab, open in a new tab.
 - **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
   focus is but in a field of your app: `,` comments on the selected text (or
   on the page), `.` points at an element (while you write a comment or a
