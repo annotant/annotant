@@ -42,10 +42,10 @@ test("finds Tailwind 3's class dark mode in its config", async (t) => {
 
 test("finds Tailwind 3's selector dark mode on an attribute", async (t) => {
   const config = `export default { darkMode: ['selector', '[data-mode="dark"]'] }`
-  assert.deepEqual((await themeOf(t, { 'tailwind.config.ts': config })).setting, {
-    on: 'html',
-    attribute: 'data-mode',
-    dark: 'dark',
+  assert.deepEqual(await themeOf(t, { 'tailwind.config.ts': config }), {
+    setting: { on: 'html', attribute: 'data-mode', dark: 'dark' },
+    // From the config itself, not from a selector found in it later on.
+    from: 'tailwind.config.ts',
   })
 })
 
@@ -105,4 +105,22 @@ test('falls back on the OS setting when the styles only ask for it', async (t) =
 
 test('reports no theme for an app of one theme only', async (t) => {
   assert.equal(await themeOf(t, { 'src/app.css': 'body { color: #222; }' }), undefined)
+})
+
+test('reads a Tailwind dark variant of the light class as no theme, not the light one', async (t) => {
+  const css = '@custom-variant dark (&:not(.light *));\n'
+  assert.equal(await themeOf(t, { 'src/index.css': css }), undefined)
+})
+
+test("finds Tailwind's media dark mode", async (t) => {
+  const config = "module.exports = { darkMode: 'media' }"
+  assert.equal((await themeOf(t, { 'tailwind.config.js': config })).setting, 'media')
+})
+
+test('reads no built or installed file', async (t) => {
+  const css = 'html.dark { color: #fff; }'
+  assert.equal(
+    await themeOf(t, { 'src/dist/app.css': css, 'src/node_modules/x/x.css': css }),
+    undefined,
+  )
 })

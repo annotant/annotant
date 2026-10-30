@@ -83,9 +83,17 @@ function watchTheme(
   const changed = () => onChange(isDark())
   os?.addEventListener('change', changed)
   changed()
+  // A background that eases to its new colour reads as the old one at first: read again at its end.
+  const ended = (event: Event) => {
+    if (event.target === document.body || event.target === document.documentElement) {
+      changed()
+    }
+  }
+  if (!setting) document.addEventListener('transitionend', ended)
   return () => {
     observer.disconnect()
     os?.removeEventListener('change', changed)
+    document.removeEventListener('transitionend', ended)
   }
 }
 

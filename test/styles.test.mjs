@@ -69,11 +69,10 @@ const TEXT_ON = {
 test('keeps every text of both palettes at AA contrast', async () => {
   const css = await source('styles.ts')
   const light = tokens(rule(css, ':host'))
-  const palettes = {
-    light,
-    dark: { ...light, ...tokens(rule(css, ".an[data-theme='dark']")) },
-  }
-  assert.ok(Object.keys(palettes.dark).length > Object.keys(light).length / 2)
+  const dark = tokens(rule(css, ".an[data-theme='dark']"))
+  // The dark rule found: else it would check the light palette twice.
+  assert.ok(Object.keys(dark).length > Object.keys(light).length / 2)
+  const palettes = { light, dark: { ...light, ...dark } }
   for (const [name, palette] of Object.entries(palettes)) {
     for (const [text, backgrounds] of Object.entries(TEXT_ON)) {
       for (const background of backgrounds) {

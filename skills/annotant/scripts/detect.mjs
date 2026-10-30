@@ -2,7 +2,7 @@
 // detect.mjs [--project <dir>]
 // Prints what /annotant init needs to know about a project, as JSON.
 // It only reads files; every decision is left to the agent and the user.
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { CONFIG_FILE, WIDGET_VERSION } from './lib/project.mjs'
@@ -182,8 +182,19 @@ const NOT_SOURCE = new Set([
   'coverage',
 ])
 
+// Over this size, a file is generated (a bundle, a dump), not the app's own.
+const MAX_SOURCE_BYTES = 1_000_000
+const small = (/** @type {string} */ file) => {
+  try {
+    return statSync(path.join(root, file)).size <= MAX_SOURCE_BYTES
+  } catch {
+    return false
+  }
+}
+
 /**
- * The files under `dirs` whose name matches `pattern`, up to `limit`.
+ * The files under `dirs` whose name matches `pattern`, up to `limit`: regular
+ * files, under MAX_SOURCE_BYTES.
  * @param {string[]} dirs
  * @param {RegExp} pattern
  */
@@ -202,7 +213,9 @@ function sourceFiles(dirs, pattern, limit = 500) {
       const file = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         if (!NOT_SOURCE.has(entry.name)) walk(file)
-      } else if (pattern.test(entry.name)) found.push(file)
+      } else if (entry.isFile() && pattern.test(entry.name) && small(file)) {
+        found.push(file)
+      }
     }
   }
   dirs.forEach(walk)
@@ -211,10 +224,12 @@ function sourceFiles(dirs, pattern, limit = 500) {
 
 /**
  * The theme a dark-mode selector stands for: `.dark` (a class) or
- * `[data-theme="dark"]` (an attribute), on `html`.
+ * `[data-theme="dark"]` (an attribute), on `html`. None for a negation
+ * (`:not(.light *)`): the value it names is the light one.
  * @param {string} selector
  */
 function selectorTheme(selector) {
+  if (selector.includes(':not(')) return undefined
   const attribute = selector.match(/\[([\w-]+)=["']?([\w-]+)["']?\]/)
   if (attribute) return { on: 'html', attribute: attribute[1], dark: attribute[2] }
   const name = selector.match(/\.([\w-]+)/)?.[1]
@@ -253,10 +268,13 @@ function theme() {
   }
 
   // Tailwind 3: darkMode in its config; Tailwind 4: the dark variant in its CSS.
-  const darkMode = find(/darkMode\s*:\s*(\[[^\]]*\]|['"][\w-]+['"])/)
+  // An array's strings may hold brackets: `['selector', '[data-mode="dark"]']`.
+  const darkMode = find(
+    /darkMode\s*:\s*(\[(?:[^\]'"]|'[^']*'|"[^"]*")*\]|['"][\w-]+['"])/,
+  )
   if (darkMode) {
-    const [mode, selector] = [...darkMode.match[1].matchAll(/['"]([^'"]+)['"]/g)].map(
-      ([, value]) => value,
+    const [mode, selector] = [...darkMode.match[1].matchAll(/'([^']*)'|"([^"]*)"/g)].map(
+      ([, single, double]) => single ?? double,
     )
     if (mode === 'media') return { setting: 'media', from: darkMode.file }
     const setting = selector

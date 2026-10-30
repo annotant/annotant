@@ -212,9 +212,13 @@ export function useThemeSetting(): ThemeSetting | undefined {
     let live = true
     const load = async () => {
       const health = await request<unknown>(HEALTH)
-      if (live && health && typeof health === 'object' && 'theme' in health) {
-        setSetting(parseTheme(health.theme))
+      if (!live || !health || typeof health !== 'object' || !('theme' in health)) return
+      const parsed = parseTheme(health.theme)
+      // A hand-edited setting the widget cannot read: said, then the page's background.
+      if (health.theme !== undefined && !parsed) {
+        console.warn('Annotant: ignoring `theme` in .annotant.json:', health.theme)
       }
+      setSetting(parsed)
     }
     // No server: the lists say so; the page's background picks the theme meanwhile.
     load().catch(() => undefined)
