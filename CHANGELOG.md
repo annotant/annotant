@@ -24,6 +24,10 @@ released to the `stable` branch.
 
 ### Changed
 
+- **The threads that need you come first.** The page's list and the list of
+  every comment show the threads where Claude waits on you first, then the
+  others, each newest first; the next and previous shortcuts follow the same
+  order. Once you answer, the thread goes back to its place by date. (#259)
 - **One target per message, and as many images as you like.** Above the
   text, the message box offers _Point at: Element · Area · Drawing_, then
   shows the target's card with _Repick_, _Reframe_ or _Redraw_ and ✕; picking

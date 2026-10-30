@@ -494,6 +494,50 @@ test('from a new comment, the next comment is the newest', async () => {
   await waitFor(() => expect(opened()).toBe('Newer'))
 })
 
+test('the next comment follows the panel: a thread that needs the reader first', async () => {
+  fakeServer([
+    comment({
+      id: 'c1',
+      body: 'Older',
+      state: 'asking',
+      createdAt: '2026-01-01T10:00:00.000Z',
+      messages: [
+        { author: 'claude', body: 'Which colour?', at: '2026-01-01T10:00:00.000Z' },
+      ],
+    }),
+    comment({ id: 'c2', body: 'Newer', createdAt: '2026-01-02T10:00:00.000Z' }),
+  ])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Comments, 1 thread needs you' })
+
+  press('ArrowDown')
+
+  await waitFor(() => expect(opened()).toBe('Older'))
+  press('ArrowDown')
+  await waitFor(() => expect(opened()).toBe('Newer'))
+})
+
+test('from no comment open, the previous one is the last in the panel: after a thread that needs the reader', async () => {
+  fakeServer([
+    comment({
+      id: 'c1',
+      body: 'Older',
+      state: 'asking',
+      createdAt: '2026-01-01T10:00:00.000Z',
+      messages: [
+        { author: 'claude', body: 'Which colour?', at: '2026-01-01T10:00:00.000Z' },
+      ],
+    }),
+    comment({ id: 'c2', body: 'Newer', createdAt: '2026-01-02T10:00:00.000Z' }),
+  ])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Comments, 1 thread needs you' })
+
+  press('ArrowUp')
+
+  await waitFor(() => expect(opened()).toBe('Newer'))
+})
+
 test("with no session watching, the shortcut says so, not that there's no comment", async () => {
   fakeServer([], { reachable: false })
   renderWidget()

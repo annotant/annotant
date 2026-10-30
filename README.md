@@ -269,7 +269,8 @@ floats or is docked, hold for every tab of the app and the next sessions.
   message in the thread shows its own target, which hovering outlines on the
   page and clicking scrolls to. With no target, _Only on_ says whether a new
   comment is about this page or the whole app.
-- **All comments** lists every discussion, newest first, filtered by status:
+- **All comments** lists every discussion, filtered by status: the threads
+  that need you first, then the others, each newest first, as on the page.
   _Needs you_ keeps the threads where Claude waits on you. While one does, on
   any page, a yellow count on the corner of **Comments** says how many, and
   Comments opens that list (or the thread, when only one waits); the thread's
