@@ -25,6 +25,7 @@ import {
   type ReviewArea,
   type ReviewBox,
   gist,
+  isAsking,
   markedElement,
   outdated,
   pickedMark,
@@ -36,7 +37,7 @@ import { setInlineStyle } from './inline'
 import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
 import { fieldOf } from './shortcuts'
 import { pageIsDark } from './theme'
-import { Icon } from './ui'
+import { Icon, type IconName } from './ui'
 
 const WIDGET = '[data-annotant]'
 
@@ -208,14 +209,12 @@ export function ElementMarks({
           {/* On its top left corner, the tail towards it: on the part that shows. */}
           <button
             type="button"
-            className="an-quote-pin an-live"
+            {...pinOf(comment, 'chat')}
             style={{ top: shown.top, left: shown.left }}
             aria-label={`Open the comment on <${tag}>`}
             title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
-          >
-            <Icon name="chat" />
-          </button>
+          />
         </Fragment>
       ))}
     </>
@@ -361,14 +360,12 @@ export function AreaMarks({
           </div>
           <button
             type="button"
-            className="an-quote-pin an-live"
+            {...pinOf(comment, 'frame')}
             style={{ top: shown.top, left: shown.left }}
             aria-label={`Open the comment on the ${area.strokes ? 'drawing' : 'drawn area'}`}
             title={gist(comment.messages[0])}
             onClick={() => onOpen(comment)}
-          >
-            <Icon name="frame" />
-          </button>
+          />
         </Fragment>
       ))}
     </>
@@ -558,21 +555,26 @@ export function QuoteBubbles({
           <button
             key={comment.id}
             type="button"
-            className="an-quote-pin an-live"
+            {...pinOf(comment, 'chat')}
             style={bubble}
             aria-label={`Open the comment on “${comment.anchor.quote}”`}
             title={gist(comment.messages[0])}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onOpen(comment)}
-          >
-            <Icon name="chat" />
-          </button>
+          />
         ) : (
           []
         ),
       )}
     </>
   )
+}
+
+/** A pin's class and mark: a question mark, in orange, while its thread waits on the reader. */
+function pinOf(comment: ReviewComment, icon: IconName) {
+  return isAsking(comment)
+    ? { className: 'an-quote-pin an-quote-pin--asking an-live', children: '?' }
+    : { className: 'an-quote-pin an-live', children: <Icon name={icon} /> }
 }
 
 /** The box `measure` gives, once per frame, while it is on screen. */

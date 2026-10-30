@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeEvents, fakeServer, openThread } from './server'
 import ant from '../src/assets/ant.webp'
 import { renderWidget } from './widget'
@@ -22,7 +22,7 @@ test('the strip shows a badge while threads of any page need the reader, gone on
 
   const tools = screen.getByRole('group', { name: 'Annotant tools' })
   const badge = await within(tools).findByRole('button', { name: '2 threads need you' })
-  expect(badge.textContent).toBe('?')
+  expect(badge.textContent).toBe('2')
 
   threads.splice(0, 2, { ...asking('c1'), state: 'answered' }, asking('c2', '/'))
   events.send('changed')
@@ -61,16 +61,51 @@ test('the badge opens every comment filtered to the threads that need the reader
 })
 
 test('the badge leaves the thread the panel was closed on for the threads that need the reader', async () => {
-  fakeServer([asking('c1'), comment({ id: 'c2', route: '/', body: 'Still open' })])
+  fakeServer([
+    asking('c1'),
+    asking('c3', '/other', '2026-01-02T10:00:00.000Z'),
+    comment({ id: 'c2', route: '/', body: 'Still open' }),
+  ])
   openThread('c2')
   renderWidget()
   fireEvent.click(await screen.findByRole('button', { name: 'Close' }))
 
-  fireEvent.click(await screen.findByRole('button', { name: '1 thread needs you' }))
+  fireEvent.click(await screen.findByRole('button', { name: '2 threads need you' }))
 
   const panel = await screen.findByTestId('annotant-panel')
   expect(within(panel).getByRole('heading', { name: 'All comments' })).toBeTruthy()
   await within(panel).findByText('Question c1')
+  expect(within(panel).queryByText('Still open')).toBeNull()
+})
+
+test('the badge, gone with the strip, gives the focus to the panel', async () => {
+  fakeServer([asking('c1'), asking('c2')])
+  renderWidget()
+
+  const badge = await screen.findByRole('button', { name: '2 threads need you' })
+  badge.focus()
+  fireEvent.click(badge)
+
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'All comments' }),
+    ),
+  )
+})
+
+test('the badge opens the only thread that needs the reader, the filtered list behind it', async () => {
+  fakeServer([asking('c1'), comment({ id: 'c2', route: '/', body: 'Still open' })])
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '1 thread needs you' }))
+
+  const panel = await screen.findByTestId('annotant-panel')
+  await within(panel).findByText('Which colour?')
+  fireEvent.click(within(panel).getByRole('button', { name: 'Back to the list' }))
+  expect(within(panel).getByRole('heading', { name: 'All comments' })).toBeTruthy()
+  expect(
+    within(panel).getByRole('radio', { name: 'Needs you' }).getAttribute('aria-checked'),
+  ).toBe('true')
   expect(within(panel).queryByText('Still open')).toBeNull()
 })
 
@@ -105,4 +140,32 @@ test('once the panel opens on the page, the list of every comment no longer says
   await expect
     .poll(() => panel.querySelector('.an-composer-brand img')?.getAttribute('src'))
     .toBe(ant)
+})
+
+test('on the page, the pin of a thread that needs the reader is a question mark', async () => {
+  const box = vi
+    .spyOn(Element.prototype, 'getBoundingClientRect')
+    .mockReturnValue(DOMRect.fromRect({ x: 40, y: 100, width: 200, height: 30 }))
+  onTestFinished(() => box.mockRestore())
+  document.body.replaceChildren()
+  const element = {
+    selector: 'h1',
+    tag: 'h1',
+    text: 'Playground',
+    html: '<h1>Playground</h1>',
+  }
+  const events = fakeEvents()
+  const question = [
+    { author: 'claude' as const, body: 'Which colour?', at: '2026-01-01T10:00:00.000Z' },
+  ]
+  const threads = [comment({ id: 'c1', element, state: 'asking', messages: question })]
+  fakeServer(threads)
+  renderWidget()
+
+  const pin = await screen.findByRole('button', { name: 'Open the comment on <h1>' })
+  expect(pin.textContent).toBe('?')
+
+  threads[0] = comment({ id: 'c1', element, state: 'answered', messages: question })
+  events.send('changed')
+  await waitFor(() => expect(pin.textContent).toBe(''))
 })
