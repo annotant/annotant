@@ -9,5 +9,6 @@
   "checks": ["npm run typecheck"],
   "build": "npm run build",
   "buildOutput": "dist",
-  "editable": ["src", "public"]
+  "editable": ["src", "public"],
+  "theme": { "on": "html", "attribute": "data-theme", "dark": "dark", "light": "light" }
 }

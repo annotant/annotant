@@ -35,6 +35,7 @@ import { type Clipper, clipOf, clippersOf, type Edges, within } from './clips'
 import { setInlineStyle } from './inline'
 import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
 import { fieldOf } from './shortcuts'
+import { pageIsDark } from './theme'
 import { Icon } from './ui'
 
 const WIDGET = '[data-annotant]'
@@ -444,22 +445,6 @@ const quotedOf = (found: ReturnType<typeof findQuotes>) =>
   found.flatMap(({ parts }) =>
     parts.map(({ range }) => range.startContainer.parentElement),
   )
-
-/** Under this luminance, the page is dark: a rainbow lightens it rather than tints it. */
-const DARK = 0.4
-
-/** The page's background, from the first of `body` and `html` that has one. */
-function pageIsDark(): boolean {
-  for (const element of [document.body, document.documentElement]) {
-    const channels = getComputedStyle(element)
-      .backgroundColor.match(/[\d.]+/g)
-      ?.map(Number)
-    const [r = 0, g = 0, b = 0, alpha = 1] = channels ?? []
-    if (!channels || alpha === 0) continue
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < DARK
-  }
-  return false
-}
 
 /**
  * A layer in the page itself, over its content: the shadow root's stacking

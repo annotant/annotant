@@ -31,6 +31,7 @@ import {
   useAllComments,
   useComments,
   useRoute,
+  useThemeSetting,
 } from './api'
 import {
   APP_ROUTE,
@@ -113,6 +114,7 @@ import {
   shortcutOf,
 } from './shortcuts'
 import { PANEL_IN_MS, PANEL_OUT_MS, REDUCED_MOTION, scrollBehavior } from './styles'
+import { useDark } from './theme'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -729,6 +731,7 @@ function focusedElement() {
 
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
+  const dark = useDark(useThemeSetting())
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
   // Open since the page loaded, as the tab kept it: it shows up in place, without sliding in.
@@ -2136,6 +2139,7 @@ export default function App({ root }: { root: Element }) {
     <div
       ref={widget}
       className="an"
+      data-theme={dark ? 'dark' : 'light'}
       // Not the ups: the area drawer and the panel's resize end on the page's.
       onPointerDown={keepPress}
       onMouseDown={keepPress}

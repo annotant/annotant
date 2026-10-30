@@ -85,9 +85,14 @@ this session; then stop.
      "checks": ["<typecheck>", "<lint>"],
      "build": "<scripts.build>",
      "buildOutput": "<.next | dist | build>",
-     "editable": ["src"]
+     "editable": ["src"],
+     "theme": <theme.setting>
    }
    ```
+
+   `theme` is how the app switches light and dark, for the widget to follow;
+   leave it out when `theme` is undefined (the widget reads the page's
+   background). Check `on` in `theme.from` (`html` or `body`).
 
 5. Add the loader, and nothing else, to the client entry:
 
@@ -132,7 +137,8 @@ this session; then stop.
 The widget and scripts are served from the skill, so they are always current.
 Run `detect.mjs`; when `installed.version` is lower than `installed.current`,
 migrate `.annotant.json` and the loader to the current shape above and
-re-run step 8 of init.
+re-run step 8 of init. Add `theme` when the config has none and `theme` is
+set (init step 4).
 
 ## Uninstall
 

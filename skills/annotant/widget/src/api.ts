@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
+import { parseTheme, type ThemeSetting } from './theme'
 
 const API = new URL('api/comments', new URL('.', import.meta.url)).href
 const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
 const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
+const HEALTH = new URL('api/health', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -198,6 +200,33 @@ export function useCommentHistory(enabled: boolean) {
   return useCommentList(enabled ? `${API}?all=1&history=1` : undefined, {
     merge: false,
   })
+}
+
+/**
+ * How the app switches between light and dark, as the server read it in
+ * `.annotant.json`: undefined until it answers, and when it has none.
+ */
+export function useThemeSetting(): ThemeSetting | undefined {
+  const [setting, setSetting] = useState<ThemeSetting>()
+  useEffect(() => {
+    let live = true
+    const load = async () => {
+      const health = await request<unknown>(HEALTH)
+      if (!live || !health || typeof health !== 'object' || !('theme' in health)) return
+      const parsed = parseTheme(health.theme)
+      // A hand-edited setting the widget cannot read: said, then the page's background.
+      if (health.theme !== undefined && !parsed) {
+        console.warn('Annotant: ignoring `theme` in .annotant.json:', health.theme)
+      }
+      setSetting(parsed)
+    }
+    // No server: the lists say so; the page's background picks the theme meanwhile.
+    load().catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
+  return setting
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {
