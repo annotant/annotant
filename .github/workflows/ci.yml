@@ -19,17 +19,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Audit, not block: blocking now and then refused github.com to the checkout, the job then stuck until its timeout.
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
-            nodejs.org:443
-            objects.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-            registry.npmjs.org:443
-            tuf-repo-cdn.sigstore.dev:443
+          egress-policy: audit
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
