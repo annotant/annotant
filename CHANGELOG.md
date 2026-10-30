@@ -24,6 +24,14 @@ released to the `stable` branch.
 
 ### Changed
 
+- **One target per message, and as many images as you like.** Above the
+  text, the message box offers _Point at: Element · Area · Drawing_, then
+  shows the target's card with _Repick_, _Reframe_ or _Redraw_ and ✕; picking
+  another replaces it. A reply may now be about an area or a drawing too, and
+  each message in a thread shows its own target, outlined on the page while
+  hovered. With no target, _Only on_ sets a new comment's scope. Images are
+  no longer capped at 4: an image button sits in the text field, 5 MB each
+  and 32 MB per message. (#260)
 - **Comments ends the strip of tools, and opens the panel.** The strip reads
   grip, _Draw area_, _Draw_, _Point at element_, then **Comments** after a
   rule: a blue button that opens the panel, as its shortcut does. It replaces
