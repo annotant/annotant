@@ -150,7 +150,7 @@ const STEPS = { next: 1, previous: -1 } as const satisfies Partial<
 >
 
 type View = 'page' | 'all'
-type StatusFilter = 'all' | 'open' | 'resolved'
+type StatusFilter = 'all' | 'open' | 'asking' | 'resolved'
 
 const STATUS_CHIPS: Record<Status, string> = {
   open: 'Open',
@@ -857,9 +857,13 @@ export default function App({ root }: { root: Element }) {
 
   const page = useComments(route)
   const comments = page.comments
-  const all = useAllComments(open && view === 'all')
-  // Some agent is on a comment right now.
-  const working = [...comments, ...all.comments].some(
+  // Closed, for the strip's badge: a thread of any page may need the reader.
+  const allShown = !open || view === 'all'
+  const all = useAllComments(allShown)
+  const needYou = all.comments.filter(isAsking).length
+  // Some agent is on a comment right now. Not from the list of every comment
+  // once it stops reloading: it would say so long after.
+  const working = [...comments, ...(allShown ? all.comments : [])].some(
     (comment) => comment.state === 'working',
   )
   const watching = page.reachable
@@ -2105,7 +2109,9 @@ export default function App({ root }: { root: Element }) {
     .filter(
       (comment) =>
         statusFilter === 'all' ||
-        (comment.state === 'resolved') === (statusFilter === 'resolved'),
+        (statusFilter === 'asking'
+          ? isAsking(comment)
+          : (comment.state === 'resolved') === (statusFilter === 'resolved')),
     )
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
 
@@ -2118,6 +2124,7 @@ export default function App({ root }: { root: Element }) {
         options={[
           { value: 'all', label: 'All' },
           { value: 'open', label: 'Open' },
+          { value: 'asking', label: 'Needs you' },
           { value: 'resolved', label: 'Resolved' },
         ]}
       />
@@ -2250,6 +2257,23 @@ export default function App({ root }: { root: Element }) {
               setPicking((value) => !value)
             }}
           />
+          {/* Not while a tool is in use: the panel would open over it, inert while the reader draws. */}
+          {needYou > 0 && !drawing && !picking && (
+            <button
+              type="button"
+              className="an-needs-you"
+              aria-label={`${needYou} ${needYou === 1 ? 'thread needs' : 'threads need'} you`}
+              title={`${needYou === 1 ? 'A thread needs' : `${needYou} threads need`} you`}
+              onClick={() => {
+                setView('all')
+                setStatusFilter('asking')
+                setThreadId(undefined)
+                openPanel()
+              }}
+            >
+              ?
+            </button>
+          )}
         </div>
       )}
 

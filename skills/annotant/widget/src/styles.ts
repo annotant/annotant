@@ -56,6 +56,8 @@ export const WIDGET_CSS = `
   --cb-ink: #e5306b;
   --cb-red-bg: #fdecec;
   --cb-yellow: #f0ad2e;
+  /* The strip's pin while a thread needs the reader, white text on it. */
+  --cb-orange: #c2410c;
   --cb-amber-bg: #fdf3e1;
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
@@ -169,6 +171,13 @@ code { font-family: var(--cb-mono); }
 .an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
 .an-dock[data-moving] .an-grip { cursor: grabbing; }
 .an-tool { border-radius: 7px; }
+/* A thread waits on the reader: the strip's last item, inside the box kept on screen. */
+.an-needs-you {
+  width: 18px; height: 18px; margin: 0 5px 0 4px; padding: 0;
+  border: 0; border-radius: 50%; background: var(--cb-orange);
+  color: #ffffff; font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.an-needs-you:hover { filter: brightness(1.1); }
 .an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
 .an-tool--idle svg { width: 18px; height: 18px; }
 .an-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }

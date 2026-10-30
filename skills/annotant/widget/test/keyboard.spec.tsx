@@ -120,14 +120,17 @@ test('the status filter is one named Tab stop that arrow keys move through', asy
   // Only the checked radio, Open by default, is in the Tab order.
   expect(radio('All').tabIndex).toBe(-1)
   expect(radio('Open').tabIndex).toBe(0)
+  expect(radio('Needs you').tabIndex).toBe(-1)
   expect(radio('Resolved').tabIndex).toBe(-1)
 
   radio('Open').focus()
   fireEvent.keyDown(radio('Open'), { key: 'ArrowRight' })
-  expect(radio('Resolved').getAttribute('aria-checked')).toBe('true')
-  expect(document.activeElement).toBe(radio('Resolved'))
-  expect(radio('Resolved').tabIndex).toBe(0)
+  expect(radio('Needs you').getAttribute('aria-checked')).toBe('true')
+  expect(document.activeElement).toBe(radio('Needs you'))
+  expect(radio('Needs you').tabIndex).toBe(0)
   expect(radio('Open').tabIndex).toBe(-1)
+  fireEvent.keyDown(radio('Needs you'), { key: 'ArrowRight' })
+  expect(radio('Resolved').getAttribute('aria-checked')).toBe('true')
 
   // A shortcut of the browser's is left alone.
   fireEvent.keyDown(radio('Resolved'), { key: 'ArrowLeft', altKey: true })
@@ -139,8 +142,8 @@ test('the status filter is one named Tab stop that arrow keys move through', asy
   fireEvent.keyDown(radio('All'), { key: 'ArrowLeft' })
   expect(document.activeElement).toBe(radio('Resolved'))
   fireEvent.keyDown(radio('Resolved'), { key: 'ArrowUp' })
-  expect(document.activeElement).toBe(radio('Open'))
-  fireEvent.keyDown(radio('Open'), { key: 'Home' })
+  expect(document.activeElement).toBe(radio('Needs you'))
+  fireEvent.keyDown(radio('Needs you'), { key: 'Home' })
   expect(document.activeElement).toBe(radio('All'))
   fireEvent.keyDown(radio('All'), { key: 'End' })
   expect(document.activeElement).toBe(radio('Resolved'))
