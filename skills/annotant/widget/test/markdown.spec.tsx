@@ -28,6 +28,19 @@ describe('blocks', () => {
     ])
   })
 
+  test('reads three backticks closed on the same line as inline code', () => {
+    expect(blocks('Run:\n```npm test```\nThen reload.')).toEqual([
+      { kind: 'paragraph', text: 'Run:\n```npm test```\nThen reload.' },
+    ])
+  })
+
+  test('reads CRLF line ends', () => {
+    expect(blocks('- a\r\n- b\r\n\r\nDone')).toEqual([
+      { kind: 'list', ordered: false, start: 1, items: ['a', 'b'] },
+      { kind: 'paragraph', text: 'Done' },
+    ])
+  })
+
   test('leaves headings and tables as text', () => {
     expect(blocks('# Title\n| a | b |')).toEqual([
       { kind: 'paragraph', text: '# Title\n| a | b |' },
@@ -101,7 +114,7 @@ test("formats Claude's answer", async () => {
 
 test('shows markup, images and headings as their text', async () => {
   const body =
-    '# Done\n<script>alert(1)</script> <img src="x" onerror="alert(1)"> ![logo](logo.png)'
+    '# Done\n<script>alert(1)</script> <img src="x" onerror="alert(1)"> ![logo](https://example.com/logo.png)'
   answered(body)
   const bubble = await claudeBubble()
 
@@ -140,4 +153,36 @@ test("formats Claude's question", async () => {
   await waitFor(() =>
     expect(document.querySelector('.an-ask code')?.textContent).toBe('Hero'),
   )
+})
+
+test('leaves stars outside words, escaped or in code as they are', async () => {
+  answered(
+    'Edit src/*.ts, 2*3*4 and \\*not italic\\*; *a `b*c` d* and https://x.com/a*b*c',
+  )
+  const bubble = await claudeBubble()
+
+  expect(bubble.textContent).toBe(
+    'Edit src/*.ts, 2*3*4 and *not italic*; a b*c d and https://x.com/a*b*c',
+  )
+  expect([...bubble.querySelectorAll('em')].map((em) => em.textContent)).toEqual([
+    'a b*c d',
+  ])
+  expect(bubble.querySelector('em code')?.textContent).toBe('b*c')
+  expect(screen.getByRole('link', { name: 'https://x.com/a*b*c' })).toBeTruthy()
+})
+
+test("links nothing inside a link's label, and shows its address on hover", async () => {
+  answered('[see #12](https://example.com/pr)')
+  const bubble = await claudeBubble()
+
+  expect(bubble.querySelectorAll('a')).toHaveLength(1)
+  const link = screen.getByRole('link', { name: 'see #12' })
+  expect(link.getAttribute('title')).toBe('https://example.com/pr')
+})
+
+test('numbers a list from its first item', async () => {
+  answered('3. c\n4. d')
+  const bubble = await claudeBubble()
+
+  expect(bubble.querySelector('ol')?.getAttribute('start')).toBe('3')
 })

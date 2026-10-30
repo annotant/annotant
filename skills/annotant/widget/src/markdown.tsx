@@ -10,15 +10,18 @@ type Block =
   | { kind: 'list'; ordered: boolean; start: number; items: string[] }
   | { kind: 'code'; text: string }
 
-const FENCE = /^\s*```/
+// A fence opens on a line of its own: ```` ```npm test``` ```` is inline code.
+const FENCE = /^\s*```[^`]*$/
 const BULLET = /^\s*-\s+(.*)$/
 const NUMBERED = /^\s*(\d{1,9})\.\s+(.*)$/
 
 /**
  * `body` cut into blocks: blank lines end a paragraph or a list, a line
- * starting with ```` ``` ```` opens a code block up to the next one (or the
- * end), a line starting with `- ` or `1. ` is a list item, and a line after
- * an item goes on with it. Anything else is a paragraph's text, as written.
+ * starting with ```` ``` ```` (a language after it, no other backtick) opens a
+ * code block up to the next bare ```` ``` ```` line (or the end), a line
+ * starting with `- ` or `1. ` is a list item, indented or not (lists do not
+ * nest), and a line after an item goes on with it. Anything else is a
+ * paragraph's text, as written.
  */
 export function blocks(body: string): Block[] {
   const result: Block[] = []
@@ -29,7 +32,7 @@ export function blocks(body: string): Block[] {
     if (current) result.push(current)
     current = undefined
   }
-  for (const line of body.split('\n')) {
+  for (const line of body.split(/\r?\n/)) {
     if (code) {
       if (/^\s*```\s*$/.test(line)) {
         result.push({ kind: 'code', text: code.join('\n') })
@@ -77,13 +80,15 @@ export function blocks(body: string): Block[] {
 }
 
 /**
- * Inline code, a link (an image's `!` before it keeps it text), a bare URL
+ * A backslash's escape (`\*` is a star), inline code, a link (an image's `!` before it keeps it text), a bare URL
  * (matched only so that the stars and brackets in it stay its own), bold, and
- * italic. Bold and italic open and close next to a word, not a space: `2 * 3 *
- * 4` stays text.
+ * italic. Bold and italic stars hug their text and stand outside a word or a
+ * path: `2 * 3`, `2*3*4` and `src/*.ts` stay text. Bounded spans keep a long
+ * line of `[` or `**` from taking quadratic time. Emphasis holds whole code spans,
+ * so a star in code never closes it.
  */
 const INLINE =
-  /(`[^`\n]+`)|(!?)\[([^\]\n]+)\]\(([^()\s]+)\)|(?<!\w)https?:\/\/[^\s<>"'`]+|\*\*(?=\S)([^\n]+?)(?<=\S)\*\*|\*(?=[^\s*])([^*\n]+?)(?<=\S)\*/g
+  /\\([\\`*_[\]])|(`[^`\n]+`)|(!?)\[([^\]\n]{1,200})\]\(([^()\s]+)\)|(?<!\w)https?:\/\/[^\s<>"'`]+|(?<![\w*/])\*\*(?=[^\s*])((?:`[^`\n]+`|[^`\n]){1,300}?)(?<=[^\s*])\*\*(?![\w*])|(?<![\w*/])\*(?=[^\s*])((?:`[^`\n]+`|[^*`\n]){1,300}?)(?<=[^\s*])\*(?![\w*])/g
 
 /** Only an http(s) address becomes a link: never `javascript:` or `data:`. */
 function safeHref(url: string) {
@@ -92,7 +97,8 @@ function safeHref(url: string) {
 
 /**
  * `text`'s inline Markdown as React elements, never HTML: code, bold, italic
- * and http(s) links; the rest is text, its URLs and issues linked.
+ * and http(s) links; the rest is text, its URLs and issues linked. Without
+ * `links` (in a link's label), nothing in it is linked.
  */
 function inline(
   text: string,
@@ -112,17 +118,25 @@ function inline(
   }
   let from = 0
   for (const match of text.matchAll(INLINE)) {
-    const [whole, code, bang, label, url, bold, italic] = match
+    const [whole, escaped, code, bang, label, url, bold, italic] = match
     prose += text.slice(from, match.index)
     from = match.index + whole.length
     const href = label && url && !bang && links ? safeHref(url) : undefined
-    if (code) {
+    if (escaped) prose += escaped
+    else if (code) {
       flush()
       nodes.push(<code key={nodes.length}>{code.slice(1, -1)}</code>)
     } else if (href && label) {
       flush()
       nodes.push(
-        <a key={nodes.length} href={href} target="_blank" rel="noopener noreferrer">
+        // Its address on hover: the label may read as another one.
+        <a
+          key={nodes.length}
+          href={href}
+          title={href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {inline(label, repository, false)}
         </a>,
       )

@@ -87,13 +87,15 @@ of the reader's last message.
    prints `answered`: your answer waits on the reader, who resolves it.
    You may use Markdown in it: `code` for file names, values and
    identifiers, **bold** sparingly, a short `-` list when you changed several
-   things. No headings, tables or images: it shows in a narrow chat bubble.
-   Markdown is there for clarity, not for longer answers.
+   things. No headings, tables or images: they show as raw text in a narrow
+   chat bubble. Markdown is there for clarity, not for longer answers. When
+   the text has a backtick, pipe it on stdin through a quoted heredoc
+   (`<<'EOF'`): in `"…"` the shell runs what is between backticks.
 6. Reply with one line saying what changed, or what you answered. If the comment is unclear or
    needs a product decision, do not guess: ask it in the thread with
    `node SKILL/scripts/ask.mjs <id> --project PROJECT "<question>"` (stdin
    works too) and reply `QUESTION: <your question>`. To offer choices, add 2
    to 6 `--option "<label>: <description>"` (`--multiple` to allow several);
-   the reader can still answer in their own words. The question takes the
-   same Markdown as an answer (step 5). Never use
+   the reader can still answer in their own words. The question, not its
+   options, takes the same Markdown as an answer, piped the same way (step 5). Never use
    AskUserQuestion: the reader would not see it.

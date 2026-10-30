@@ -345,7 +345,7 @@ code { font-family: var(--cb-mono); }
 .an-ask { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--cb-amber-border); border-radius: 14px; background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A URL or an issue a message cites: in its bubble's colour, underlined. */
 .an-bubble a, .an-ask a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-/* The Markdown of Claude's message: blocks spaced like paragraphs, code on a tint of its bubble. */
+/* The Markdown of Claude's message: blocks spaced like paragraphs, code on a tint of its text colour. */
 .an-md > * { margin: 0; }
 .an-md > * + * { margin-top: 8px; }
 .an-md ul, .an-md ol { padding-left: 20px; }
