@@ -1665,7 +1665,7 @@ export default function App({ root }: { root: Element }) {
     )
   }
 
-  // Like Escape, never at the cost of what the reader is writing: the panel shows it again.
+  // The comment the reader is writing, shown again rather than lost, as Escape keeps it.
   const showDraft = useCallback(() => {
     setDrawing(false)
     setView('page')
@@ -1673,7 +1673,7 @@ export default function App({ root }: { root: Element }) {
     openPanel()
   }, [openPanel])
 
-  /** Comments, from the strip or its shortcut: the panel, on the threads that need the reader if any. */
+  /** Comments, from its shortcut or the strip's (when threads need the reader): the panel, on those threads if any. */
   const openComments = () => {
     // A tool in progress stops: the panel would open over it, inert while the reader draws.
     setDrawing(false)

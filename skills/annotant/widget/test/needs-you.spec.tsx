@@ -175,6 +175,15 @@ test('Comments, with no thread that needs the reader, opens a new comment on the
   // Closed unwritten, it saved nothing.
   fireEvent.click(within(panel).getByRole('button', { name: 'Close' }))
   expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+
+  // Nor did it stay as a draft: Comments starts over, and the list has no comment.
+  await waitFor(() => expect(screen.queryByTestId('annotant-panel')).toBeNull())
+  fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
+  const box =
+    await screen.findByPlaceholderText<HTMLTextAreaElement>('What should change?')
+  expect(box.value).toBe('')
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  expect(await screen.findByTestId('annotant-empty')).toBeTruthy()
 })
 
 test('Comments shows again the new comment the reader wrote, as it was', async () => {
@@ -192,6 +201,7 @@ test('Comments shows again the new comment the reader wrote, as it was', async (
   const box =
     await screen.findByPlaceholderText<HTMLTextAreaElement>('What should change?')
   expect(box.value).toBe('Bolder')
+  await waitFor(() => expect(document.activeElement).toBe(box))
 })
 
 test('once the panel opens on the page, the list of every comment no longer says an agent works', async () => {
