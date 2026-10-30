@@ -181,6 +181,14 @@ marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
 After an update, `/annotant:annotant update` migrates a project installed
 by an older version.
 
+Each [release](https://github.com/annotant/annotant/releases) carries the
+plugin archive and its signed provenance (`annotant-x.y.z.intoto.jsonl`): the
+Release workflow built it from a verified commit of `main` and its built
+widget. Check it with
+`gh attestation verify annotant-x.y.z.tar.gz -R annotant/annotant --signer-workflow annotant/annotant/.github/workflows/release.yml`,
+adding `--bundle annotant-x.y.z.intoto.jsonl` to use the attached file
+(releases up to 0.3.0 have none).
+
 **Coming from Code Buddy**, Annotant's former name: remove the old plugin and
 its marketplace (`claude plugin uninstall code-buddy@code-buddy`, then
 `claude plugin marketplace remove code-buddy`), install Annotant as in
