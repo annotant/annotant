@@ -347,6 +347,15 @@ export function isAsking(comment: Lifecycle) {
 }
 
 /**
+ * The panel's order: the threads that need the reader first, then the
+ * others, each newest first.
+ */
+export const byPanelOrder = (
+  a: Pick<ReviewComment, 'state' | 'createdAt'>,
+  b: Pick<ReviewComment, 'state' | 'createdAt'>,
+) => Number(isAsking(b)) - Number(isAsking(a)) || b.createdAt.localeCompare(a.createdAt)
+
+/**
  * A comment whose run stopped, until the reader sends it again: they stopped
  * it, or its agent ended without finishing.
  */

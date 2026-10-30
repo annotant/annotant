@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { comment, fakeEvents, fakeServer, openThread } from './server'
+import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import ant from '../src/assets/ant.webp'
 import { renderWidget } from './widget'
 
@@ -212,3 +212,56 @@ test('on the page, the pin of a thread that needs the reader is a question mark'
   events.send('changed')
   await waitFor(() => expect(pin.textContent).toBe(''))
 })
+
+/** The cards of the panel's list, top to bottom. */
+const listed = (panel: HTMLElement) =>
+  [...panel.querySelectorAll('article')].map((card) => card.textContent)
+
+const inProgress = () =>
+  comment({
+    id: 'c2',
+    route: '/',
+    state: 'working',
+    body: 'Being worked on',
+    createdAt: '2026-01-02T10:00:00.000Z',
+  })
+
+test.each(['page', 'all'] as const)(
+  'the list (%s) shows the threads that need the reader first, back by date once answered',
+  async (view) => {
+    const events = fakeEvents()
+    const threads = [asking('c1', '/'), inProgress()]
+    fakeServer(threads)
+    openPanel(view)
+    renderWidget()
+
+    const panel = await screen.findByTestId('annotant-panel')
+    await within(panel).findByText('Being worked on')
+    await waitFor(() => expect(listed(panel)[0]).toContain('Question c1'))
+
+    threads[0] = { ...asking('c1', '/'), state: 'answered' }
+    events.send('changed')
+    await waitFor(() => expect(listed(panel)[0]).toContain('Being worked on'))
+  },
+)
+
+test.each(['page', 'all'] as const)(
+  'the list (%s) keeps the newest first between two threads that need the reader',
+  async (view) => {
+    fakeServer([
+      asking('c1', '/', '2026-01-01T10:00:00.000Z'),
+      inProgress(),
+      asking('c3', '/', '2026-01-03T10:00:00.000Z'),
+    ])
+    openPanel(view)
+    renderWidget()
+
+    const panel = await screen.findByTestId('annotant-panel')
+    await within(panel).findByText('Being worked on')
+    const shown = listed(panel)
+    expect(shown).toHaveLength(3)
+    expect(shown[0]).toContain('Question c3')
+    expect(shown[1]).toContain('Question c1')
+    expect(shown[2]).toContain('Being worked on')
+  },
+)

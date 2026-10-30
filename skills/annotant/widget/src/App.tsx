@@ -47,6 +47,7 @@ import {
   type ReviewProgress,
   type Status,
   answered,
+  byPanelOrder,
   gaveUp,
   gist,
   isActive,
@@ -1720,8 +1721,8 @@ export default function App({ root }: { root: Element }) {
           toast('No Claude session is watching. Run /annotant:annotant.', true)
           return
         }
-        // In the panel's order, newest first, around from one end to the other.
-        const listed = comments.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+        // In the panel's order, around from one end to the other.
+        const listed = comments.toSorted(byPanelOrder)
         if (!listed.length) {
           toast('No comments on this page')
           return
@@ -2351,7 +2352,7 @@ export default function App({ root }: { root: Element }) {
           ? isAsking(comment)
           : (comment.state === 'resolved') === (statusFilter === 'resolved')),
     )
-    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .toSorted(byPanelOrder)
 
   const allCommentsView = () => (
     <>
@@ -2689,7 +2690,7 @@ export default function App({ root }: { root: Element }) {
                     !drafting &&
                     !thread &&
                     comments
-                      .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+                      .toSorted(byPanelOrder)
                       .map((comment) =>
                         guarded(comment, () => renderSummary(comment, false)),
                       )}
