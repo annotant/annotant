@@ -7,6 +7,15 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **The widget follows your app's light and dark theme.** It has a dark
+  palette, and switches with your app's toggle at once. `init` finds how your
+  app switches (Tailwind, `next-themes`, Mantine, Chakra, a `.dark` class or a
+  `data-theme` attribute, the OS setting) and writes it as `theme` in
+  `.annotant.json`; `update` adds it to an older install. Without it, the
+  widget turns dark on a dark page. (#227)
+
 ### Fixed
 
 - **A drawing leaves the page once what you drew it on is gone.** When none
