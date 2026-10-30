@@ -7,10 +7,15 @@ import path from 'node:path'
 // The limits, shared with the widget, which refuses an image before sending it.
 import limits from './image-limits.json' with { type: 'json' }
 
-/** The most images one message carries. */
-export const MAX_IMAGES = limits.maxImages
 /** The most bytes one image holds: what Claude reads in one image. */
-export const MAX_IMAGE_BYTES = limits.maxImageBytes
+const MAX_IMAGE_BYTES = limits.maxImageBytes
+/** The most bytes a message's images hold together. */
+export const MAX_MESSAGE_BYTES = limits.maxMessageBytes
+/**
+ * The most images one message carries: far more than a reader attaches, it
+ * only bounds the files a request may make the store write.
+ */
+const MAX_IMAGES = limits.maxImages
 
 /**
  * How the file of each type taken starts: the bytes decide, never the type
@@ -72,6 +77,7 @@ export function parseImages(input) {
   if (input.length > MAX_IMAGES) {
     throw new ImageRefusal(`at most ${MAX_IMAGES} images per message`)
   }
+  let total = 0
   return input.map((image) => {
     const known = TYPES[typeof image?.type === 'string' ? image.type : '']
     if (!known || typeof image.data !== 'string') {
@@ -82,6 +88,12 @@ export function parseImages(input) {
       throw new ImageRefusal(`an image may hold at most ${MAX_IMAGE_BYTES >> 20} MB`)
     }
     if (!known.matches(data)) throw new ImageRefusal(`not a ${image.type} image`)
+    total += data.length
+    if (total > MAX_MESSAGE_BYTES) {
+      throw new ImageRefusal(
+        `the images of a message may hold at most ${MAX_MESSAGE_BYTES >> 20} MB together`,
+      )
+    }
     return { data, ext: known.ext }
   })
 }

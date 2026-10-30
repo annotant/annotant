@@ -14,7 +14,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { NewImage, Status } from './domain'
-import { imageFiles, pick, preview, readImages } from './images'
+import { imageBytes, imageFiles, pick, preview, readImages } from './images'
 
 const PATHS = {
   x: 'M6 6l12 12M18 6L6 18',
@@ -44,6 +44,7 @@ const PATHS = {
   'chevron-down': 'M6 9l6 6 6-6',
   check: 'M5 12l5 5 9-11',
   grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9h.01',
 } as const
 
 export type IconName = keyof typeof PATHS
@@ -235,8 +236,8 @@ export const Textarea = forwardRef<
 
 /**
  * The message box at the panel's foot: Enter sends, Shift+Enter breaks the
- * line. An image pasted or dropped in it is attached to the message, shown
- * as a thumbnail until it is sent.
+ * line. An image pasted, dropped or chosen with its button is attached to the
+ * message, shown as a thumbnail until it is sent; there is no count limit.
  */
 export function Composer({
   value,
@@ -245,15 +246,13 @@ export function Composer({
   autoFocus,
   sendLabel = 'Send',
   images,
-  elements,
-  picking = false,
-  pickKeys,
+  target,
+  targeted = false,
   onChange,
   onSubmit,
   onEscape,
   onAttach,
   onDetach,
-  onPick,
 }: {
   value: string
   placeholder: string
@@ -261,15 +260,10 @@ export function Composer({
   autoFocus?: boolean
   sendLabel?: string
   images: NewImage[]
-  /**
-   * The chips of the elements picked in the page for this message, above the
-   * text: the message may hold them alone.
-   */
-  elements?: ReactNode[]
-  /** The page's elements are being picked for it. */
-  picking?: boolean
-  /** The keyboard shortcut of the button picking them. */
-  pickKeys?: string
+  /** The message's target slot, above the text: what in the page it is about. */
+  target?: ReactNode
+  /** The message holds a target that may go without words: an element, or a reply's area. */
+  targeted?: boolean
   onChange: (value: string) => void
   onSubmit: () => void
   onEscape?: () => void
@@ -277,8 +271,6 @@ export function Composer({
   onAttach?: (images: NewImage[]) => void
   /** Removes the attached image at `index`. */
   onDetach?: (index: number) => void
-  /** Without it, the box has no button to pick an element in the page. */
-  onPick?: () => void
 }) {
   const box = useRef<HTMLTextAreaElement>(null)
   // Grows with its text up to the CSS max-height, then scrolls.
@@ -289,12 +281,13 @@ export function Composer({
     // Empty, it keeps the CSS height: one line.
     if (value) textarea.style.height = `${textarea.scrollHeight}px`
   }, [value])
-  // The images being read, not attached yet: counted against the limit, and
-  // the message waits for them.
-  const reading = useRef(0)
+  // The images being read, not attached yet, and their bytes: counted against
+  // the limits, and the message waits for them.
+  const reading = useRef({ count: 0, bytes: 0 })
   const [pending, setPending] = useState(0)
+  const chooser = useRef<HTMLInputElement>(null)
   const blocked =
-    disabled || pending > 0 || (!value.trim() && !images.length && !elements?.length)
+    disabled || pending > 0 || (!value.trim() && !images.length && !targeted)
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!blocked) onSubmit()
@@ -311,11 +304,20 @@ export function Composer({
   }, [])
   const add = async (files: File[]) => {
     if (!onAttach) return
-    const picked = pick(images.length + reading.current, files)
+    const attached = images.reduce((sum, image) => sum + imageBytes(image), 0)
+    const picked = pick(
+      attached + reading.current.bytes,
+      files,
+      images.length + reading.current.count,
+    )
     if (picked.refused) toast(picked.refused, true)
     if (!picked.files.length) return
     const count = picked.files.length
-    reading.current += count
+    const bytes = picked.files.reduce((sum, file) => sum + file.size, 0)
+    reading.current = {
+      count: reading.current.count + count,
+      bytes: reading.current.bytes + bytes,
+    }
     setPending((current) => current + count)
     let read: NewImage[] | undefined
     try {
@@ -323,7 +325,10 @@ export function Composer({
     } catch {
       toast('The image could not be read.', true)
     } finally {
-      reading.current -= count
+      reading.current = {
+        count: reading.current.count - count,
+        bytes: reading.current.bytes - bytes,
+      }
       setPending((current) => current - count)
     }
     if (read && mounted.current) onAttach(read)
@@ -350,6 +355,7 @@ export function Composer({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
+      {target && <div className="an-target-slot">{target}</div>}
       {images.length > 0 && (
         <div className="an-attachments" data-testid="an-attachments">
           {images.map((image, index) => (
@@ -364,11 +370,6 @@ export function Composer({
               />
             </div>
           ))}
-        </div>
-      )}
-      {!!elements?.length && (
-        <div className="an-picked" data-testid="an-picked">
-          {elements}
         </div>
       )}
       <textarea
@@ -398,16 +399,32 @@ export function Composer({
           event.currentTarget.form?.requestSubmit()
         }}
       />
-      {onPick && (
-        <IconButton
-          icon="cursor"
-          label={picking ? 'Stop picking' : 'Pick an element in the page'}
-          {...(pickKeys ? { keys: pickKeys } : {})}
-          className="an-pick"
-          aria-pressed={picking}
-          disabled={disabled}
-          onClick={onPick}
-        />
+      {onAttach && (
+        <>
+          <IconButton
+            icon="image"
+            label="Attach images"
+            className="an-attach"
+            disabled={!attaching}
+            onClick={() => chooser.current?.click()}
+          />
+          <input
+            ref={chooser}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            data-testid="an-image-input"
+            onChange={(event) => {
+              const files = imageFiles(event.currentTarget.files ?? [])
+              // Chosen again, the same file is a change too.
+              event.currentTarget.value = ''
+              if (files.length) void add(files)
+              else if (event.currentTarget.files?.length)
+                toast('Only images can be attached.', true)
+            }}
+          />
+        </>
       )}
       <button
         type="submit"

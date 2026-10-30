@@ -25,6 +25,7 @@ import { isDevWidget } from './project.mjs'
 /** @typedef {import('./images.mjs').Image} Image */
 /** @typedef {import('./format.mjs').MessageV2} MessageV2 */
 /** @typedef {import('./format.mjs').PickedElement} PickedElement */
+/** @typedef {import('./format.mjs').PickedArea} PickedArea */
 /** @typedef {import('./format.mjs').State} State */
 
 export const APP_ROUTE = '*'
@@ -189,8 +190,8 @@ const historyPath = (project, id) => path.join(project.progressDir, `${id}.histo
 /**
  * The reader's answer to Claude's question: the options they chose, from the
  * ones it offered, then their own words. Undefined when it holds neither,
- * unless images or elements go with it (`attached`): an image or an element
- * picked in the page alone is a reply.
+ * unless images, elements or an area go with it (`attached`): an image, an
+ * element picked in the page or an area drawn on it alone is a reply.
  * @param {any} comment
  * @param {string | undefined} text
  * @param {string[] | undefined} choices
@@ -532,18 +533,19 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * The reader's move, as the widget sends it: stop the run (`cancelled:
      * true`), send it again (`cancelled: false`, with new words in `text`),
      * answer or follow up (`followUp`, `choices`, with the `images` the
-     * reader attached and the `elements` they picked in the page), or
+     * reader attached, and the `elements` they picked in the page or the
+     * `area` they drew on it), or
      * resolve it (`status`).
      * A stop or a re-send the comment is past changes nothing: a double
      * click, or a click on a button a poll late, is not an error. Undefined
      * when there is no such comment.
      * @param {string} id
-     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], elements?: PickedElement[], text?: string, status?: 'resolved' }} patch
+     * @param {{ cancelled?: boolean, followUp?: string, choices?: string[], images?: Image[], elements?: PickedElement[], area?: PickedArea, text?: string, status?: 'resolved' }} patch
      * @returns {Promise<CommentV2 | undefined>}
      */
     update(
       id,
-      { cancelled, followUp, choices, images = [], elements = [], text, status },
+      { cancelled, followUp, choices, images = [], elements = [], area, text, status },
     ) {
       return exclusive(async () => {
         const comments = await readAll()
@@ -566,9 +568,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
             let resent = { ...unsent, sentAt }
             if (
               text !== undefined &&
-              (text || last.images?.length || last.elements?.length)
+              (text || last.images?.length || last.elements?.length || last.area)
             ) {
-              // New words, or none on a message with images or elements, which go alone; the
+              // New words, or none on a message with images, elements or an area, which go alone; the
               // options the reader had chosen go either way.
               const { choices: __, ...kept } = resent
               resent = { ...kept, body: text }
@@ -580,7 +582,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           comment,
           followUp,
           choices,
-          images.length > 0 || elements.length > 0,
+          images.length > 0 || elements.length > 0 || !!area,
         )
         /** @type {string[]} */
         let names = []
@@ -596,6 +598,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
                   author: 'reader',
                   ...reply,
                   ...(elements.length ? { elements } : {}),
+                  ...(area ? { area } : {}),
                 },
               })
               // Written once the move is taken: a refused one leaves no file behind.

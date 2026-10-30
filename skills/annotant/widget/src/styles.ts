@@ -249,9 +249,22 @@ code { font-family: var(--cb-mono); }
 .an-attachment-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 999px; background: var(--cb-text); color: var(--cb-surface); }
 .an-attachment-remove:hover { background: var(--cb-red); }
 .an-attachment-remove svg { width: 12px; height: 12px; }
-.an-picked { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding-top: 4px; min-width: 0; }
-.an-pick { flex-shrink: 0; width: 36px; height: 36px; }
-.an-pick[aria-pressed="true"] { background: var(--cb-accent-weak); color: var(--cb-accent); }
+/* The target slot, above the images and the text: what to point at, or the one target's card. */
+.an-target-slot { flex-basis: 100%; min-width: 0; padding-bottom: 6px; border-bottom: 1px solid var(--cb-border); }
+.an-target-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; color: var(--cb-muted); }
+.an-target-tool { padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; font: inherit; color: var(--cb-accent); cursor: pointer; }
+.an-target-tool:hover, .an-target-tool:focus-visible { background: var(--cb-surface-2); }
+.an-target-tool[aria-pressed="true"] { background: var(--cb-accent-weak); }
+.an-target { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 6px 4px 6px 10px; border: 1px solid var(--cb-border); border-radius: 8px; background: var(--cb-surface-2); }
+.an-target:hover { border-color: var(--cb-accent); }
+.an-target-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
+.an-target-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.an-target-title span, .an-target-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-target-title code { flex-shrink: 0; color: var(--cb-accent); font-variant-numeric: tabular-nums; }
+.an-target-title svg { flex-shrink: 0; width: 14px; height: 14px; color: var(--cb-accent); }
+.an-target-detail { font-size: 12px; color: var(--cb-muted); }
+.an-target .an-btn[aria-pressed="true"] { background: var(--cb-accent-weak); }
+.an-attach { flex-shrink: 0; width: 36px; height: 36px; }
 .an-composer-box textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; padding: 7px 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; font-size: 15px; line-height: 1.45; }
 .an-composer-box textarea::placeholder { color: var(--cb-muted); }
 .an-send { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: var(--cb-accent); color: var(--cb-on-accent); cursor: pointer; transition: background .15s; }
@@ -387,7 +400,6 @@ code { font-family: var(--cb-mono); }
 .an-element span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .an-area-chip svg { flex-shrink: 0; align-self: center; width: 14px; height: 14px; color: var(--cb-accent); }
 .an-area-chip code { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.an-area-draft { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .an-draft-scope { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 
 /* In progress: the comment is open, until Claude resolves its thread. A rainbow

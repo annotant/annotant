@@ -35,13 +35,14 @@ import {
 } from './api'
 import {
   APP_ROUTE,
-  MAX_PICKED,
   type NewImage,
   type ReviewAnchor,
   type ReviewArea,
   type ReviewBox,
   type ReviewComment,
   type ReviewMessage,
+  type ReviewNode,
+  type ReviewPickedArea,
   type ReviewPickedElement,
   type ReviewProgress,
   type Status,
@@ -58,7 +59,7 @@ import {
   paused,
   statusOf,
 } from './domain'
-import { MAX_IMAGES } from './images'
+import { fits } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
 import {
@@ -485,11 +486,14 @@ function Question({
   )
 }
 
-/** The images attached so far, with those just pasted or dropped, up to the most taken. */
-const adding = (images: NewImage[] = [], added: NewImage[]) =>
-  [...images, ...added].slice(0, MAX_IMAGES)
+/** Said when the images leave a drawing's picture no room: Claude gets its lines alone. */
+const PICTURE_LEFT_OUT =
+  "The drawing's picture was left out: the message's images take all the room."
 
-/** The images attached or the elements picked so far, but the one at `index`. */
+/** The images attached so far, with those just pasted, dropped or chosen. */
+const adding = (images: NewImage[] = [], added: NewImage[]) => [...images, ...added]
+
+/** The images attached so far, but the one at `index`. */
 const removing = <T,>(list: T[] = [], index: number) =>
   list.filter((_, other) => other !== index)
 
@@ -498,17 +502,45 @@ const written = (draft: Pick<Draft, 'body' | 'images' | 'elements'>) =>
   !!draft.body.trim() || !!draft.images?.length || !!draft.elements?.length
 
 /**
- * The elements picked for a message, with `added` once: picked again, it is
- * there already; past the cap, it takes the place of the earliest.
+ * A draft about the page, with neither the text, the element, the area nor
+ * the drawing it was about: one target per message, the next one takes its
+ * place.
  */
-function joining(elements: ReviewPickedElement[] = [], added: ReviewPickedElement) {
-  if (
-    elements.some(
-      (other) => other.selector === added.selector && other.route === added.route,
-    )
-  )
-    return elements
-  return [...elements, added].slice(-MAX_PICKED)
+function untargeted(draft: Draft): Draft {
+  const {
+    area: _,
+    sketch: __,
+    elements: ___,
+    element: ____,
+    prefix: _____,
+    suffix: ______,
+    occurrences: _______,
+    ...rest
+  } = draft
+  return { ...rest, ...PAGE_LEVEL }
+}
+
+/** The reply being written, as the reader left it in its message box. */
+interface FollowUp {
+  id: string
+  body: string
+  images?: NewImage[]
+  /** Its target, an element or else an area: one at most. */
+  elements?: ReviewPickedElement[]
+  area?: ReviewPickedArea
+  /** With an area drawn freehand: its picture, sent with the images for Claude. */
+  sketch?: NewImage
+}
+
+/** The reply `current` is for thread `id`, with `target` in place of its own. */
+function retargetedReply(
+  current: FollowUp | undefined,
+  id: string,
+  target: Pick<FollowUp, 'elements' | 'area' | 'sketch'>,
+): FollowUp {
+  const own = current?.id === id ? current : undefined
+  const { elements: _, area: __, sketch: ___, ...rest } = own ?? { id, body: '' }
+  return { ...rest, ...target }
 }
 
 /** The message box being written in, when an element in the page is picked for a new comment. */
@@ -523,7 +555,7 @@ interface Draft extends ReviewAnchor {
   body: string
   /** The images pasted or dropped in the message box. */
   images?: NewImage[]
-  /** The elements picked in the page for it. */
+  /** The element picked in the page for it, its target: one at most, never with `area`. */
   elements?: ReviewPickedElement[]
   /** With an area drawn freehand: its picture, sent with the images for Claude. */
   sketch?: NewImage
@@ -536,8 +568,14 @@ interface Draft extends ReviewAnchor {
 /** A draft as the tab keeps it: it gets a new key once it is back. */
 type SavedDraft = Omit<Draft, 'key'>
 
-/** The tool in use, with the lines of a drawing so far, on the page. */
-type SavedTool = { tool: 'area' | 'pick' } | { tool: 'sketch'; lines?: DrawnPoint[][] }
+/**
+ * The tool in use, with the lines of a drawing so far, on the page, and the
+ * thread whose reply a drawing is for (`for`).
+ */
+type SavedTool =
+  | { tool: 'pick' }
+  | { tool: 'area'; for?: string }
+  | { tool: 'sketch'; lines?: DrawnPoint[][]; for?: string }
 
 // What the tab holds may come from another build of the widget (`npm run
 // watch` reloads the page on each), or from the page's own scripts: read in a
@@ -583,6 +621,7 @@ const isSavedPictures = (value: unknown): value is Pick<Draft, 'images' | 'sketc
 
 const isSavedTool = (value: unknown): value is SavedTool =>
   isFields(value) &&
+  (value['for'] === undefined || isText(value['for'])) &&
   (value['tool'] === 'area' ||
     value['tool'] === 'pick' ||
     (value['tool'] === 'sketch' &&
@@ -704,6 +743,24 @@ function areaContents(area: ReviewArea): string {
 
 const linesOf = (count: number) => (count === 1 ? '1 line' : `${count} lines`)
 
+/** An element, as a target card names it: its text, quoted, else its tag. */
+const named = (node: ReviewNode) => (node.text ? `"${node.text}"` : `<${node.tag}>`)
+
+/**
+ * What a drawn area holds, as its target card says it: the element a
+ * drawing points at, else the texts of the elements inside it, else of those
+ * it cuts through.
+ */
+function areaHolds(area: ReviewArea): string {
+  if (area.pointsAt) return `points at ${named(area.pointsAt)}`
+  const nodes = area.covers.length ? area.covers : area.crosses
+  if (!nodes.length) return area.within ? `in ${named(area.within)}` : 'on the page'
+  // A button and the text in it are named alike: once.
+  const names = [...new Set(nodes.map(named))]
+  const more = names.length > 3 || area.truncated ? ', …' : ''
+  return `${area.covers.length ? 'covers' : 'across'} ${names.slice(0, 3).join(', ')}${more}`
+}
+
 function areaSummary(area: ReviewArea): string {
   const what = area.strokes
     ? `A drawing of ${linesOf(area.strokes.length)} over ${area.width} × ${area.height} px`
@@ -790,6 +847,10 @@ export default function App({ root }: { root: Element }) {
   const [drawing, setDrawing] = useState<false | 'area' | 'sketch'>(
     savedTool?.tool === 'area' || savedTool?.tool === 'sketch' ? savedTool.tool : false,
   )
+  // The thread whose reply the drawing is for; else it is the draft's, or starts one.
+  const [drawingFor, setDrawingFor] = useState(
+    savedTool && savedTool.tool !== 'pick' ? savedTool.for : undefined,
+  )
   // The lines a drawing starts from: those drawn before the page reloaded, for
   // the drawing it brings back only (a new one starts from none).
   const [sketchFrom, setSketchFrom] = useState(
@@ -804,13 +865,7 @@ export default function App({ root }: { root: Element }) {
   )
   const [flash, setFlash] = useState<Element>()
   const [resend, setResend] = useState<{ id: string; body: string }>()
-  const [followUp, setFollowUp] = useState<{
-    id: string
-    body: string
-    images?: NewImage[]
-    /** The elements picked in the page for it. */
-    elements?: ReviewPickedElement[]
-  }>()
+  const [followUp, setFollowUp] = useState<FollowUp>()
   // The options ticked so far, under the question (`question`, its message id)
   // that takes several: another question of the thread starts with none.
   const [picked, setPicked] = useState<{
@@ -940,9 +995,13 @@ export default function App({ root }: { root: Element }) {
     if (drawing === 'sketch') return
     writeSession(
       TOOL_KEY,
-      drawing ? { tool: drawing } : picking ? { tool: 'pick' } : undefined,
+      drawing
+        ? { tool: drawing, ...(drawingFor ? { for: drawingFor } : {}) }
+        : picking
+          ? { tool: 'pick' }
+          : undefined,
     )
-  }, [drawing, picking])
+  }, [drawing, drawingFor, picking])
 
   // The quote of the comment being written stays marked once the selection is gone,
   // on its own page only: the app may navigate before it is saved.
@@ -1266,16 +1325,34 @@ export default function App({ root }: { root: Element }) {
   )
 
   // Drawn or pointed at from a page-level draft, or over another area, the area
-  // or the element joins what the reader had written and attached; a draft on a
-  // text starts over.
+  // or the element takes the place of its target, after what the reader had
+  // written and attached; a draft on a text starts over.
   const kept = view === 'page' && draft && draftHere && !draft.quote ? draft : undefined
   const keptBody = kept?.body ?? ''
   const keptImages = kept?.images
-  const keptElements = kept?.elements
+
+  /** Drawn for a reply, the area is its target; else the draft's, or a new one's. */
+  const placeArea = useCallback(
+    (anchor: ReviewAnchor, sketch?: NewImage) => {
+      const { area } = anchor
+      if (drawingFor && area) {
+        setDrawing(false)
+        setDrawingFor(undefined)
+        setFollowUp((current) =>
+          retargetedReply(current, drawingFor, {
+            area: { ...area, route: window.location.pathname },
+            ...(sketch ? { sketch } : {}),
+          }),
+        )
+        return
+      }
+      startDraft({ ...anchor, ...(sketch ? { sketch } : {}) }, keptBody, keptImages)
+    },
+    [drawingFor, startDraft, keptBody, keptImages],
+  )
   const drawArea = useCallback(
-    (rect: ReviewBox) =>
-      startDraft(anchorFromArea(root, rect), keptBody, keptImages, keptElements),
-    [root, startDraft, keptBody, keptImages, keptElements],
+    (rect: ReviewBox) => placeArea(anchorFromArea(root, rect)),
+    [root, placeArea],
   )
   // Drawn freehand, the area is the lines' box, and Claude gets their picture too,
   // wider: what an arrow points at is in it.
@@ -1284,15 +1361,9 @@ export default function App({ root }: { root: Element }) {
       const drawn = anchorFromDrawing(root, lines)
       if (!drawn) return
       const { anchor, rect, reach, strokes } = drawn
-      const sketch = drawingImage(reach, rect, strokes, root)
-      startDraft(
-        { ...anchor, ...(sketch ? { sketch } : {}) },
-        keptBody,
-        keptImages,
-        keptElements,
-      )
+      placeArea(anchor, drawingImage(reach, rect, strokes, root))
     },
-    [root, startDraft, keptBody, keptImages, keptElements],
+    [root, placeArea],
   )
 
   /** An element pointed at in the page, as a new comment's message holds it: on the page it is on. */
@@ -1312,7 +1383,7 @@ export default function App({ root }: { root: Element }) {
         startDraft(PAGE_LEVEL, '', undefined, added && [added])
         return
       }
-      setDraft({ ...kept, ...(added ? { elements: joining(kept.elements, added) } : {}) })
+      setDraft(added ? { ...untargeted(kept), elements: [added] } : kept)
       setView('page')
       setThreadId(undefined)
       openPanel()
@@ -1323,16 +1394,29 @@ export default function App({ root }: { root: Element }) {
 
   const cancelPick = useCallback(() => setPicking(false), [])
 
-  const cancelDraw = useCallback(() => setDrawing(false), [])
-
-  const keepLines = useCallback((lines: DrawnPoint[][]) => {
-    writeSession(TOOL_KEY, { tool: 'sketch', ...(lines.length ? { lines } : {}) })
+  const cancelDraw = useCallback(() => {
+    setDrawing(false)
+    setDrawingFor(undefined)
   }, [])
 
-  const startDrawing = (tool: 'area' | 'sketch') => {
+  const keepLines = useCallback(
+    (lines: DrawnPoint[][]) => {
+      writeSession(TOOL_KEY, {
+        tool: 'sketch',
+        ...(lines.length ? { lines } : {}),
+        ...(drawingFor ? { for: drawingFor } : {}),
+      })
+    },
+    [drawingFor],
+  )
+
+  /** `forThread`: the drawing is the target of that thread's reply. */
+  const startDrawing = (tool: 'area' | 'sketch', forThread?: string) => {
     setSketchFrom(undefined)
     setPicking(false)
+    setAttachingTo(undefined)
     setSelectionButton(undefined)
+    setDrawingFor(forThread)
     setDrawing(tool)
   }
 
@@ -1364,8 +1448,11 @@ export default function App({ root }: { root: Element }) {
     } = draft
     // The drawing's picture goes last, while the message has room for it, and
     // the area says so: the agent never takes one of the reader's for it.
-    const pictured = !!sketch && (attached?.length ?? 0) < MAX_IMAGES
+    const pictured = !!sketch && fits([...(attached ?? []), sketch])
+    if (sketch && !pictured) toast(PICTURE_LEFT_OUT)
     const images = pictured ? [...(attached ?? []), sketch] : attached
+    // With a target, the comment is about its page; else the box says which.
+    const targeted = !!elements?.length || !!anchor.area || !!anchor.quote
     await run(async () => {
       const comment = await createComment({
         anchor:
@@ -1373,7 +1460,7 @@ export default function App({ root }: { root: Element }) {
             ? { ...anchor, area: { ...anchor.area, pictured: true } }
             : anchor,
         body,
-        route: app ? APP_ROUTE : startedOn,
+        route: app && !targeted ? APP_ROUTE : startedOn,
         url,
         ...(images?.length ? { images } : {}),
         ...(elements?.length ? { elements } : {}),
@@ -1419,10 +1506,11 @@ export default function App({ root }: { root: Element }) {
     (thread.state === 'resolved' || isAsking(thread) || answered(thread))
       ? thread
       : undefined
-  const reply = replying && followUp?.id === replying.id ? followUp.body : ''
-  const replyImages = (replying && followUp?.id === replying.id && followUp.images) || []
-  const replyElements =
-    (replying && followUp?.id === replying.id && followUp.elements) || []
+  const ownReply = replying && followUp?.id === replying.id ? followUp : undefined
+  const reply = ownReply?.body ?? ''
+  const replyImages = ownReply?.images ?? []
+  const replyElements = ownReply?.elements ?? []
+  const replyArea = ownReply?.area
   const replyingId = replying?.id
   // The message box an element is picked for: the draft's, or the reply's.
   const writingIn = drafting ? DRAFT : replyingId
@@ -1430,52 +1518,152 @@ export default function App({ root }: { root: Element }) {
   // The picker goes with the message box it picks for: off while the reader is elsewhere.
   const picksFor = open && attachingTo === writingIn ? writingIn : undefined
 
-  /** The element picked joins the message's, once: the reader picks again for another. */
+  /** The element picked is the message's target, in place of the one it had. */
   const attachElement = useCallback(
     (element: Element) => {
       setAttachingTo(undefined)
       const added = pickedOf(element)
       if (!added) return
       if (writingIn === DRAFT) {
-        setDraft(
-          (current) =>
-            current && { ...current, elements: joining(current.elements, added) },
-        )
+        setDraft((current) => current && { ...untargeted(current), elements: [added] })
         return
       }
       if (!writingIn) return
-      setFollowUp((current) => {
-        const own = current?.id === writingIn ? current : undefined
-        return {
-          ...own,
-          id: writingIn,
-          body: own?.body ?? '',
-          elements: joining(own?.elements, added),
-        }
-      })
+      setFollowUp((current) => retargetedReply(current, writingIn, { elements: [added] }))
     },
     [pickedOf, writingIn],
   )
 
-  /** The chips of the elements picked for a message box, each with its button to remove it. */
-  const pickedChips = (
-    elements: ReviewPickedElement[],
-    remove: (place: number) => void,
-  ) =>
-    elements.map((element, place) => (
-      // oxlint-disable-next-line react/no-array-index-key -- removing one moves the next up: its place is its name
-      <div key={place} className="an-area-draft">
-        {elementChip({ ...PAGE_LEVEL, element }, element.route)}
-        <IconButton
-          icon="x"
-          label={`Remove the element <${element.tag}>`}
-          onClick={() => {
-            setTarget(undefined)
-            remove(place)
-          }}
-        />
+  /**
+   * A message box's target slot: with no target, what to point at; else the
+   * target's card, its action picking another in its place, and ✕.
+   */
+  const targetSlot = (
+    forThread: string | undefined,
+    element: ReviewPickedElement | undefined,
+    area: ReviewArea | undefined,
+    areaRoute: string,
+    remove: () => void,
+  ) => {
+    const box = forThread ?? DRAFT
+    const pickHere = () => {
+      setDrawing(false)
+      setAttachingTo(picksFor === box ? undefined : box)
+    }
+    if (element) {
+      const onThisPage = element.route === route
+      const show = () =>
+        setTarget(
+          onThisPage ? elementFromAnchor(root, { ...PAGE_LEVEL, element }) : undefined,
+        )
+      return (
+        <div
+          className="an-target"
+          data-testid="an-picked"
+          onMouseEnter={show}
+          onMouseLeave={() => setTarget(undefined)}
+        >
+          <div className="an-target-text">
+            <span className="an-target-title">
+              <code>&lt;{element.tag}&gt;</code>
+              <span>{element.text || element.selector}</span>
+            </span>
+            <span className="an-target-detail">{element.selector}</span>
+          </div>
+          <Button
+            small
+            variant="tertiary"
+            aria-pressed={picksFor === box}
+            title={`Point at another element (${keysOf('pick')})`}
+            onClick={pickHere}
+          >
+            Repick
+          </Button>
+          <IconButton
+            icon="x"
+            label={`Remove the element <${element.tag}>`}
+            onClick={() => {
+              setTarget(undefined)
+              remove()
+            }}
+          />
+        </div>
+      )
+    }
+    if (area) {
+      const drawn = !!area.strokes
+      const show = () => setTargetArea(areaRoute === route ? area : undefined)
+      return (
+        <div
+          className="an-target"
+          data-testid="an-target-area"
+          title={areaSummary(area)}
+          onMouseEnter={show}
+          onMouseLeave={() => setTargetArea(undefined)}
+        >
+          <div className="an-target-text">
+            <span className="an-target-title">
+              <Icon name={drawn ? 'pencil' : 'frame'} />
+              <code>
+                {drawn
+                  ? linesOf(area.strokes?.length ?? 0)
+                  : `${area.width} × ${area.height}`}
+              </code>
+            </span>
+            <span className="an-target-detail">{areaHolds(area)}</span>
+          </div>
+          <Button
+            small
+            variant="tertiary"
+            onClick={() => startDrawing(drawn ? 'sketch' : 'area', forThread)}
+          >
+            {drawn ? 'Redraw' : 'Reframe'}
+          </Button>
+          <IconButton
+            icon="x"
+            label={drawn ? 'Remove the drawing' : 'Remove the area'}
+            onClick={() => {
+              setTargetArea(undefined)
+              remove()
+            }}
+          />
+        </div>
+      )
+    }
+    return (
+      <div className="an-target-empty">
+        <span>Point at:</span>
+        <button
+          type="button"
+          className="an-target-tool"
+          aria-pressed={picksFor === box}
+          title={`Point at an element in the page (${keysOf('pick')})`}
+          aria-keyshortcuts={ariaKeysOf('pick')}
+          onClick={pickHere}
+        >
+          Element
+        </button>
+        <span aria-hidden="true">·</span>
+        <button
+          type="button"
+          className="an-target-tool"
+          title="Draw an area over the page"
+          onClick={() => startDrawing('area', forThread)}
+        >
+          Area
+        </button>
+        <span aria-hidden="true">·</span>
+        <button
+          type="button"
+          className="an-target-tool"
+          title="Draw on the page"
+          onClick={() => startDrawing('sketch', forThread)}
+        >
+          Drawing
+        </button>
       </div>
-    ))
+    )
+  }
 
   /** Comments, from the strip or its shortcut: the panel, on the threads that need the reader if any. */
   const openComments = () => {
@@ -1613,13 +1801,20 @@ export default function App({ root }: { root: Element }) {
     void run(async () => {
       const own = withText && followUp?.id === comment.id ? followUp : undefined
       const text = own?.body.trim() ?? ''
-      const images = own?.images ?? []
+      const attached = own?.images ?? []
       const elements = own?.elements ?? []
+      const sketch = own?.sketch
+      // As a new comment's: the drawing's picture last, while the message has room.
+      const pictured = !!sketch && fits([...attached, sketch])
+      if (sketch && !pictured) toast(PICTURE_LEFT_OUT)
+      const images = pictured ? [...attached, sketch] : attached
+      const area =
+        own?.area && (pictured ? { ...own.area, pictured: true as const } : own.area)
       await updateComment(comment.id, {
         ...(choices.length ? { choices } : {}),
         ...(text ? { followUp: text } : {}),
         ...(images.length ? { images } : {}),
-        ...(elements.length ? { elements } : {}),
+        ...(elements.length ? { elements } : area ? { area } : {}),
       })
       if (own) setFollowUp(undefined)
       setPicked(undefined)
@@ -1753,6 +1948,8 @@ export default function App({ root }: { root: Element }) {
   }
 
   const composing = drafting || !!replying
+  // The draft is about its text, its element or its area: the page is its scope.
+  const draftTargeted = !!draft?.quote || !!draft?.area || !!draft?.elements?.length
   const sendHint = <span className="an-send-hint">Enter to send</span>
   const cancelDraft = (
     <Button small variant="tertiary" className="an-composer-cancel" onClick={backToList}>
@@ -1769,9 +1966,15 @@ export default function App({ root }: { root: Element }) {
     (writtenFor?.route === route
       ? elementFromAnchor(root, { ...PAGE_LEVEL, element: writtenFor })
       : undefined)
-  // The area the comment being written was drawn on stays outlined, as its text would.
+  // The area the message being written was drawn on stays outlined, as its text would.
   const outlinedArea =
-    targetArea ?? flashArea ?? (drafting && draftHere ? draft.area : undefined)
+    targetArea ??
+    flashArea ??
+    (drafting && draftHere
+      ? draft.area
+      : replyArea?.route === route
+        ? replyArea
+        : undefined)
 
   const centerOn = (anchor: ReviewAnchor, id?: string) => {
     const element = elementFromAnchor(root, anchor)
@@ -1960,14 +2163,21 @@ export default function App({ root }: { root: Element }) {
                   ))}
                 </div>
               ) : null}
-              {message.elements?.length ? (
+              {message.elements?.length || message.area ? (
+                // Its target, above its bubble: older messages may hold several elements.
                 <div className="an-msg-elements" data-testid="an-msg-elements">
-                  {message.elements.map((element, place) => (
+                  {message.elements?.map((element, place) => (
                     // oxlint-disable-next-line react/no-array-index-key -- the message's elements never move
                     <Fragment key={place}>
                       {elementChip({ ...PAGE_LEVEL, element }, element.route, comment.id)}
                     </Fragment>
                   ))}
+                  {message.area &&
+                    areaChip(
+                      { ...PAGE_LEVEL, area: message.area },
+                      message.area.route,
+                      comment.id,
+                    )}
                 </div>
               ) : null}
               {message.body && (
@@ -2450,7 +2660,7 @@ export default function App({ root }: { root: Element }) {
                     (thread
                       ? guarded(thread, () => renderItem(thread))
                       : allCommentsView())}
-                  {drafting && (
+                  {drafting && (draft.section || draft.quote || !draftTargeted) && (
                     <div className="an-form">
                       {draft.section && (
                         <span className="an-section">{draft.section}</span>
@@ -2458,48 +2668,15 @@ export default function App({ root }: { root: Element }) {
                       {draft.quote && (
                         <blockquote className="an-quote">{draft.quote}</blockquote>
                       )}
-                      {draft.area && (
-                        <div className="an-area-draft">
-                          {areaChip(draft)}
-                          <IconButton
-                            icon="x"
-                            label={
-                              draft.area.strokes
-                                ? 'Remove the drawing'
-                                : 'Remove the area'
-                            }
-                            onClick={() => {
-                              const { area: _, sketch: __, ...rest } = draft
-                              setTargetArea(undefined)
-                              setDraft({ ...rest, ...PAGE_LEVEL })
-                            }}
-                          />
-                        </div>
-                      )}
-                      {!draft.quote && !draft.area && (
+                      {/* With no target, the comment is about this page, or the whole app. */}
+                      {!draftTargeted && (
                         <div className="an-draft-scope">
                           <Checkbox
                             checked={!draft.app}
                             onChange={(checked) => setDraft({ ...draft, app: !checked })}
                           >
-                            Linked to the current page ({pagePath(draft.url)})
+                            Only on {pagePath(draft.url) || draft.route}
                           </Checkbox>
-                          <Button
-                            small
-                            variant="tertiary"
-                            icon="frame"
-                            onClick={() => startDrawing('area')}
-                          >
-                            Draw an area
-                          </Button>
-                          <Button
-                            small
-                            variant="tertiary"
-                            icon="pencil"
-                            onClick={() => startDrawing('sketch')}
-                          >
-                            Draw on the page
-                          </Button>
                         </div>
                       )}
                     </div>
@@ -2539,18 +2716,19 @@ export default function App({ root }: { root: Element }) {
                   autoFocus
                   value={draft.body}
                   images={draft.images ?? []}
-                  elements={pickedChips(draft.elements ?? [], (place) =>
-                    setDraft(
-                      (current) =>
-                        current && {
-                          ...current,
-                          elements: removing(current.elements, place),
-                        },
-                    ),
-                  )}
-                  picking={!!picksFor}
-                  pickKeys={keysOf('pick')}
-                  onPick={() => setAttachingTo(picksFor ? undefined : DRAFT)}
+                  // The selected text is the target, shown above: none other.
+                  {...(draft.quote
+                    ? {}
+                    : {
+                        target: targetSlot(
+                          undefined,
+                          draft.elements?.[0],
+                          draft.area,
+                          draft.route,
+                          () => setDraft((current) => current && untargeted(current)),
+                        ),
+                      })}
+                  targeted={!!draft.elements?.length}
                   placeholder="What should change?"
                   sendLabel="Save"
                   disabled={busy}
@@ -2582,18 +2760,15 @@ export default function App({ root }: { root: Element }) {
                   key={replying.id}
                   value={reply}
                   images={replyImages}
-                  elements={pickedChips(replyElements, (place) =>
-                    setFollowUp(
-                      (current) =>
-                        current && {
-                          ...current,
-                          elements: removing(current.elements, place),
-                        },
-                    ),
+                  target={targetSlot(
+                    replying.id,
+                    replyElements[0],
+                    replyArea,
+                    replyArea?.route ?? route,
+                    () =>
+                      setFollowUp((current) => retargetedReply(current, replying.id, {})),
                   )}
-                  picking={!!picksFor}
-                  pickKeys={keysOf('pick')}
-                  onPick={() => setAttachingTo(picksFor ? undefined : replying.id)}
+                  targeted={!!replyElements.length || !!replyArea}
                   placeholder={
                     offered
                       ? 'Or answer in your own words…'
@@ -2639,6 +2814,7 @@ export default function App({ root }: { root: Element }) {
                     !reply &&
                     !replyImages.length &&
                     !replyElements.length &&
+                    !replyArea &&
                     backToList()
                   }
                 />

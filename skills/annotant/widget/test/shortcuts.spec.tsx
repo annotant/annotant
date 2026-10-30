@@ -389,16 +389,14 @@ test('in the message box, the shortcut picks an element for the message', async 
     expect(hint()).toBe('Click an element to add it to your message. Escape cancels.'),
   )
   expect(
-    screen.getByRole('button', { name: 'Stop picking' }).getAttribute('aria-pressed'),
+    screen.getByRole('button', { name: 'Element' }).getAttribute('aria-pressed'),
   ).toBe('true')
 
   // Again, it stops.
   press('Period', box)
   await waitFor(() => expect(hint()).toBeUndefined())
   expect(
-    screen
-      .getByRole('button', { name: 'Pick an element in the page' })
-      .getAttribute('aria-pressed'),
+    screen.getByRole('button', { name: 'Element' }).getAttribute('aria-pressed'),
   ).toBe('false')
 })
 
@@ -546,7 +544,7 @@ test('inside its shadow root, as on a page, the widget tells its own fields and 
   expect(press('Period', box)).toBe(false)
   await waitFor(() => expect(container.querySelector('.an-hint')).toBeTruthy())
   // Enter on the button that stops picking is the button's.
-  const stop = panel.getByRole('button', { name: 'Stop picking' })
+  const stop = panel.getByRole('button', { name: 'Element' })
   expect(fireEvent.keyDown(stop, { key: 'Enter' })).toBe(true)
 })
 
@@ -606,7 +604,7 @@ test('picking for the message being written stops a drawing', async () => {
   openPanel()
   renderWidget()
   fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Draw an area' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Area' }))
   const panel = screen.getByTestId('annotant-panel')
   await waitFor(() => expect(panel.hasAttribute('inert')).toBe(true))
 

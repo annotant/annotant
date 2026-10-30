@@ -61,6 +61,12 @@ export const COMPLEXITIES = ['trivial', 'standard', 'hard']
  * @typedef {Element & { route: string }} PickedElement
  */
 
+/**
+ * An area the reader drew, or lines drawn freehand, with a reply: found as
+ * the comment's own, on `route`, the page they were on.
+ * @typedef {Area & { route: string }} PickedArea
+ */
+
 /** The most elements one message may hold: the one the page marks. */
 export const MAX_PICKED = 1
 
@@ -150,6 +156,9 @@ export const MAX_PICKED = 1
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
  * @property {PickedElement[]} [elements] Reader only: the elements they picked
  *   in the page with it.
+ * @property {PickedArea} [area] Reader only, a reply only, never with
+ *   `elements`: the area they drew, or the lines, with it; `pictured` when the
+ *   last image of this message is their picture.
  * @property {string} [sentAt] Reader only, on a message that opened the
  *   comment (its first, an answer, a follow-up): when the reader sent it, anew
  *   when they send it again after a stop. The hooks start or message an agent once per `id` and
