@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
 import { comment, fakeEvents, fakeServer, openPanel } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
 const PAGE = `
@@ -114,7 +114,7 @@ test('a draft with a drawn area and its text comes back once the page reloads', 
 test('a draft sent is not back after a reload', async () => {
   const comments: ReviewComment[] = []
   const { view } = renderCards(comments)
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const box = await messageBox()
   fireEvent.change(box, { target: { value: 'Make it blue' } })
   fireEvent.keyDown(box, { key: 'Enter' })
@@ -229,7 +229,7 @@ test('a draft started while the kept one waits for the page is the one kept', as
 
 test('a draft cancelled, or a drawing left, is not back after a reload', async () => {
   const first = renderCards().view
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   fireEvent.change(await messageBox(), { target: { value: 'Never mind' } })
   fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0]!)
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))
@@ -248,7 +248,7 @@ test('a draft cancelled, or a drawing left, is not back after a reload', async (
 
 test('a drawing started from a comment on the page keeps what the reader wrote, through a reload', async () => {
   const { view } = renderCards()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   fireEvent.change(await messageBox(), { target: { value: 'Arrow here' } })
   fireEvent.click(screen.getByRole('button', { name: 'Draw on the page' }))
   line([100, 250], [100, 300], [100, 360])

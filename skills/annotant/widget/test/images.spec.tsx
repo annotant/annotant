@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openPanel, openThread } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 /** A PNG file's first bytes: the widget sends what it reads. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -24,7 +24,7 @@ function sent(server: ReturnType<typeof fakeServer>, method: string): unknown {
 
 async function newComment() {
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   return screen.getByRole('textbox', { name: 'What should change?' })
 }
 
