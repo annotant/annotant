@@ -24,6 +24,10 @@ released to the `stable` branch.
 - **A thread links what its messages cite.** URLs, and the issues of your
   project (`#12`, `owner/repo#12`, `GH-12`, GitLab's `!12`) when its `origin`
   remote is on GitHub or GitLab, are links that open in a new tab. (#249)
+- **Claude's answers are formatted.** Its answers and questions show `code`,
+  **bold**, *italic*, links, lists and code blocks; headings, tables, images
+  and HTML show as their text. Your own messages stay as you typed them, and
+  the agents are told which Markdown they may use. (#268)
 
 ### Changed
 

@@ -345,6 +345,14 @@ code { font-family: var(--cb-mono); }
 .an-ask { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--cb-amber-border); border-radius: 14px; background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A URL or an issue a message cites: in its bubble's colour, underlined. */
 .an-bubble a, .an-ask a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+/* The Markdown of Claude's message: blocks spaced like paragraphs, code on a tint of its bubble. */
+.an-md > * { margin: 0; }
+.an-md > * + * { margin-top: 8px; }
+.an-md ul, .an-md ol { padding-left: 20px; }
+.an-md li + li { margin-top: 2px; }
+.an-md code { padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, currentColor 10%, transparent); font-size: .92em; }
+.an-md pre { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); overflow-x: auto; white-space: pre; }
+.an-md pre code { padding: 0; background: none; }
 .an-ask-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-amber-fg); }
 /* The answers Claude offers: one button each, ticked once chosen. */
 .an-options { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; white-space: normal; }

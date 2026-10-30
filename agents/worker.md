@@ -85,10 +85,15 @@ of the reader's last message.
    `node SKILL/scripts/resolve.mjs <id> --project PROJECT "<answer>"` (pipe
    the answer on stdin when it is long). On a thread resolved before, it
    prints `answered`: your answer waits on the reader, who resolves it.
+   You may use Markdown in it: `code` for file names, values and
+   identifiers, **bold** sparingly, a short `-` list when you changed several
+   things. No headings, tables or images: it shows in a narrow chat bubble.
+   Markdown is there for clarity, not for longer answers.
 6. Reply with one line saying what changed, or what you answered. If the comment is unclear or
    needs a product decision, do not guess: ask it in the thread with
    `node SKILL/scripts/ask.mjs <id> --project PROJECT "<question>"` (stdin
    works too) and reply `QUESTION: <your question>`. To offer choices, add 2
    to 6 `--option "<label>: <description>"` (`--multiple` to allow several);
-   the reader can still answer in their own words. Never use
+   the reader can still answer in their own words. The question takes the
+   same Markdown as an answer (step 5). Never use
    AskUserQuestion: the reader would not see it.

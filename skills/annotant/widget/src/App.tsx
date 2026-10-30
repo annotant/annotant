@@ -124,6 +124,7 @@ import {
 } from './styles'
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
+import { Markdown } from './markdown'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -438,9 +439,7 @@ function Question({
   return (
     <div className="an-ask">
       <span className="an-ask-label">Question</span>
-      <span>
-        <Linked text={message.body} repository={repository} />
-      </span>
+      <Markdown text={message.body} repository={repository} />
       {!!message.options?.length && (
         <div
           className="an-options"
@@ -2158,7 +2157,7 @@ export default function App({ root }: { root: Element }) {
                 />
               ) : (
                 <div className="an-bubble an-bubble--claude">
-                  <Linked text={message.body} repository={repository} />
+                  <Markdown text={message.body} repository={repository} />
                 </div>
               )}
             </Message>
