@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
 import { comment, fakeServer } from './server'
-import { renderWidget, stubHighlights } from './widget'
+import { renderWidget, startPageComment, stubHighlights } from './widget'
 
 /**
  * The widget over a page with two blocks, the reader selecting from the first
@@ -130,9 +130,7 @@ test('a bubble does not throw away the comment being written', async () => {
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
   renderWidget()
-  const [newComment] = await screen.findAllByRole('button', { name: 'Comment' })
-  if (!newComment) throw new Error('no Comment button')
-  fireEvent.click(newComment)
+  await startPageComment()
   const box = await screen.findByRole('textbox')
   fireEvent.change(box, { target: { value: 'Half a thought' } })
 

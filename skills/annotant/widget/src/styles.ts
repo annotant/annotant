@@ -18,10 +18,14 @@ export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 export const scrollBehavior = (): ScrollBehavior =>
   matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth'
 
-/** How long the panel takes to come in, or to widen and narrow. */
-/** How far the count of the threads that need the reader sticks out of the strip's top right corner. */
-export const NEEDS_YOU_REACH = 9
+/**
+ * How far the count of the threads that need the reader sticks out of the strip's
+ * top right corner: 8px past Comments' corner (`.an-needs-you`), 4px of which
+ * fall within the strip's padding and border (`.an-dock`). Change them together.
+ */
+export const NEEDS_YOU_REACH = 4
 
+/** How long the panel takes to come in, or to widen and narrow. */
 export const PANEL_IN_MS = 200
 /** How long the panel takes to leave: shorter, it is on its way out. */
 export const PANEL_OUT_MS = 150
@@ -59,7 +63,9 @@ export const WIDGET_CSS = `
   --cb-ink: #e5306b;
   --cb-red-bg: #fdecec;
   --cb-yellow: #f0ad2e;
-  /* What waits on the reader: the strip's count and the page's pins, bright, with dark text on it. */
+  /* Dark amber on yellow, the same in either theme: the count of what waits on the reader. */
+  --cb-on-yellow: #4a2f06;
+  /* What waits on the reader on the page: the pins' ?, bright, with dark text on it. */
   --cb-orange: #fd7e14;
   --cb-on-orange: #13294b;
   --cb-amber-bg: #fdf3e1;
@@ -177,14 +183,28 @@ code { font-family: var(--cb-mono); }
 .an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
 .an-dock[data-moving] .an-grip { cursor: grabbing; }
 .an-tool { border-radius: 7px; }
-/* Threads wait on the reader: how many, on the strip's top right corner. */
-.an-needs-you {
-  position: absolute; top: -${NEEDS_YOU_REACH}px; right: -${NEEDS_YOU_REACH}px; min-width: 20px; height: 20px; padding: 0 5px;
-  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
-  border: 2px solid var(--cb-surface); border-radius: 10px; background: var(--cb-orange);
-  color: var(--cb-on-orange); font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer;
+.an-tool:not(.an-tool--idle) { background: var(--cb-accent-weak); border-color: transparent; }
+.an-tool:not(.an-tool--idle):hover { background: var(--cb-accent-tint); }
+/* Its grip moves the whole strip: hovered, it rings all of it. */
+.an-dock:has(.an-grip:hover), .an-dock[data-moving] {
+  box-shadow: 0 0 0 2px rgba(var(--cb-accent-rgb), .35), 0 4px 16px rgba(0,0,0,.15);
 }
-.an-needs-you:hover { filter: brightness(1.1); }
+/* Between the page's tools and Comments: 4px on each side, with the strip's gap. */
+.an-dock-rule { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--cb-border); }
+.an-comments {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px;
+  background: var(--cb-accent); color: var(--cb-on-accent); cursor: pointer; transition: background .15s;
+}
+.an-comments:hover { background: var(--cb-accent-strong); }
+.an-comments > svg { width: 18px; height: 18px; }
+/* Threads wait on the reader: how many, on Comments' top right corner. */
+.an-needs-you {
+  position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  border: 2px solid var(--cb-surface); border-radius: 10px; background: var(--cb-yellow);
+  color: var(--cb-on-yellow); font-size: 11px; font-weight: 700; line-height: 1;
+}
 .an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
 .an-tool--idle svg { width: 18px; height: 18px; }
 .an-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }

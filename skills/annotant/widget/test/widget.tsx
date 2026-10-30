@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import App from '../src/App'
 
@@ -15,6 +15,12 @@ export function renderWidget() {
       page.remove()
     },
   }
+}
+
+/** A comment on the page: the strip's Comments opens the panel, then its New comment. */
+export async function startPageComment() {
+  fireEvent.click(await screen.findByRole('button', { name: /^Comments/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'New comment' }))
 }
 
 /** The step the thread draws, without the one sliding away or the text read aloud. */

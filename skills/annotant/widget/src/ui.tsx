@@ -123,7 +123,7 @@ export function IconButton({
 interface ToolButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconName
   label: string
-  /** In progress: the button says Cancel. */
+  /** In progress: the button says Cancel after its icon. */
   active?: boolean
 }
 
@@ -146,7 +146,7 @@ export function ToolButton({
       className={`an-btn an-btn--secondary an-btn--sm an-tool ${active ? '' : 'an-tool--idle'} ${className}`}
       {...props}
     >
-      <Icon name={active ? 'x' : icon} />
+      <Icon name={icon} />
       {active && 'Cancel'}
     </button>
   )

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeServer, openThread } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 /** A PNG file's first bytes: the widget sends what it reads. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -250,7 +250,7 @@ test('pointing at an element starts a comment whose message box holds it', async
 test('a new comment picks elements in the page from its message box, and may hold them alone', async () => {
   const server = fakeServer([])
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   await screen.findByRole('textbox', { name: 'What should change?' })
   const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save' })
   expect(save.disabled).toBe(true)
@@ -268,7 +268,7 @@ test('a new comment picks elements in the page from its message box, and may hol
 test('pointing at an element with a comment under way adds it to that comment', async () => {
   const server = fakeServer([])
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   fireEvent.change(await screen.findByRole('textbox', { name: 'What should change?' }), {
     target: { value: 'Same size' },
   })
@@ -321,7 +321,7 @@ test.each([
 ])('a new comment holds %s, and goes with both', async (_, imageFirst) => {
   const server = fakeServer([])
   renderWidget()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const box = await screen.findByRole('textbox', { name: 'What should change?' })
   if (imageFirst) await pasteImage(box)
   pickTitle(pointAtTitle())

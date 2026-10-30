@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fakeServer } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 /** A menu of the page that closes on a press outside it, as Radix's and MUI's do. */
 function outsidePress(type: 'pointerdown' | 'mousedown' | 'click' | 'touchend') {
@@ -52,7 +52,7 @@ test('a press in the message box stays in the widget, and still focuses it', asy
   const onPointer = outsidePress('pointerdown')
   const onMouse = outsidePress('mousedown')
   renderWidget()
-  fireEvent.click(screen.getByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const box = await screen.findByRole('textbox')
   fireEvent.pointerDown(box)
   expect(fireEvent.mouseDown(box)).toBe(true)

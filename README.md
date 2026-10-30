@@ -144,8 +144,8 @@ to use.
 
 (`/annotant web` for a folder.) Then open your dev app in the browser, its
 dev server running as usual: a small strip of icons shows in the bottom right
-corner of the page. Click the **Comment** icon (hover one for its name),
-write what to change and send it: an agent starts, its progress shows live
+corner of the page. Click **Comments**, the blue icon at its end, then
+**New comment** (hover an icon for its name), write what to change and send it: an agent starts, its progress shows live
 under your comment, and it answers in the same thread. [In the widget](#in-the-widget) tells the rest.
 
 No icons? See [the widget does not show](#the-widget-does-not-show).
@@ -214,12 +214,14 @@ or from `/plugin`.
 
 While the panel is closed, the tools sit in a small strip of icons in the
 bottom right corner, their names and shortcuts in the tooltips; a tool in
-progress shows its _Cancel_ there. Drag the strip by its grip, or move it with
+progress shows its _Cancel_ after its icon. Drag the strip by its grip, or move it with
 the arrow keys once the grip has the focus, wherever it covers nothing; a
 double-click on the grip puts it back. Where it is, and whether the panel
 floats or is docked, hold for every tab of the app and the next sessions.
 
-- **Comment** opens a new comment for the page, or the whole app.
+- **Comments**, at the strip's end, opens the panel. Its **New comment**
+  (`+`) starts a comment for the page, or the whole app; so does the comment
+  shortcut.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.
 - **Point at element** starts a comment with that element in its message
@@ -265,9 +267,9 @@ floats or is docked, hold for every tab of the app and the next sessions.
   scrolls to it.
 - **All comments** lists every discussion, newest first, filtered by status:
   _Needs you_ keeps the threads where Claude waits on you. While one does, on
-  any page, an orange count on the corner of the closed tools opens that list
-  (or the thread, when only one waits), and the thread's bubble on the page
-  shows a **?**.
+  any page, a yellow count on the corner of **Comments** says how many, and
+  Comments opens that list (or the thread, when only one waits); the thread's
+  bubble on the page shows a **?**.
 - While Claude works: what the agent is doing now ("Reading `App.tsx`…",
   "Thinking…"), its latest steps (files read and edited, commands, searches,
   MCP calls, failed tools in red, its messages and its thinking), and

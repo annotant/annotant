@@ -16,10 +16,20 @@ released to the `stable` branch.
   `.annotant.json`; `update` adds it to an older install. Without it, the
   widget turns dark on a dark page. (#227)
 - **The tools tell you when a thread needs you.** While Claude waits on you
-  in a thread, on any page, an orange count shows on the corner of the closed
-  tools. It opens every comment filtered to _Needs you_, a new filter next to
-  _All_, _Open_ and _Resolved_, or the thread itself when only one waits. On
-  the page, that thread's bubble shows an orange **?**. (#240)
+  in a thread, on any page, a yellow count shows on the corner of
+  **Comments**, in the closed tools. Comments then opens every comment
+  filtered to _Needs you_, a new filter next to _All_, _Open_ and _Resolved_,
+  or the thread itself when only one waits. On the page, that thread's bubble
+  shows an orange **?**. (#240, #261)
+
+### Changed
+
+- **Comments ends the strip of tools, and opens the panel.** The strip reads
+  grip, _Draw area_, _Draw_, _Point at element_, then **Comments** after a
+  rule: a blue button that opens the panel, as its shortcut does. It replaces
+  the _Comment_ button: start a comment on the page with the panel's **New
+  comment**, or the comment shortcut. A tool in progress keeps its icon next
+  to its _Cancel_, and hovering the grip rings the whole strip. (#261)
 
 ### Fixed
 

@@ -116,15 +116,16 @@ test("the buttons name the keys as the reader's keyboard types them, once it is 
   onTestFinished(() => void Reflect.deleteProperty(navigator, 'keyboard'))
   fakeServer([])
   renderWidget()
-  const button = await screen.findByRole('button', { name: 'Comment' })
+  fireEvent.click(await screen.findByRole('button', { name: 'Comments' }))
+  const button = screen.getByRole('button', { name: 'New comment' })
   // The comments are in: nothing else draws the widget again.
   await said('No comments on this page')
-  expect(button.title).toBe(`Comment on the page (${shortcutLabel('comment')})`)
+  expect(button.title).toBe(`New comment (${shortcutLabel('comment')})`)
 
   act(() => tell?.(AZERTY))
 
   await waitFor(() =>
-    expect(button.title).toBe(`Comment on the page (${MAC ? '⌘⇧;' : 'Ctrl+Shift+;'})`),
+    expect(button.title).toBe(`New comment (${MAC ? '⌘⇧;' : 'Ctrl+Shift+;'})`),
   )
 })
 
@@ -365,9 +366,14 @@ test('the buttons say their shortcut', async () => {
   expect((await screen.findByRole('button', { name: 'Point at element' })).title).toBe(
     `Point at an element (${shortcutLabel('pick')})`,
   )
-  expect(screen.getByRole('button', { name: 'Comment' }).title).toBe(
-    `Comment on the page (${shortcutLabel('comment')})`,
-  )
+  const comments = screen.getByRole('button', { name: 'Comments' })
+  expect(comments.title).toBe(`Comments (${shortcutLabel('panel')})`)
+  expect(comments.getAttribute('aria-keyshortcuts')).toBeTruthy()
+
+  fireEvent.click(comments)
+  const start = screen.getByRole('button', { name: 'New comment' })
+  expect(start.title).toBe(`New comment (${shortcutLabel('comment')})`)
+  expect(start.getAttribute('aria-keyshortcuts')).toBeTruthy()
 })
 
 test('in the message box, the shortcut picks an element for the message', async () => {
@@ -623,4 +629,26 @@ test('from no comment open, the previous one is the oldest', async () => {
     press('ArrowUp')
     expect(opened()).toBe('Older')
   })
+})
+
+test('the panel shortcut does what Comments does: the threads that need the reader, any tool stopped', async () => {
+  const question = [
+    { author: 'claude' as const, body: 'Which colour?', at: '2026-01-01T10:00:00.000Z' },
+  ]
+  fakeServer([
+    comment({ id: 'c1', route: '/other', state: 'asking', messages: question }),
+    comment({ id: 'c2', route: '/other', state: 'asking', messages: question }),
+  ])
+  renderWidget()
+  await screen.findByRole('button', { name: 'Comments, 2 threads need you' })
+  fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
+
+  press('Enter')
+
+  const panel = await screen.findByTestId('annotant-panel')
+  expect(panel.hasAttribute('inert')).toBe(false)
+  expect(within(panel).getByRole('heading', { name: 'All comments' })).toBeTruthy()
+  expect(
+    within(panel).getByRole('radio', { name: 'Needs you' }).getAttribute('aria-checked'),
+  ).toBe('true')
 })

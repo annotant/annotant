@@ -10,7 +10,7 @@ import {
 import { drawingImage } from '../src/drawing'
 import type { NewReviewComment, ReviewArea, ReviewComment } from '../src/domain'
 import { comment, fakeServer, openPanel } from './server'
-import { renderWidget } from './widget'
+import { renderWidget, startPageComment } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
 const PAGE = `
@@ -677,7 +677,7 @@ test('Clear takes every line back, and Escape leaves the drawing', async () => {
 
 test('a drawing made from a page comment keeps what the reader wrote, and goes with its removal', async () => {
   renderCards()
-  fireEvent.click(await screen.findByRole('button', { name: 'Comment' }))
+  await startPageComment()
   const text = await screen.findByRole('textbox', { name: 'What should change?' })
   fireEvent.change(text, { target: { value: 'This goes there' } })
 
