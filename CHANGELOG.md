@@ -9,6 +9,8 @@ released to the `stable` branch.
 
 ## 0.4.0 - 2026-10-30
 
+https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1
+
 ### Added
 
 - **The widget follows your app's light and dark theme.** It has a dark
