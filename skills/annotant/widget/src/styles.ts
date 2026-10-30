@@ -368,8 +368,10 @@ code { font-family: var(--cb-mono); }
 .an-option--on .an-option-box { border-color: var(--cb-accent); background: var(--cb-accent); color: var(--cb-on-accent); }
 .an-option-box svg { width: 12px; height: 12px; }
 .an-message-time { font-size: 11px; color: var(--cb-muted); font-variant-numeric: tabular-nums; }
-.an-working { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cb-accent); }
-.an-working span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Two lines at most, then an ellipsis, long words broken; the spinner (16px) sits beside the first line (18px). */
+.an-working { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; color: var(--cb-accent); }
+.an-working .an-spinner { margin-top: 1px; }
+.an-working span { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 /* Read by screen readers only. */
 .an-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* One line, the latest step: the previous one leaves right, the new one enters left. */

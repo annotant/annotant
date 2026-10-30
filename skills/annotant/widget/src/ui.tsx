@@ -171,14 +171,15 @@ export function Chip({
 }
 
 /**
- * The date and time in the reader's preferred languages (`navigator.languages`),
- * not the browser's interface one: `Intl` takes the first it supports. An empty
- * list, or one `Intl` rejects (a tag the page made up), → the default locale.
+ * The date and time (or what `options` asks for) in the reader's preferred
+ * languages (`navigator.languages`), not the browser's interface one: `Intl`
+ * takes the first it supports. An empty list, or one `Intl` rejects (a tag the
+ * page made up), → the default locale.
  */
 export function dateFormat(
   languages: readonly string[] | undefined = navigator.languages,
+  options: Intl.DateTimeFormatOptions = { dateStyle: 'short', timeStyle: 'short' },
 ) {
-  const options: Intl.DateTimeFormatOptions = { dateStyle: 'short', timeStyle: 'short' }
   try {
     return new Intl.DateTimeFormat(languages?.length ? languages : undefined, options)
   } catch {
@@ -186,15 +187,70 @@ export function dateFormat(
   }
 }
 
+/** Like `dateFormat`, for how long ago: _5 min ago_, _yesterday_. */
+function relativeFormat(languages: readonly string[] | undefined) {
+  const options: Intl.RelativeTimeFormatOptions = { numeric: 'auto', style: 'short' }
+  try {
+    return new Intl.RelativeTimeFormat(languages?.length ? languages : undefined, options)
+  } catch {
+    return new Intl.RelativeTimeFormat(undefined, options)
+  }
+}
+
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
+const DAY = 24 * HOUR
+
+/**
+ * How long before `now` `date` is, in the reader's languages: _now_ under a
+ * minute (or ahead of `now`: another clock), then minutes, hours, and whole
+ * 24-hour days (_yesterday_, _2 days ago_); from a week on, the short date
+ * alone, without the time.
+ */
+export function relativeDate(
+  date: Date,
+  now: number,
+  languages: readonly string[] | undefined = navigator.languages,
+) {
+  const ago = Math.max(0, now - date.getTime())
+  if (ago >= 7 * DAY) return dateFormat(languages, { dateStyle: 'short' }).format(date)
+  const relative = relativeFormat(languages)
+  if (ago < MINUTE) return relative.format(0, 'second')
+  if (ago < HOUR) return relative.format(-Math.floor(ago / MINUTE), 'minute')
+  if (ago < DAY) return relative.format(-Math.floor(ago / HOUR), 'hour')
+  return relative.format(-Math.floor(ago / DAY), 'day')
+}
+
 // Built on the first date shown, then kept for the page's life.
 let dates: Intl.DateTimeFormat | undefined
 
-export function DateTime({ at, className }: { at: string; className?: string }) {
+export function DateTime({
+  at,
+  now,
+  className,
+}: {
+  at: string
+  /** Given, the date shows relative to it, the full one in the tooltip. */
+  now?: number
+  className?: string
+}) {
   const date = new Date(at)
-  return (
+  // `format` throws on an invalid date: a hand-edited comments file shows it as is.
+  if (Number.isNaN(date.getTime())) {
+    return (
+      <time className={className} dateTime={at}>
+        {at}
+      </time>
+    )
+  }
+  const full = (dates ??= dateFormat()).format(date)
+  return now === undefined ? (
     <time className={className} dateTime={at}>
-      {/* `format` throws on an invalid date: a hand-edited comments file shows it as is. */}
-      {Number.isNaN(date.getTime()) ? at : (dates ??= dateFormat()).format(date)}
+      {full}
+    </time>
+  ) : (
+    <time className={className} dateTime={at} title={full}>
+      {relativeDate(date, now)}
     </time>
   )
 }
