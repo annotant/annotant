@@ -124,6 +124,48 @@ test('each answer lists the files its own run wrote, and only those', async (t) 
   )
 })
 
+test('a question lists the files written before it, the answer after only its own', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 1,
+    id: 'a',
+    kind: 'edit',
+    label: 'src/a.ts',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'Which blue?', { question: true })
+  await update(comments, comment.id, { followUp: 'Navy' })
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 2,
+    id: 'b',
+    kind: 'edit',
+    label: 'src/b.ts',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'Navy it is.')
+  const [saved] = await comments.readAll()
+  assert.deepEqual(
+    saved.messages.filter((m) => m.author === 'claude').map((m) => m.changed),
+    [['src/a.ts'], ['src/b.ts']],
+  )
+})
+
+test('an answer is filed whatever stray lines the step file holds', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await mkdir(project.progressDir, { recursive: true })
+  await appendFile(
+    path.join(project.progressDir, `${comment.id}.jsonl`),
+    'null\n12\n{"at":1,"id":"a","kind":"edit","label":"src/a.ts","state":"done"}\n{"at":2,"id":"b","kind":"write","state":"done"}\n',
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  assert.equal(saved.state, 'resolved')
+  assert.deepEqual(lastOf(saved.messages).changed, ['src/a.ts'])
+})
+
 test('a question leaves the comment open, waiting on the reader', async (t) => {
   const { comments, comment } = await setUp(t)
   const asked = await comments.answer(comment.id, 'Which blue?', { question: true })

@@ -667,3 +667,32 @@ test('each answer lists the files its own run changed, a long list folded into a
       .map((item) => item.textContent),
   ).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
 })
+
+test('a question lists the files its run changed, three by name before they fold', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      state: 'asking',
+      messages: [
+        {
+          author: 'claude',
+          body: 'Which blue?',
+          at,
+          run: 'r1',
+          question: true,
+          changed: ['a.ts', 'b.ts', 'c.ts'],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const list = await screen.findByRole('list', { name: '3 files changed' })
+  expect(
+    within(list)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['a.ts', 'b.ts', 'c.ts'])
+  expect(within(screen.getByTestId('an-changed')).queryByRole('button')).toBeNull()
+})

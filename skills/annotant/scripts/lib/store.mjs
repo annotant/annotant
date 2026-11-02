@@ -44,7 +44,7 @@ const NARRATION_KINDS = new Set(['thinking', 'message'])
 const writtenBy = (steps) => [
   ...new Set(
     steps
-      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed')
+      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed' && s.label)
       .map((s) => s.label),
   ),
 ]
@@ -130,6 +130,8 @@ export async function readProgress(project, id, { history = false } = {}) {
     } catch {
       continue
     }
+    // A line cut short may still parse, as a number or null: not a step.
+    if (typeof step !== 'object' || step === null) continue
     const started = step.id ? byTool.get(step.id) : undefined
     if (started) {
       Object.assign(started, step, { at: started.at })

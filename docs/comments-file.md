@@ -108,7 +108,7 @@ copy.
 | `question` | `true`, Claude only | A question rather than an answer. |
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
-| `changed` | string[], Claude only | The files the run it closes (an answer or a question) wrote, relative to the repository, each once, as `cancellation.changed` counts them; absent when it wrote none. The widget lists them under the message, folded into a count past 3. |
+| `changed` | string[], Claude only | The files the run it closes (an answer or a question) wrote, each once, as `cancellation.changed` counts them: relative to the project, a file outside it by its name alone; absent when it wrote none. The widget lists them under the message, folded into a count past 3. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
 | `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. Older messages may hold several. |
@@ -178,9 +178,9 @@ stateDiagram-v2
 | Move | Trigger | `by` | Also writes |
 | --- | --- | --- | --- |
 | `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out, their `images` as absolute paths) and `cancellation`; `url`, `elided` and `cancellation` only when set. |
-| `working → asking` | `ask.mjs` | agent | A `claude` message with `question`, `run` and `changed`. |
-| `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run` and `changed`. |
-| `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run` and `changed`. |
+| `working → asking` | `ask.mjs` | agent | A `claude` message with `question`, `run`, and `changed` when it wrote files. |
+| `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`, and `changed` when it wrote files. |
+| `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`, and `changed` when it wrote files. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
 | `working → stopped` | `hook.mjs ended`, run by the hooks once the comment's agent ended its turn without answering or asking, on a run it claimed or that names no agent | agent | The `cancellation`, with the `run`. |
 | `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` or `area` | reader | A `reader` message, with `sentAt`. |
@@ -290,7 +290,8 @@ one line each.
 `<id>.jsonl` exists only while a run is in progress. When the run ends
 (`ask.mjs`, `resolve.mjs`, a stop, the reader resolving), the store keeps
 the files it wrote in the comments file (the `changed` of Claude's message
-for an answer or a question, of the cancellation for a stop), then moves its
+for an answer or a question, of the cancellation for a stop; nowhere when the
+reader resolves it, with no message to file them under), then moves its
 lines to `<id>.history.jsonl` with a dev build of the widget, or drops them,
 and the hooks add the ending script's own step, done, to the history.
 

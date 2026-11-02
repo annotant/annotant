@@ -169,7 +169,7 @@ export interface ReviewMessage {
   options?: ReviewOption[]
   /** With `options`: the reader may pick several. */
   multiple?: boolean
-  /** Claude only: the files the run it closes wrote, relative to the repo; absent when none. */
+  /** Claude only: the files the run it closes wrote, from the project (outside it, their name); absent when none. */
   changed?: string[]
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
