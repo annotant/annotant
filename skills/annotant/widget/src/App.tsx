@@ -411,8 +411,6 @@ function Message({
 }
 
 /** Up to this many files show by name under an answer; more fold into a count. */
-const FILES_SHOWN = 3
-
 const NONE: string[] = []
 
 /** What the run did to a file: its icon, in its colour, and the word that says it. */
@@ -423,8 +421,8 @@ const CHANGES = {
 } as const
 
 /**
- * The files the run behind Claude's message wrote, under it: by name when they
- * are few, else folded into a count that opens on a click. Each opens in the
+ * The files the run behind Claude's message wrote, under it: by name when it
+ * wrote one, else folded into a count that opens on a click. Each opens in the
  * project's editor, once the server said where the project is; one out of
  * the project is marked external.
  */
@@ -442,7 +440,7 @@ function ChangedFiles({
   root: string | undefined
 }) {
   const [open, setOpen] = useState(false)
-  const folds = files.length > FILES_SHOWN
+  const folds = files.length > 1
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
   return (
     <div className="an-changed" data-testid="an-changed">

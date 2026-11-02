@@ -617,7 +617,7 @@ test('the list keeps each thread its date', async () => {
   expect((await screen.findByTestId('an-summary')).querySelector('time')).not.toBeNull()
 })
 
-test('each answer lists the files its own run changed, a long list folded into a count', async () => {
+test('each answer lists the files its own run changed, folded into a count past one', async () => {
   const at = '2026-01-01T10:00:00.000Z'
   fakeServer([
     comment({
@@ -651,6 +651,7 @@ test('each answer lists the files its own run changed, a long list folded into a
   expect(lists).toHaveLength(2)
   const [first, second] = lists
   if (!first || !second) throw new Error('two lists expected')
+  fireEvent.click(within(first).getByRole('button', { name: '2 files changed' }))
   expect(
     within(first)
       .getAllByRole('listitem')
@@ -668,7 +669,7 @@ test('each answer lists the files its own run changed, a long list folded into a
   ).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
 })
 
-test('a question lists the files its run changed, three by name before they fold', async () => {
+test('a question lists the file its run changed by name', async () => {
   const at = '2026-01-01T10:00:00.000Z'
   fakeServer([
     comment({
@@ -680,7 +681,7 @@ test('a question lists the files its run changed, three by name before they fold
           at,
           run: 'r1',
           question: true,
-          changed: ['a.ts', 'b.ts', 'c.ts'],
+          changed: ['a.ts'],
         },
       ],
     }),
@@ -688,12 +689,12 @@ test('a question lists the files its run changed, three by name before they fold
   openThread('c1')
   renderWidget()
 
-  const list = await screen.findByRole('list', { name: '3 files changed' })
+  const list = await screen.findByRole('list', { name: '1 file changed' })
   expect(
     within(list)
       .getAllByRole('listitem')
       .map((item) => item.textContent),
-  ).toEqual(['a.ts', 'b.ts', 'c.ts'])
+  ).toEqual(['a.ts'])
   expect(within(screen.getByTestId('an-changed')).queryByRole('button')).toBeNull()
 })
 
@@ -760,7 +761,8 @@ test('a file out of the project is marked external, its path shown on hover', as
   openThread('c1')
   renderWidget()
 
-  const notes = await screen.findByRole('link', { name: 'notes.md' })
+  fireEvent.click(await screen.findByRole('button', { name: '2 files changed' }))
+  const notes = screen.getByRole('link', { name: 'notes.md' })
   expect(notes.getAttribute('href')).toBe('vscode://file/tmp/plan/notes.md:1')
   const items = screen.getAllByRole('listitem')
   expect(within(items[0]!).queryByText('external')).toBeNull()
@@ -793,7 +795,8 @@ test('each changed file says whether the run added, modified or deleted it', asy
   openThread('c1')
   renderWidget()
 
-  const list = await screen.findByRole('list', { name: '3 files changed' })
+  fireEvent.click(await screen.findByRole('button', { name: '3 files changed' }))
+  const list = within(screen.getByTestId('an-changed')).getByRole('list')
   expect(
     within(list)
       .getAllByRole('img')

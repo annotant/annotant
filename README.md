@@ -283,8 +283,8 @@ floats or is docked, hold for every tab of the app and the next sessions.
   Claude Code settings.
   Cancelling stops the agent and lists the files it had already changed; edit
   the comment and send it again to hand it to a new agent.
-- Once answered: the files the run changed, under its answer (a count past
-  three, which opens on a click), and reply in the thread to follow up,
+- Once answered: the files the run changed, under its answer (a count when
+  there are several, which opens on a click), and reply in the thread to follow up,
   reusing the same agent and its context when it is still around. A click on
   a file opens it in VS Code; `editor` in `.annotant.json` names another
   (`cursor`, `windsurf`, `zed`, `vscode-insiders`), a URL of your editor's
