@@ -413,6 +413,15 @@ function Message({
 /** Up to this many files show by name under an answer; more fold into a count. */
 const FILES_SHOWN = 3
 
+const NONE: string[] = []
+
+/** What the run did to a file: its icon, in its colour, and the word that says it. */
+const CHANGES = {
+  added: { icon: 'file-plus', label: 'Added' },
+  modified: { icon: 'file-text', label: 'Modified' },
+  deleted: { icon: 'file-minus', label: 'Deleted' },
+} as const
+
 /**
  * The files the run behind Claude's message wrote, under it: by name when they
  * are few, else folded into a count that opens on a click. Each opens in the
@@ -421,10 +430,14 @@ const FILES_SHOWN = 3
  */
 function ChangedFiles({
   files,
+  added = NONE,
+  deleted = NONE,
   editor,
   root,
 }: {
   files: string[]
+  added?: string[] | undefined
+  deleted?: string[] | undefined
   editor: Editor | undefined
   root: string | undefined
 }) {
@@ -448,10 +461,24 @@ function ChangedFiles({
         <ul aria-label={folds ? undefined : count}>
           {files.map((file) => {
             const { name, path, external } = locate(root, file)
+            const status = deleted.includes(file)
+              ? 'deleted'
+              : added.includes(file)
+                ? 'added'
+                : 'modified'
+            const change = CHANGES[status]
             return (
-              <li key={file}>
-                <Icon name="file-text" />
-                {editor && path ? (
+              <li key={file} className={`an-changed--${status}`}>
+                <span
+                  className="an-change"
+                  role="img"
+                  aria-label={change.label}
+                  title={change.label}
+                >
+                  <Icon name={change.icon} />
+                </span>
+                {/* A deleted file has nothing left to open. */}
+                {editor && path && status !== 'deleted' ? (
                   <a href={editorLink(editor, path)} title={`Open in ${editor.name}`}>
                     <code>{name}</code>
                   </a>
@@ -2238,6 +2265,8 @@ export default function App({ root }: { root: Element }) {
               {message.changed?.length ? (
                 <ChangedFiles
                   files={message.changed}
+                  added={message.added}
+                  deleted={message.deleted}
                   editor={editor}
                   root={projectRoot}
                 />

@@ -158,6 +158,46 @@ test('an answer names a file outside the repository by its absolute path', async
   ])
 })
 
+/** A tool step of the hooks, done. */
+const doneStep = (at, kind, label, more = {}) => ({
+  at,
+  id: `s${at}`,
+  kind,
+  label,
+  state: 'done',
+  ...more,
+})
+
+test('an answer tells the files its run added and deleted from those it modified', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    doneStep(1, 'write', 'src/new.ts', { created: true }),
+    doneStep(2, 'edit', 'src/new.ts'),
+    doneStep(3, 'edit', 'src/kept.ts'),
+    doneStep(4, 'delete', 'src/old.ts'),
+    // Added then deleted: no change at all.
+    doneStep(5, 'write', 'src/tmp.ts', { created: true }),
+    doneStep(6, 'delete', 'src/tmp.ts'),
+    // Deleted then written again: still there, changed.
+    doneStep(7, 'delete', 'src/back.ts'),
+    doneStep(8, 'write', 'src/back.ts', { created: true }),
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  const answer = lastOf(saved.messages)
+  assert.deepEqual(answer.changed, [
+    'src/new.ts',
+    'src/kept.ts',
+    'src/old.ts',
+    'src/back.ts',
+  ])
+  assert.deepEqual(answer.added, ['src/new.ts'])
+  assert.deepEqual(answer.deleted, ['src/old.ts'])
+})
+
 test('a question lists the files written before it, the answer after only its own', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)

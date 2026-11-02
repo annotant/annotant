@@ -154,6 +154,8 @@ export const MAX_PICKED = 1
  * @property {string[]} [changed] Claude only: the files the run it closes
  *   wrote, relative to the project (`../` out of it), a file outside the
  *   repository by its absolute path; absent when it wrote none.
+ * @property {string[]} [added] With `changed`: those of them the run created.
+ * @property {string[]} [deleted] With `changed`: those of them it deleted.
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
@@ -214,10 +216,12 @@ export const MAX_PICKED = 1
  * @typedef {object} Step
  * @property {number} at Milliseconds since the epoch.
  * @property {string} kind `start`, `read`, `edit`, `write`, `multiedit`,
- *   `bash`, `search`, `web`, `mcp`, `skill`, `tool`, `thinking` or `message`.
+ *   `delete`, `bash`, `search`, `web`, `mcp`, `skill`, `tool`, `thinking` or
+ *   `message`.
  * @property {string} label Empty for thinking the API redacted.
  * @property {string} [external] A file tool's, on a file outside the
  *   repository: its absolute path, `label` holding only its name.
+ * @property {true} [created] `write` only: the file did not exist before.
  * @property {string} [id] Tools only: Claude Code's tool_use_id.
  * @property {'running' | 'done' | 'failed'} [state] Tools only.
  * @property {string} [error] Why it failed.

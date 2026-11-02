@@ -68,6 +68,8 @@ export const WIDGET_CSS = `
   /* What waits on the reader on the page: the pins' ?, bright, with dark text on it. */
   --cb-orange: #fd7e14;
   --cb-on-orange: #13294b;
+  /* Orange read on the panel: a file a run modified. */
+  --cb-orange-ink: #c2570c;
   --cb-amber-bg: #fdf3e1;
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
@@ -103,6 +105,7 @@ export const WIDGET_CSS = `
   --cb-red-bg: #3a1b1e;
   --cb-orange: #fb923c;
   --cb-on-orange: #0b1828;
+  --cb-orange-ink: #fb923c;
   --cb-amber-bg: #33280f;
   --cb-amber-fg: #f2c46b;
   --cb-amber-ink: #f7e5bd;
@@ -351,6 +354,12 @@ code { font-family: var(--cb-mono); }
 .an-changed li a { min-width: 0; color: inherit; text-decoration: none; }
 .an-changed li a:hover { color: var(--cb-accent); text-decoration: underline; text-underline-offset: 2px; }
 .an-changed svg { width: 14px; height: 14px; flex-shrink: 0; }
+/* What the run did to the file, in the icon's colour: added, modified, deleted. */
+.an-change { display: inline-flex; flex-shrink: 0; }
+.an-changed--added .an-change { color: var(--cb-green); }
+.an-changed--modified .an-change { color: var(--cb-orange-ink); }
+.an-changed--deleted .an-change { color: var(--cb-red); }
+.an-changed--deleted code { text-decoration: line-through; }
 .an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
 .an-changed-toggle:hover { color: var(--cb-text); }
 .an-changed-toggle svg { transform: rotate(-90deg); transition: transform .15s; }

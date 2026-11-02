@@ -768,3 +768,41 @@ test('a file out of the project is marked external, its path shown on hover', as
     '/tmp/plan/notes.md',
   )
 })
+
+test('each changed file says whether the run added, modified or deleted it', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/new.ts', 'src/App.tsx', 'src/old.ts'],
+            added: ['src/new.ts'],
+            deleted: ['src/old.ts'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const list = await screen.findByRole('list', { name: '3 files changed' })
+  expect(
+    within(list)
+      .getAllByRole('img')
+      .map((icon) => icon.getAttribute('aria-label')),
+  ).toEqual(['Added', 'Modified', 'Deleted'])
+  // A deleted file has nothing left to open.
+  expect(
+    within(list)
+      .getAllByRole('link')
+      .map((link) => link.textContent),
+  ).toEqual(['src/new.ts', 'src/App.tsx'])
+})

@@ -37,19 +37,40 @@ const WRITE_KINDS = new Set(['edit', 'write', 'multiedit'])
 const NARRATION_KINDS = new Set(['thinking', 'message'])
 
 /**
- * The files the steps wrote, or are writing: a failed write changed nothing;
- * one still running, or cut short by a stop, may have. A file outside the
- * repository by its absolute path, its name alone telling nothing of where.
+ * The files the steps changed, or are changing, each with what the run did to
+ * it in the end: a failed write changed nothing; one still running, or cut
+ * short by a stop, may have. A file the run added then deleted is no change.
+ * A file outside the repository by its absolute path, its name alone telling
+ * nothing of where.
  * @param {import('./format.mjs').Step[]} steps
  */
-const writtenBy = (steps) => [
-  ...new Set(
-    steps
-      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed')
-      .map((s) => s.external ?? s.label)
-      .filter(Boolean),
-  ),
-]
+function changesOf(steps) {
+  /** @type {Map<string, 'added' | 'modified' | 'deleted'>} */
+  const files = new Map()
+  for (const step of steps) {
+    const file = step.external ?? step.label
+    if (!file || step.state === 'failed') continue
+    const before = files.get(file)
+    if (step.kind === 'delete') {
+      if (before === 'added') files.delete(file)
+      else files.set(file, 'deleted')
+    } else if (WRITE_KINDS.has(step.kind)) {
+      // Deleted then written again, it is still there: changed.
+      const created = step.created && before === undefined
+      files.set(file, created || before === 'added' ? 'added' : 'modified')
+    }
+  }
+  const having = (/** @type {string} */ status) =>
+    [...files].filter(([, is]) => is === status).map(([file]) => file)
+  return {
+    changed: [...files.keys()],
+    added: having('added'),
+    deleted: having('deleted'),
+  }
+}
+
+/** The files the steps changed, or are changing. @param {import('./format.mjs').Step[]} steps */
+const writtenBy = (steps) => changesOf(steps).changed
 
 /** Waiting for an agent, or worked on by one: what agents and the server act on. */
 export const isActive = (comment) =>
@@ -433,7 +454,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           move(comment, 'working', { by: 'agent', run: nextRunId(comment) })
         }
         const run = currentRun(comment)
-        const changed = writtenBy(await readProgress(project, id))
+        const { changed, added, deleted } = changesOf(await readProgress(project, id))
         move(
           comment,
           question ? 'asking' : wasResolved(comment) ? 'answered' : 'resolved',
@@ -448,6 +469,8 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               ...(question && options?.length ? { options } : {}),
               ...(question && options?.length && multiple ? { multiple: true } : {}),
               ...(changed.length ? { changed } : {}),
+              ...(added.length ? { added } : {}),
+              ...(deleted.length ? { deleted } : {}),
             },
           },
         )

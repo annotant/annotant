@@ -61,7 +61,8 @@ const TEXT_ON = {
   'on-accent': ['accent', 'accent-strong'],
   surface: ['text', 'red'],
   red: ['surface', 'red-bg'],
-  green: ['green-bg'],
+  green: ['green-bg', 'surface'],
+  'orange-ink': ['surface'],
   'amber-fg': ['amber-bg'],
   'amber-ink': ['amber-bg', 'surface'],
 }

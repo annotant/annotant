@@ -108,7 +108,8 @@ copy.
 | `question` | `true`, Claude only | A question rather than an answer. |
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
-| `changed` | string[], Claude only | The files the run it closes (an answer or a question) wrote, each once, as `cancellation.changed` counts them: relative to the project (`../api/x.ts` out of it, in the repository), a file outside the repository by its absolute path; absent when it wrote none. The widget lists them under the message, folded into a count past 3, each a link to the project's editor; one out of the project shows an _external_ badge, its full path on hover. |
+| `changed` | string[], Claude only | The files the run it closes (an answer or a question) wrote, each once, as `cancellation.changed` counts them: relative to the project (`../api/x.ts` out of it, in the repository), a file outside the repository by its absolute path; absent when it wrote none. The widget lists them under the message, folded into a count past 3, each a link to the project's editor (none for a deleted file), its icon green when added, orange when modified, red when deleted; one out of the project shows an _external_ badge, its full path on hover. |
+| `added`, `deleted` | string[], with `changed` | Those of `changed` the run created (a `write` with `created`) or deleted (a `delete` step), by what it did last: a file it added then deleted is no change, one it deleted then wrote again is modified. Absent when empty. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
 | `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. Older messages may hold several. |
@@ -278,7 +279,7 @@ one line each.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `at` | number | Milliseconds since the epoch. |
-| `kind` | string | `start` (the claim), `read`, `edit`, `write`, `multiedit`, `bash`, `search`, `web`, `mcp`, `skill`, `tool` (any other tool), `thinking`, `message`. |
+| `kind` | string | `start` (the claim), `read`, `edit`, `write`, `multiedit`, `delete` (a file `rm`, `git rm` or `unlink` removed, one step each, after its `bash` step), `bash`, `search`, `web`, `mcp`, `skill`, `tool` (any other tool), `thinking`, `message`. |
 | `label` | string | The file, from the project; the command's description; the pattern, the host, `server · tool`… Empty for thinking the API redacted. Up to 400 characters for thinking and messages. |
 | `id` | string, tools only | Claude Code's `tool_use_id`: the debug panel finds the call in the transcripts with it. |
 | `state` | `running`, `done` or `failed`, tools only | |
@@ -286,6 +287,7 @@ one line each.
 | `run` | `r1`, `r2`… | The run it belongs to: the hooks write it from `claim.mjs`'s output, and the store adds it to untagged steps when it archives them. |
 | `agent` | string | The Claude Code agent that called the tool (`main` for a session's main loop). Runs of one comment may have different agents. |
 | `model`, `complexity` | `start` only, optional | As on the `working` event: the widget reads "Started on haiku". |
+| `created` | `true`, optional, `write` only | The file did not exist before it. |
 | `external` | string, optional | A file tool's (`read`, `edit`, `write`, `multiedit`) on a file outside the repository: its absolute path, `label` holding only its name. |
 
 `<id>.jsonl` exists only while a run is in progress. When the run ends

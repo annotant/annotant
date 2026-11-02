@@ -171,6 +171,10 @@ export interface ReviewMessage {
   multiple?: boolean
   /** Claude only: the files the run it closes wrote, from the project (outside it, their name); absent when none. */
   changed?: string[]
+  /** With `changed`: those of them the run created. */
+  added?: string[]
+  /** With `changed`: those of them the run deleted. */
+  deleted?: string[]
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */

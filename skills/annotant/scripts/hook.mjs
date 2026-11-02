@@ -21,7 +21,7 @@
 // found; agents may edit outside the project (`editable` such as `../api`).
 // A hook never fails the agent: on any error, it lets the tool run.
 import { createHash } from 'node:crypto'
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from './lib/filelock.mjs'
 import { currentRun, parseFile } from './lib/format.mjs'
@@ -70,6 +70,18 @@ const IN_PLACE = /\b(?:sed|perl)\s+(?:-\S+\s+)*-[\w-]*i/
 const CAT_INTO = /\bcat\s*>>?\s*(\S+)/
 const TEE = /\btee\b((?:\s+[^\s|;&<>]+)*)/
 const MAX_LABEL = 80
+// A command that deletes files, and its arguments: the files gone once it ran
+// are recorded as deleted. Best effort: a glob or a `cd` before it is not
+// followed, nor `mv`.
+const DELETE = /^\s*(?:sudo\s+)?(?:git\s+rm|rm|unlink)\b(.*)$/
+const GLOB = /[*?[\]{}$`]/
+
+/** @param {string} file */
+const exists = (file) =>
+  access(file).then(
+    () => true,
+    () => false,
+  )
 
 /** @param {string} name */
 function flag(name) {
@@ -292,6 +304,24 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     }
   }
 
+  /**
+   * The files `command` names to delete, absolute: `rm`, `git rm`, `unlink`,
+   * their options and globs left out.
+   * @param {string} command
+   */
+  function deletedBy(command) {
+    return command.split(/&&|\|\||[;|\n]/).flatMap((segment) => {
+      const args = DELETE.exec(segment)?.[1]
+      if (args === undefined) return []
+      return args
+        .trim()
+        .split(/\s+/)
+        .map(unquote)
+        .filter((word) => word && !word.startsWith('-') && !GLOB.test(word))
+        .map((word) => path.resolve(root, word))
+    })
+  }
+
   /** The agent's own scripts pass: an answer may quote anything. */
   function writesFromBash(command) {
     if (CLAIM.test(command) || RESOLVE.test(command)) return false
@@ -407,6 +437,9 @@ function hooksFor({ comment, root, lockRoot, agent }) {
         const deny = await lockTarget(target, step)
         if (deny) return deny
       }
+      // A file Write makes, not one it overwrites: the run added it.
+      const written = tool === 'Write' ? textOf(input, 'file_path') : undefined
+      if (written && !(await exists(path.resolve(root, written)))) step.created = true
       await record([{ ...step, state: 'running' }])
       return undefined
     },
@@ -442,7 +475,15 @@ function hooksFor({ comment, root, lockRoot, agent }) {
         await unlock('@build')
         await log('build ended: released the build lock')
       }
-      await record([step])
+      /** @type {Step[]} */
+      const deleted = []
+      if (command && !failed) {
+        for (const file of deletedBy(command)) {
+          if (!(await exists(file)))
+            deleted.push({ at: step.at, ...fileStep('delete', file), state: 'done' })
+        }
+      }
+      await record([step, ...deleted])
     },
 
     async stop() {
