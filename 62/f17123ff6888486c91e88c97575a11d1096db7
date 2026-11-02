@@ -1,0 +1,23 @@
+skills/annotant/widget/src/App.tsx
+  s_a080a6fcc49e9f::t_b5cdab6f70ee10 811,813
+skills/annotant/widget/test/panel.spec.tsx
+  s_a080a6fcc49e9f::t_b5cdab6f70ee10 7,9-11,13
+skills/annotant/widget/test/server.ts
+  s_a080a6fcc49e9f::t_b5cdab6f70ee10 144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62f17123ff6888486c91e88c97575a11d1096db7",
+  "prompts": {},
+  "sessions": {
+    "s_a080a6fcc49e9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e345a490-8561-4b05-b07c-1ede756167c4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Kevin Manson <kevin.manson@qohash.com>"
+    }
+  }
+}
