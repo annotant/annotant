@@ -283,8 +283,9 @@ floats or is docked, hold for every tab of the app and the next sessions.
   Claude Code settings.
   Cancelling stops the agent and lists the files it had already changed; edit
   the comment and send it again to hand it to a new agent.
-- Once answered: reply in the thread to follow up, reusing the same agent and
-  its context when it is still around.
+- Once answered: the files the run changed, under its answer (a count past
+  three, which opens on a click), and reply in the thread to follow up,
+  reusing the same agent and its context when it is still around.
 - **Links in the thread**: the URLs a message cites, and its issues (`#12`,
   `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
   remote is on GitHub or GitLab, open in a new tab.

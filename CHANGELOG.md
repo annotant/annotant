@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **Each answer lists the files its run changed.** Under Claude's answer or
+  question, the thread names the files that run wrote, from your project;
+  past three, a count that opens on a click. A run that changed nothing shows
+  nothing. (#220)
+
 ## 0.4.0 - 2026-10-30
 
 https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1
