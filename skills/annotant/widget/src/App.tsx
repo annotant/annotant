@@ -125,7 +125,7 @@ import {
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
-import { editorLink, type Editor } from './editor'
+import { editorLink, locate, type Editor } from './editor'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -416,7 +416,8 @@ const FILES_SHOWN = 3
 /**
  * The files the run behind Claude's message wrote, under it: by name when they
  * are few, else folded into a count that opens on a click. Each opens in the
- * project's editor, once the server said where the project is.
+ * project's editor, once the server said where the project is; one out of
+ * the project is marked external.
  */
 function ChangedFiles({
   files,
@@ -445,18 +446,27 @@ function ChangedFiles({
       )}
       {(!folds || open) && (
         <ul aria-label={folds ? undefined : count}>
-          {files.map((file) => (
-            <li key={file}>
-              <Icon name="file-text" />
-              {editor && root ? (
-                <a href={editorLink(editor, root, file)} title={`Open in ${editor.name}`}>
-                  <code>{file}</code>
-                </a>
-              ) : (
-                <code>{file}</code>
-              )}
-            </li>
-          ))}
+          {files.map((file) => {
+            const { name, path, external } = locate(root, file)
+            return (
+              <li key={file}>
+                <Icon name="file-text" />
+                {editor && path ? (
+                  <a href={editorLink(editor, path)} title={`Open in ${editor.name}`}>
+                    <code>{name}</code>
+                  </a>
+                ) : (
+                  <code>{name}</code>
+                )}
+                {external && (
+                  // Out of the project: the badge tells where, on hover.
+                  <span className="an-external" title={path ?? file}>
+                    external
+                  </span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

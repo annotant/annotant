@@ -239,18 +239,23 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     }
   }
 
-  /** A path as the reader sees it: from the project, else its name. */
-  function shown(file = '') {
+  /**
+   * A file tool's step: the file as the reader sees it, from the project, else
+   * its name, and outside the repository its absolute path (`external`) too.
+   * @param {string} kind
+   * @param {string} file
+   */
+  function fileStep(kind, file) {
     const full = path.resolve(root, file)
     return within(lockRoot, full) === undefined
-      ? path.basename(file)
-      : path.relative(root, full)
+      ? { kind, label: path.basename(file), external: full }
+      : { kind, label: path.relative(root, full) }
   }
 
   /**
    * @param {string} tool
    * @param {Record<string, unknown>} input
-   * @returns {{ kind: string, label: string }}
+   * @returns {{ kind: string, label: string, external?: string }}
    */
   function describe(tool, input) {
     const text = (/** @type {string} */ key) => textOf(input, key) ?? ''
@@ -263,9 +268,9 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       case 'Edit':
       case 'Write':
       case 'MultiEdit':
-        return { kind: tool.toLowerCase(), label: shown(text('file_path')) }
+        return fileStep(tool.toLowerCase(), text('file_path'))
       case 'NotebookEdit':
-        return { kind: 'edit', label: shown(text('notebook_path')) }
+        return fileStep('edit', text('notebook_path'))
       case 'Bash':
         return CLAIM.test(text('command'))
           ? { kind: 'start', label: 'Started' }

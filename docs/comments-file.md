@@ -108,7 +108,7 @@ copy.
 | `question` | `true`, Claude only | A question rather than an answer. |
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
-| `changed` | string[], Claude only | The files the run it closes (an answer or a question) wrote, each once, as `cancellation.changed` counts them: relative to the project, a file outside it by its name alone; absent when it wrote none. The widget lists them under the message, folded into a count past 3. |
+| `changed` | string[], Claude only | The files the run it closes (an answer or a question) wrote, each once, as `cancellation.changed` counts them: relative to the project (`../api/x.ts` out of it, in the repository), a file outside the repository by its absolute path; absent when it wrote none. The widget lists them under the message, folded into a count past 3, each a link to the project's editor; one out of the project shows an _external_ badge, its full path on hover. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
 | `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. Older messages may hold several. |
@@ -140,7 +140,7 @@ copy.
 ```
 
 `at` is the time of its `stopped` event, the reader's or the agent's. `changed` lists the files the stopped
-run had written, relative to the repository: a failed write is not counted,
+run had written, as a message's `changed` names them: a failed write is not counted,
 and one cut short by the stop is. `steps` counts its tool calls, not its
 thinking or messages.
 
@@ -286,6 +286,7 @@ one line each.
 | `run` | `r1`, `r2`… | The run it belongs to: the hooks write it from `claim.mjs`'s output, and the store adds it to untagged steps when it archives them. |
 | `agent` | string | The Claude Code agent that called the tool (`main` for a session's main loop). Runs of one comment may have different agents. |
 | `model`, `complexity` | `start` only, optional | As on the `working` event: the widget reads "Started on haiku". |
+| `external` | string, optional | A file tool's (`read`, `edit`, `write`, `multiedit`) on a file outside the repository: its absolute path, `label` holding only its name. |
 
 `<id>.jsonl` exists only while a run is in progress. When the run ends
 (`ask.mjs`, `resolve.mjs`, a stop, the reader resolving), the store keeps

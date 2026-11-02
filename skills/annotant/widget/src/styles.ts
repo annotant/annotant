@@ -347,6 +347,7 @@ code { font-family: var(--cb-mono); }
 .an-changed ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .an-changed li { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .an-changed li code { overflow-wrap: anywhere; }
+.an-external { flex-shrink: 0; padding: 0 6px; border: 1px solid var(--cb-border); border-radius: 999px; font-size: 11px; line-height: 16px; cursor: help; }
 .an-changed li a { min-width: 0; color: inherit; text-decoration: none; }
 .an-changed li a:hover { color: var(--cb-accent); text-decoration: underline; text-underline-offset: 2px; }
 .an-changed svg { width: 14px; height: 14px; flex-shrink: 0; }

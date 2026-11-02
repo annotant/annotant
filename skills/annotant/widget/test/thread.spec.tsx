@@ -737,3 +737,34 @@ test('a changed file is no link when the project turned the editor off', async (
   await screen.findByText('src/App.tsx')
   expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
 })
+
+test('a file out of the project is marked external, its path shown on hover', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/App.tsx', '/tmp/plan/notes.md'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const notes = await screen.findByRole('link', { name: 'notes.md' })
+  expect(notes.getAttribute('href')).toBe('vscode://file/tmp/plan/notes.md:1')
+  const items = screen.getAllByRole('listitem')
+  expect(within(items[0]!).queryByText('external')).toBeNull()
+  expect(within(items[1]!).getByText('external').getAttribute('title')).toBe(
+    '/tmp/plan/notes.md',
+  )
+})

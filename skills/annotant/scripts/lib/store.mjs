@@ -38,14 +38,16 @@ const NARRATION_KINDS = new Set(['thinking', 'message'])
 
 /**
  * The files the steps wrote, or are writing: a failed write changed nothing;
- * one still running, or cut short by a stop, may have.
+ * one still running, or cut short by a stop, may have. A file outside the
+ * repository by its absolute path, its name alone telling nothing of where.
  * @param {import('./format.mjs').Step[]} steps
  */
 const writtenBy = (steps) => [
   ...new Set(
     steps
-      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed' && s.label)
-      .map((s) => s.label),
+      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed')
+      .map((s) => s.external ?? s.label)
+      .filter(Boolean),
   ),
 ]
 

@@ -297,6 +297,21 @@ test('locks files across the git repository, outside the project too', async (t)
   )
 })
 
+test('records the absolute path of a file written outside the repository', async (t) => {
+  const repo = await tempDir(t)
+  const outside = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const notes = path.join(outside, 'notes.md')
+  assert.equal(await w.tool(0, 'Write', { file_path: notes, content: 'x' }), undefined)
+  const step = (await w.progress(0)).at(-1)
+  assert.equal(step.label, 'notes.md')
+  assert.equal(step.external, notes)
+  // Inside the repository, the path from the project says where it is.
+  await w.tool(0, 'Edit', edit(path.join(repo, 'scanner/x.py')))
+  assert.equal((await w.progress(0)).at(-1).external, undefined)
+})
+
 test('keeps a lock another project of the repository holds while its comment is at work', async (t) => {
   const repo = await tempDir(t)
   const web = await world(t, 1, { lockRoot: repo })

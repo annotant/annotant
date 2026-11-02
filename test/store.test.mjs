@@ -124,6 +124,40 @@ test('each answer lists the files its own run wrote, and only those', async (t) 
   )
 })
 
+test('an answer names a file outside the repository by its absolute path', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    {
+      at: 1,
+      id: 'a',
+      kind: 'write',
+      label: 'notes.md',
+      external: '/tmp/a/notes.md',
+      state: 'done',
+    },
+    {
+      at: 2,
+      id: 'b',
+      kind: 'write',
+      label: 'notes.md',
+      external: '/tmp/b/notes.md',
+      state: 'done',
+    },
+    { at: 3, id: 'c', kind: 'edit', label: 'src/a.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  // Two files of one name stay two.
+  assert.deepEqual(lastOf(saved.messages).changed, [
+    '/tmp/a/notes.md',
+    '/tmp/b/notes.md',
+    'src/a.ts',
+  ])
+})
+
 test('a question lists the files written before it, the answer after only its own', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)

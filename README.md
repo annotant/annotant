@@ -289,7 +289,8 @@ floats or is docked, hold for every tab of the app and the next sessions.
   a file opens it in VS Code; `editor` in `.annotant.json` names another
   (`cursor`, `windsurf`, `zed`, `vscode-insiders`), a URL of your editor's
   own with `{path}` and `{line}` (`"idea://open?file={path}&line={line}"`),
-  or `false` for no link. The browser asks once before handing it over.
+  or `false` for no link. The browser asks once before handing it over. A
+  file out of the project shows an _external_ badge, its full path on hover.
 - **Links in the thread**: the URLs a message cites, and its issues (`#12`,
   `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
   remote is on GitHub or GitLab, open in a new tab.

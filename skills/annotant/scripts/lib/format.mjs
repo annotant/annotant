@@ -152,8 +152,8 @@ export const MAX_PICKED = 1
  * @property {Option[]} [options] A question only: the answers it offers.
  * @property {boolean} [multiple] With `options`: the reader may pick several.
  * @property {string[]} [changed] Claude only: the files the run it closes
- *   wrote, relative to the project, a file outside it by its name alone;
- *   absent when it wrote none.
+ *   wrote, relative to the project (`../` out of it), a file outside the
+ *   repository by its absolute path; absent when it wrote none.
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
@@ -216,6 +216,8 @@ export const MAX_PICKED = 1
  * @property {string} kind `start`, `read`, `edit`, `write`, `multiedit`,
  *   `bash`, `search`, `web`, `mcp`, `skill`, `tool`, `thinking` or `message`.
  * @property {string} label Empty for thinking the API redacted.
+ * @property {string} [external] A file tool's, on a file outside the
+ *   repository: its absolute path, `label` holding only its name.
  * @property {string} [id] Tools only: Claude Code's tool_use_id.
  * @property {'running' | 'done' | 'failed'} [state] Tools only.
  * @property {string} [error] Why it failed.

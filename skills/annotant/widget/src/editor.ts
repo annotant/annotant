@@ -40,22 +40,48 @@ export function parseEditor(setting: unknown): Editor | undefined {
   return { name: 'your editor', template: setting }
 }
 
+// `/home/…`, or Windows' `C:\…`.
+const ABSOLUTE = /^([a-z]:)?[\\/]/i
+const DRIVE = /^[a-z]:$/i
+
 /**
- * The link opening `file`, as the hooks named it from the project's `root`, in
- * `editor`, at `line`. Each part of the path encoded, its drive letter kept.
+ * A changed file as the hooks named it: from the project's `root`, `../` out of
+ * it, or by its absolute path outside the repository. `name` is what the list
+ * shows, `path` where it is (unknown until the server gave `root`), and
+ * `external` says it is not in the project.
  */
-export function editorLink(editor: Editor, root: string, file: string, line = 1) {
+export function locate(root: string | undefined, file: string) {
+  const absolute = ABSOLUTE.test(file)
+  const full = absolute ? file : root === undefined ? undefined : `${root}/${file}`
+  return {
+    name: absolute ? (file.split(/[\\/]/).at(-1) ?? file) : file,
+    path: full === undefined ? undefined : normalise(full),
+    external: absolute || /^\.\.[\\/]/.test(file),
+  }
+}
+
+/** `path` with `/` between its parts, `.` and `..` resolved: `/home/…`, `C:/…`. */
+function normalise(path: string) {
   const parts: string[] = []
-  for (const part of `${root}/${file}`.replaceAll('\\', '/').split('/')) {
+  for (const part of path.replaceAll('\\', '/').split('/')) {
     if (part === '' || part === '.') continue
     if (part === '..') parts.pop()
     else parts.push(part)
   }
-  const path = `/${parts
+  return DRIVE.test(parts[0] ?? '') ? parts.join('/') : `/${parts.join('/')}`
+}
+
+/**
+ * The link opening the file at `path`, absolute, in `editor`, at `line`. Each
+ * part of the path encoded, its drive letter kept.
+ */
+export function editorLink(editor: Editor, path: string, line = 1) {
+  const parts = path.split('/').filter(Boolean)
+  const encoded = `/${parts
     // Windows' `C:`, which editors read unencoded.
     .map((part, index) =>
-      index === 0 && /^[a-z]:$/i.test(part) ? part : encodeURIComponent(part),
+      index === 0 && DRIVE.test(part) ? part : encodeURIComponent(part),
     )
     .join('/')}`
-  return editor.template.replaceAll('{path}', path).replaceAll('{line}', String(line))
+  return editor.template.replaceAll('{path}', encoded).replaceAll('{line}', String(line))
 }

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { editorLink, parseEditor } from '../src/editor'
+import { editorLink, locate, parseEditor } from '../src/editor'
 
 test('opens in VS Code unless .annotant.json names another editor', () => {
   expect(parseEditor(undefined)?.name).toBe('VS Code')
@@ -24,14 +24,44 @@ test('takes a template of its own, never one that would run code in the page', (
 test("links the file from the project's root, its path encoded", () => {
   const vscode = parseEditor('vscode')
   if (!vscode) throw new Error('vscode expected')
-  expect(editorLink(vscode, '/work/shop', 'src/pages/Home.tsx')).toBe(
+  const open = (root: string | undefined, file: string, line?: number) => {
+    const { path } = locate(root, file)
+    return path === undefined ? undefined : editorLink(vscode, path, line)
+  }
+  expect(open('/work/shop', 'src/pages/Home.tsx')).toBe(
     'vscode://file/work/shop/src/pages/Home.tsx:1',
   )
   // A file the project's agents may edit next to it, and a name to encode.
-  expect(editorLink(vscode, '/work/shop/web', '../api/a b#1.ts', 12)).toBe(
+  expect(open('/work/shop/web', '../api/a b#1.ts', 12)).toBe(
     'vscode://file/work/shop/api/a%20b%231.ts:12',
   )
-  expect(editorLink(vscode, 'C:\\work\\shop', 'src\\App.tsx')).toBe(
+  expect(open('C:\\work\\shop', 'src\\App.tsx')).toBe(
     'vscode://file/C:/work/shop/src/App.tsx:1',
   )
+  // Outside the repository, its own path, root or not.
+  expect(open(undefined, '/tmp/notes.md')).toBe('vscode://file/tmp/notes.md:1')
+  expect(open(undefined, 'src/App.tsx')).toBeUndefined()
+})
+
+test('marks a file out of the project external, named by its name alone', () => {
+  expect(locate('/work/shop', 'src/App.tsx')).toEqual({
+    name: 'src/App.tsx',
+    path: '/work/shop/src/App.tsx',
+    external: false,
+  })
+  expect(locate('/work/shop/web', '../api/x.ts')).toEqual({
+    name: '../api/x.ts',
+    path: '/work/shop/api/x.ts',
+    external: true,
+  })
+  expect(locate('/work/shop', '/Users/me/.claude/notes.md')).toEqual({
+    name: 'notes.md',
+    path: '/Users/me/.claude/notes.md',
+    external: true,
+  })
+  expect(locate('C:\\work', 'D:\\tmp\\plan.md')).toEqual({
+    name: 'plan.md',
+    path: 'D:/tmp/plan.md',
+    external: true,
+  })
 })
