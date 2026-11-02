@@ -12,7 +12,8 @@ released to the `stable` branch.
 - **Each answer lists the files its run changed.** Under Claude's answer or
   question, the thread names the files that run wrote, from your project;
   past three, a count that opens on a click. A run that changed nothing shows
-  nothing. (#220)
+  nothing. A click on a file opens it in VS Code, or the editor `editor` names
+  in `.annotant.json`. (#220)
 
 ## 0.4.0 - 2026-10-30
 

@@ -125,6 +125,7 @@ import {
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
+import { editorLink, type Editor } from './editor'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -414,9 +415,18 @@ const FILES_SHOWN = 3
 
 /**
  * The files the run behind Claude's message wrote, under it: by name when they
- * are few, else folded into a count that opens on a click.
+ * are few, else folded into a count that opens on a click. Each opens in the
+ * project's editor, once the server said where the project is.
  */
-function ChangedFiles({ files }: { files: string[] }) {
+function ChangedFiles({
+  files,
+  editor,
+  root,
+}: {
+  files: string[]
+  editor: Editor | undefined
+  root: string | undefined
+}) {
   const [open, setOpen] = useState(false)
   const folds = files.length > FILES_SHOWN
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
@@ -438,7 +448,13 @@ function ChangedFiles({ files }: { files: string[] }) {
           {files.map((file) => (
             <li key={file}>
               <Icon name="file-text" />
-              <code>{file}</code>
+              {editor && root ? (
+                <a href={editorLink(editor, root, file)} title={`Open in ${editor.name}`}>
+                  <code>{file}</code>
+                </a>
+              ) : (
+                <code>{file}</code>
+              )}
             </li>
           ))}
         </ul>
@@ -840,7 +856,7 @@ function focusedElement() {
 
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
-  const { theme, repository } = useServerSettings()
+  const { theme, repository, root: projectRoot, editor } = useServerSettings()
   const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
@@ -2209,7 +2225,13 @@ export default function App({ root }: { root: Element }) {
                   <Markdown text={message.body} repository={repository} />
                 </div>
               )}
-              {message.changed?.length ? <ChangedFiles files={message.changed} /> : null}
+              {message.changed?.length ? (
+                <ChangedFiles
+                  files={message.changed}
+                  editor={editor}
+                  root={projectRoot}
+                />
+              ) : null}
             </Message>
           ) : (
             <Message

@@ -696,3 +696,44 @@ test('a question lists the files its run changed, three by name before they fold
   ).toEqual(['a.ts', 'b.ts', 'c.ts'])
   expect(within(screen.getByTestId('an-changed')).queryByRole('button')).toBeNull()
 })
+
+test("each changed file opens in the project's editor", async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: 'cursor' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const link = await screen.findByRole('link', { name: 'src/App.tsx' })
+  expect(link.getAttribute('href')).toBe('cursor://file/work/shop/src/App.tsx:1')
+  expect(link.getAttribute('title')).toBe('Open in Cursor')
+})
+
+test('a changed file is no link when the project turned the editor off', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: false },
+  )
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByText('src/App.tsx')
+  expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
+})
