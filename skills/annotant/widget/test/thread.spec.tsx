@@ -616,3 +616,54 @@ test('the list keeps each thread its date', async () => {
 
   expect((await screen.findByTestId('an-summary')).querySelector('time')).not.toBeNull()
 })
+
+test('each answer lists the files its own run changed, a long list folded into a count', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      state: 'answered',
+      messages: [
+        {
+          author: 'claude',
+          body: 'The title is bigger.',
+          at,
+          run: 'r1',
+          changed: ['src/data.ts', 'src/pages/Home.tsx'],
+        },
+        { author: 'reader', body: 'And the footer, everywhere', at },
+        {
+          author: 'claude',
+          body: 'Done.',
+          at,
+          run: 'r2',
+          changed: ['a.ts', 'b.ts', 'c.ts', 'd.ts'],
+        },
+        { author: 'reader', body: 'Why?', at },
+        { author: 'claude', body: 'It reads better.', at, run: 'r3' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const lists = await screen.findAllByTestId('an-changed')
+  // The answer that changed nothing shows nothing.
+  expect(lists).toHaveLength(2)
+  const [first, second] = lists
+  if (!first || !second) throw new Error('two lists expected')
+  expect(
+    within(first)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['src/data.ts', 'src/pages/Home.tsx'])
+  const toggle = within(second).getByRole('button', { name: '4 files changed' })
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(within(second).queryByRole('listitem')).toBeNull()
+  fireEvent.click(toggle)
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  expect(
+    within(second)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
+})

@@ -409,7 +409,8 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * manager's chat, it used to leave a thread open with no answer and no
      * agent, showing "Waiting for Claude" to a reader who was the one being
      * waited on. The run's steps are dropped: the comments file holds the
-     * discussion, not the agent's log.
+     * discussion, not the agent's log, and the message only the files the
+     * run wrote (`changed`).
      * A question may offer `options`, the reader picking one, or several when
      * `multiple`; they can always answer in their own words instead.
      * @param {string} id
@@ -428,6 +429,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           move(comment, 'working', { by: 'agent', run: nextRunId(comment) })
         }
         const run = currentRun(comment)
+        const changed = writtenBy(await readProgress(project, id))
         move(
           comment,
           question ? 'asking' : wasResolved(comment) ? 'answered' : 'resolved',
@@ -441,6 +443,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               ...(question ? { question: true } : {}),
               ...(question && options?.length ? { options } : {}),
               ...(question && options?.length && multiple ? { multiple: true } : {}),
+              ...(changed.length ? { changed } : {}),
             },
           },
         )

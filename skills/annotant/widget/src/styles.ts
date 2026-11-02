@@ -342,6 +342,16 @@ code { font-family: var(--cb-mono); }
 .an-bubble { max-width: 100%; padding: 8px 14px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .an-bubble--reader { background: var(--cb-accent); color: var(--cb-on-accent); border-bottom-right-radius: 4px; }
 .an-bubble--claude { width: 100%; background: var(--cb-bubble); color: var(--cb-text); }
+/* The files the run behind an answer wrote, under it: a quiet list, folded into a count when long. */
+.an-changed { display: flex; flex-direction: column; gap: 2px; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
+.an-changed ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.an-changed li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.an-changed li code { overflow-wrap: anywhere; }
+.an-changed svg { width: 14px; height: 14px; flex-shrink: 0; }
+.an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
+.an-changed-toggle:hover { color: var(--cb-text); }
+.an-changed-toggle svg { transform: rotate(-90deg); transition: transform .15s; }
+.an-changed-toggle[aria-expanded="true"] svg { transform: none; }
 .an-ask { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--cb-amber-border); border-radius: 14px; background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A URL or an issue a message cites: in its bubble's colour, underlined. */
 .an-bubble a, .an-ask a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
@@ -399,6 +409,7 @@ code { font-family: var(--cb-mono); }
 @media (prefers-reduced-motion: reduce) {
   .an-current-line--out { display: none; }
   .an-current-line--in, .an-dots i, .an-step-icon, .an-spinner { animation: none; }
+  .an-changed-toggle svg { transition: none; }
   /* The panel fades, and changes width at once. */
   .an-panel { animation-name: an-fade-in; transition: none; }
   .an-panel[data-closing] { animation-name: an-fade-out; }

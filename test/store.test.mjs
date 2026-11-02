@@ -87,6 +87,43 @@ test('an answer resolves the comment, without the run log in comments.json', asy
   assert.equal(existsSync(path.join(project.progressDir, `${comment.id}.jsonl`)), false)
 })
 
+test('each answer lists the files its own run wrote, and only those', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, id: 'a', kind: 'edit', label: 'src/data.ts', state: 'done' },
+    { at: 2, id: 'b', kind: 'write', label: 'src/pages/Home.tsx', state: 'done' },
+    { at: 3, id: 'c', kind: 'edit', label: 'src/data.ts', state: 'done' },
+    { at: 4, id: 'd', kind: 'edit', label: 'src/broken.ts', state: 'failed' },
+    { at: 5, id: 'e', kind: 'read', label: 'src/read.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  await update(comments, comment.id, { followUp: 'And the footer' })
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 6,
+    id: 'f',
+    kind: 'multiedit',
+    label: 'src/Footer.tsx',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'The footer too.')
+  await update(comments, comment.id, { followUp: 'Why blue?' })
+  await comments.answer(comment.id, 'It is the brand colour.')
+  const [saved] = await comments.readAll()
+  assert.deepEqual(
+    saved.messages.filter((m) => m.author === 'claude').map((m) => [m.run, m.changed]),
+    [
+      ['r1', ['src/data.ts', 'src/pages/Home.tsx']],
+      ['r2', ['src/Footer.tsx']],
+      // A run that wrote nothing has no field.
+      ['r3', undefined],
+    ],
+  )
+})
+
 test('a question leaves the comment open, waiting on the reader', async (t) => {
   const { comments, comment } = await setUp(t)
   const asked = await comments.answer(comment.id, 'Which blue?', { question: true })

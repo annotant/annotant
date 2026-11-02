@@ -409,6 +409,44 @@ function Message({
   )
 }
 
+/** Up to this many files show by name under an answer; more fold into a count. */
+const FILES_SHOWN = 3
+
+/**
+ * The files the run behind Claude's message wrote, under it: by name when they
+ * are few, else folded into a count that opens on a click.
+ */
+function ChangedFiles({ files }: { files: string[] }) {
+  const [open, setOpen] = useState(false)
+  const folds = files.length > FILES_SHOWN
+  const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
+  return (
+    <div className="an-changed" data-testid="an-changed">
+      {folds && (
+        <button
+          type="button"
+          className="an-changed-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <Icon name="chevron-down" />
+          {count}
+        </button>
+      )}
+      {(!folds || open) && (
+        <ul aria-label={folds ? undefined : count}>
+          {files.map((file) => (
+            <li key={file}>
+              <Icon name="file-text" />
+              <code>{file}</code>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /**
  * Claude's question, with the answers it offers. While it waits on the reader,
  * an option answers it at once, or, when several may be picked, ticks it for
@@ -2171,6 +2209,7 @@ export default function App({ root }: { root: Element }) {
                   <Markdown text={message.body} repository={repository} />
                 </div>
               )}
+              {message.changed?.length ? <ChangedFiles files={message.changed} /> : null}
             </Message>
           ) : (
             <Message

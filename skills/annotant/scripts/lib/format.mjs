@@ -151,6 +151,8 @@ export const MAX_PICKED = 1
  * @property {boolean} [question] Claude only: a question rather than an answer.
  * @property {Option[]} [options] A question only: the answers it offers.
  * @property {boolean} [multiple] With `options`: the reader may pick several.
+ * @property {string[]} [changed] Claude only: the files the run it closes
+ *   wrote, relative to the repository; absent when it wrote none.
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
