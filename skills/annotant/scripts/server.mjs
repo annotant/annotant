@@ -597,7 +597,8 @@ async function handle(req, res) {
   }
 
   // `theme` tells the widget how the app switches between light and dark
-  // (theme.ts); `repository`, where the issues a message cites are (links.tsx).
+  // (theme.ts); `repository`, where the issues a message cites are (links.tsx);
+  // `project` and `editor`, where a changed file opens (editor.ts).
   if (url.pathname === '/api/health') {
     return send(
       res,
@@ -607,6 +608,7 @@ async function handle(req, res) {
         name: config.name,
         version: WIDGET_VERSION,
         theme: config.theme,
+        editor: config.editor,
         repository: await repository,
       },
       cors,

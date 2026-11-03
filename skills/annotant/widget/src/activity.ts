@@ -35,6 +35,8 @@ export function activityOf(step: ReviewProgress | undefined): string {
   }
   if (step.state === 'running') return `${RUNNING[step.kind] ?? 'Using'} ${step.label}`
   if (step.state === 'failed') return `${stepText(step)} failed`
+  // Recorded once the file is gone: never running.
+  if (step.kind === 'delete') return `Deleted ${step.label}`
   return stepText(step).replace(/…$/, '')
 }
 

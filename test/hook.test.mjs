@@ -1,7 +1,7 @@
 // scripts/hook.mjs, run as Claude Code runs a comment's agent's hooks: the
 // event as JSON on stdin, a deny as JSON on stdout.
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
@@ -295,6 +295,125 @@ test('locks files across the git repository, outside the project too', async (t)
     (await w.tool(1, 'Edit', edit(shared))) ?? '',
     /scanner\/x\.py is being changed/,
   )
+})
+
+test('records the absolute path of a file written outside the repository', async (t) => {
+  const repo = await tempDir(t)
+  const outside = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const notes = path.join(outside, 'notes.md')
+  assert.equal(await w.tool(0, 'Write', { file_path: notes, content: 'x' }), undefined)
+  const step = (await w.progress(0)).at(-1)
+  assert.equal(step.label, 'notes.md')
+  assert.equal(step.external, notes)
+  // Inside the repository, the path from the project says where it is.
+  await w.tool(0, 'Edit', edit(path.join(repo, 'scanner/x.py')))
+  assert.equal((await w.progress(0)).at(-1).external, undefined)
+})
+
+test('marks a file a Write creates, and records the files rm deleted', async (t) => {
+  const w = await world(t, 1)
+  await w.claim(0)
+  const fresh = path.join(w.root, 'src/new.ts')
+  await w.tool(
+    0,
+    'Write',
+    { file_path: fresh, content: 'x' },
+    {
+      between: () => writeFile(fresh, 'x'),
+    },
+  )
+  // Overwritten, it was there before.
+  await w.tool(0, 'Write', { file_path: fresh, content: 'y' })
+  const old = path.join(w.root, 'src/old.ts')
+  await writeFile(old, 'x')
+  // Named, but still there once the command ran.
+  await writeFile(path.join(w.root, 'src/kept.ts'), 'x')
+  await w.tool(
+    0,
+    'Bash',
+    { command: 'rm -f src/old.ts src/*.css src/kept.ts' },
+    {
+      between: () => rm(old),
+    },
+  )
+  const steps = await w.progress(0)
+  const writes = steps.filter((step) => step.kind === 'write' && step.state === 'running')
+  assert.deepEqual(
+    writes.map((step) => step.created),
+    [true, undefined],
+  )
+  // Only what is gone, never a glob.
+  assert.deepEqual(
+    steps.filter((step) => step.kind === 'delete').map((step) => step.label),
+    ['src/old.ts'],
+  )
+})
+
+test('records as deleted only what was there and is gone', async (t) => {
+  const w = await world(t, 1)
+  await w.claim(0)
+  const at = (/** @type {string} */ file) => path.join(w.root, file)
+  await mkdir(at('src/tmp'), { recursive: true })
+  for (const file of [
+    'src/my file.ts',
+    'src/a.ts',
+    'src/b.ts',
+    'src/c.ts',
+    'src/tmp/x.ts',
+  ])
+    await writeFile(at(file), 'x')
+  const gone = (/** @type {string[]} */ ...files) => ({
+    between: () => Promise.all(files.map((file) => rm(at(file), { recursive: true }))),
+  })
+  // Never there, and a redirection: no file.
+  await w.tool(0, 'Bash', { command: 'rm -f src/never.ts 2>/dev/null' })
+  // A quoted name with a space, as one path.
+  await w.tool(0, 'Bash', { command: 'rm "src/my file.ts"' }, gone('src/my file.ts'))
+  // From the folder a `cd` went to.
+  await w.tool(0, 'Bash', { command: 'cd src && rm a.ts' }, gone('src/a.ts'))
+  // Not rm.
+  await w.tool(0, 'Bash', { command: 'rm-cache src/b.ts' }, gone('src/b.ts'))
+  // Failed past the deletion: still deleted.
+  await w.tool(
+    0,
+    'Bash',
+    { command: 'rm src/c.ts src/missing.ts' },
+    { ...gone('src/c.ts'), error: 'rm: src/missing.ts: No such file or directory' },
+  )
+  // A folder.
+  await w.tool(0, 'Bash', { command: 'rm -rf src/tmp' }, gone('src/tmp'))
+  const deletes = (await w.progress(0)).filter((step) => step.kind === 'delete')
+  assert.deepEqual(
+    deletes.map((step) => [step.label, step.folder]),
+    [
+      ['src/my file.ts', undefined],
+      ['src/a.ts', undefined],
+      ['src/c.ts', undefined],
+      ['src/tmp', true],
+    ],
+  )
+})
+
+test('refuses a deletion in the command that answers', async (t) => {
+  const w = await world(t, 1)
+  await w.claim(0)
+  await writeFile(path.join(w.root, 'old.ts'), 'x')
+  const deny = await w.tool(0, 'Bash', {
+    command: `rm old.ts && node ${SCRIPTS}resolve.mjs ${w.id(0)} --project ${w.root} "Done; rm nothing"`,
+  })
+  assert.match(deny ?? '', /command of their own/)
+  // The answer's text is not a command.
+  const answer = await w.tool(
+    0,
+    'Bash',
+    {
+      command: `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project ${w.root} "Done; rm old.ts"`,
+    },
+    { between: () => w.comments.answer(w.id(0), 'Done') },
+  )
+  assert.equal(answer, undefined)
 })
 
 test('keeps a lock another project of the repository holds while its comment is at work', async (t) => {

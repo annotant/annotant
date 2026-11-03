@@ -22,7 +22,10 @@ let server
 
 before(async (t) => {
   if (!existsSync(WIDGET)) throw new Error('build the widget first: npm run build')
-  root = await tempProject(t, { theme: { on: 'html', attribute: 'class', dark: 'dark' } })
+  root = await tempProject(t, {
+    theme: { on: 'html', attribute: 'class', dark: 'dark' },
+    editor: 'cursor',
+  })
   execFileSync('git', ['init', '-q'], { cwd: root })
   execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/shop.git'], {
     cwd: root,
@@ -152,6 +155,11 @@ test('answers the health check with the project it serves', async () => {
 test("tells the widget the app's light and dark switch", async () => {
   const health = await json(await fetch(`${base}/api/health`))
   assert.deepEqual(health.theme, { on: 'html', attribute: 'class', dark: 'dark' })
+})
+
+test('tells the widget the editor its files open in', async () => {
+  const health = await json(await fetch(`${base}/api/health`))
+  assert.equal(health.editor, 'cursor')
 })
 
 test("tells the widget the project's repository, from its origin remote", async () => {

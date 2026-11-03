@@ -169,6 +169,17 @@ export interface ReviewMessage {
   options?: ReviewOption[]
   /** With `options`: the reader may pick several. */
   multiple?: boolean
+  /**
+   * Claude only: the files the run it closes changed with its file tools or
+   * deleted with `rm`, relative to the project (`../` out of it), a file
+   * outside the repository by its absolute path, a deleted folder with a `/`
+   * at its end; absent when none.
+   */
+  changed?: string[]
+  /** With `changed`: those of them the run created. */
+  added?: string[]
+  /** With `changed`: those of them the run deleted. */
+  deleted?: string[]
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */
@@ -185,7 +196,7 @@ export interface ReviewMessage {
 
 interface ReviewCancellation {
   at: string
-  /** Files the cancelled agent had already written, relative to the repo. */
+  /** The files the cancelled agent had changed, as a message's `changed` names them. */
   changed: string[]
   steps: number
   run?: string
@@ -223,7 +234,7 @@ export interface ReviewComment {
   cancellation?: ReviewCancellation
   /** Latest tool calls of the agent working on it; never stored in the file. */
   progress?: ReviewProgress[]
-  /** Working only: its agent has written, or is writing, a file in this run; never stored in the file. */
+  /** Working only: its agent has changed, or is changing, a file in this run; never stored in the file. */
   edited?: true
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]

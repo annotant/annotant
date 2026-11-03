@@ -87,6 +87,205 @@ test('an answer resolves the comment, without the run log in comments.json', asy
   assert.equal(existsSync(path.join(project.progressDir, `${comment.id}.jsonl`)), false)
 })
 
+test('each answer lists the files its own run wrote, and only those', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, id: 'a', kind: 'edit', label: 'src/data.ts', state: 'done' },
+    { at: 2, id: 'b', kind: 'write', label: 'src/pages/Home.tsx', state: 'done' },
+    { at: 3, id: 'c', kind: 'edit', label: 'src/data.ts', state: 'done' },
+    { at: 4, id: 'd', kind: 'edit', label: 'src/broken.ts', state: 'failed' },
+    { at: 5, id: 'e', kind: 'read', label: 'src/read.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  await update(comments, comment.id, { followUp: 'And the footer' })
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 6,
+    id: 'f',
+    kind: 'multiedit',
+    label: 'src/Footer.tsx',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'The footer too.')
+  await update(comments, comment.id, { followUp: 'Why blue?' })
+  await comments.answer(comment.id, 'It is the brand colour.')
+  const [saved] = await comments.readAll()
+  assert.deepEqual(
+    saved.messages.filter((m) => m.author === 'claude').map((m) => [m.run, m.changed]),
+    [
+      ['r1', ['src/data.ts', 'src/pages/Home.tsx']],
+      ['r2', ['src/Footer.tsx']],
+      // A run that wrote nothing has no field.
+      ['r3', undefined],
+    ],
+  )
+})
+
+test('an answer names a file outside the repository by its absolute path', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    {
+      at: 1,
+      id: 'a',
+      kind: 'write',
+      label: 'notes.md',
+      external: '/tmp/a/notes.md',
+      state: 'done',
+    },
+    {
+      at: 2,
+      id: 'b',
+      kind: 'write',
+      label: 'notes.md',
+      external: '/tmp/b/notes.md',
+      state: 'done',
+    },
+    { at: 3, id: 'c', kind: 'edit', label: 'src/a.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  // Two files of one name stay two.
+  assert.deepEqual(lastOf(saved.messages).changed, [
+    '/tmp/a/notes.md',
+    '/tmp/b/notes.md',
+    'src/a.ts',
+  ])
+})
+
+/** A tool step of the hooks, done. */
+const doneStep = (at, kind, label, more = {}) => ({
+  at,
+  id: `s${at}`,
+  kind,
+  label,
+  state: 'done',
+  ...more,
+})
+
+test('an answer tells the files its run added and deleted from those it modified', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    doneStep(1, 'write', 'src/new.ts', { created: true }),
+    doneStep(2, 'edit', 'src/new.ts'),
+    doneStep(3, 'edit', 'src/kept.ts'),
+    doneStep(4, 'delete', 'src/old.ts'),
+    // Added then deleted: no change at all.
+    doneStep(5, 'write', 'src/tmp.ts', { created: true }),
+    doneStep(6, 'delete', 'src/tmp.ts'),
+    // Deleted then written again: still there, changed.
+    doneStep(7, 'delete', 'src/back.ts'),
+    doneStep(8, 'write', 'src/back.ts', { created: true }),
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  const answer = lastOf(saved.messages)
+  assert.deepEqual(answer.changed, [
+    'src/new.ts',
+    'src/kept.ts',
+    'src/old.ts',
+    'src/back.ts',
+  ])
+  assert.deepEqual(answer.added, ['src/new.ts'])
+  assert.deepEqual(answer.deleted, ['src/old.ts'])
+})
+
+test('a deleted folder stands for the files the run changed in it', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    doneStep(1, 'write', 'src/tmp/a.ts', { created: true }),
+    doneStep(2, 'edit', 'src/tmp/b.ts'),
+    doneStep(3, 'edit', 'src/tmpl.ts'),
+    doneStep(4, 'delete', 'src/tmp', { folder: true }),
+  )
+  await comments.answer(comment.id, 'Done.')
+  const answer = lastOf((await comments.readAll())[0].messages)
+  assert.deepEqual(answer.changed, ['src/tmpl.ts', 'src/tmp/'])
+  assert.deepEqual(answer.deleted, ['src/tmp/'])
+})
+
+test('a Write keeps the file it created as it ends', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // The hooks' two lines: `created` only on the one written as it started.
+  await appendProgress(
+    project,
+    comment.id,
+    {
+      at: 1,
+      id: 'w',
+      kind: 'write',
+      label: 'src/new.ts',
+      created: true,
+      state: 'running',
+    },
+    { at: 2, id: 'w', kind: 'write', label: 'src/new.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  assert.deepEqual(lastOf((await comments.readAll())[0].messages).added, ['src/new.ts'])
+})
+
+test('an answer is refused when its step file cannot be read', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // A folder where the file should be: it cannot be read.
+  await mkdir(path.join(project.progressDir, `${comment.id}.jsonl`), { recursive: true })
+  await assert.rejects(comments.answer(comment.id, 'Done.'), { code: 'EISDIR' })
+})
+
+test('a question lists the files written before it, the answer after only its own', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 1,
+    id: 'a',
+    kind: 'edit',
+    label: 'src/a.ts',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'Which blue?', { question: true })
+  await update(comments, comment.id, { followUp: 'Navy' })
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 2,
+    id: 'b',
+    kind: 'edit',
+    label: 'src/b.ts',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'Navy it is.')
+  const [saved] = await comments.readAll()
+  assert.deepEqual(
+    saved.messages.filter((m) => m.author === 'claude').map((m) => m.changed),
+    [['src/a.ts'], ['src/b.ts']],
+  )
+})
+
+test('an answer is filed whatever stray lines the step file holds', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await mkdir(project.progressDir, { recursive: true })
+  await appendFile(
+    path.join(project.progressDir, `${comment.id}.jsonl`),
+    'null\n12\n{"at":1,"id":"a","kind":"edit","label":"src/a.ts","state":"done"}\n{"at":2,"id":"b","kind":"write","state":"done"}\n',
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  assert.equal(saved.state, 'resolved')
+  assert.deepEqual(lastOf(saved.messages).changed, ['src/a.ts'])
+})
+
 test('a question leaves the comment open, waiting on the reader', async (t) => {
   const { comments, comment } = await setUp(t)
   const asked = await comments.answer(comment.id, 'Which blue?', { question: true })
