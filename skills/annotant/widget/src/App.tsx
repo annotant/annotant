@@ -760,9 +760,6 @@ interface PendingCenter {
 
 interface UiState {
   open: boolean
-  /** Kept by this tab before the layout was kept for all of them. */
-  docked?: boolean
-  width?: number
   view: View
   threadId?: string
   statusFilter: StatusFilter
@@ -925,11 +922,9 @@ export default function App({ root }: { root: Element }) {
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
   const [savedLayout] = useState(readLayout)
-  const [docked, setDocked] = useState(savedLayout.docked ?? saved?.docked ?? false)
+  const [docked, setDocked] = useState(savedLayout.docked ?? false)
   // The width chosen, kept as is: the window, maybe narrower, only caps the one shown.
-  const [chosenWidth, setWidth] = useState(
-    savedLayout.width ?? saved?.width ?? PANEL_WIDTH,
-  )
+  const [chosenWidth, setWidth] = useState(savedLayout.width ?? PANEL_WIDTH)
   const [windowSize, setWindow] = useState(viewport)
   // Where the reader put the closed widget's tools, kept as is: the window only keeps them on screen.
   const [strip, setStrip] = useState(savedLayout.strip)

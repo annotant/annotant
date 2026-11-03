@@ -4,12 +4,13 @@ import type { ReviewComment } from '../src/domain'
 import { comment, fakeEvents, fakeServer, openPanel } from './server'
 import { renderWidget } from './widget'
 
-function renderOpenPanel(ui: { docked?: boolean; width?: number } = {}) {
+function renderOpenPanel(layout: { docked?: boolean; width?: number } = {}) {
   fakeServer([])
-  sessionStorage.setItem(
-    'annotant:ui',
-    JSON.stringify({ open: true, docked: false, width: 380, view: 'page', ...ui }),
+  localStorage.setItem(
+    'annotant:layout',
+    JSON.stringify({ docked: false, width: 380, ...layout }),
   )
+  openPanel()
   // An idle animation: happy-dom's own reject an unhandled promise once cancelled, as browsers' do not.
   const animate = vi
     .spyOn(document.documentElement, 'animate')

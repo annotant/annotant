@@ -151,10 +151,7 @@ export function openThread(id: string, view: 'page' | 'all' = 'page') {
 
 /** Opens the panel on the list of `view`, or on a thread. */
 export function openPanel(view: 'page' | 'all' = 'page', threadId?: string) {
-  sessionStorage.setItem(
-    'annotant:ui',
-    JSON.stringify({ open: true, docked: false, width: 380, view, threadId }),
-  )
+  sessionStorage.setItem('annotant:ui', JSON.stringify({ open: true, view, threadId }))
 }
 
 /** Stands in for the server's event stream: the test sends its events. */
