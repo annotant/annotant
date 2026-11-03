@@ -5,7 +5,8 @@
 // its writes is. The hooks write them, the server serves the
 // line diff of one, the store finds the first line a run changed.
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { errorCode } from './errors.mjs'
 
@@ -58,19 +59,27 @@ export function snapshotPath(project, id, run, file) {
  * @returns {Promise<{ text: string | null } | { skipped: 'large' | 'binary' }>}
  */
 async function sideOf(abs) {
-  /** @type {import('node:fs').Stats} */
-  let found
+  /** @type {import('node:fs/promises').FileHandle} */
+  let handle
   try {
-    found = await stat(abs)
+    // Opened once, then sized and read through the same handle: never another
+    // file than the one checked. Not blocking: a pipe opens, and is not read.
+    handle = await open(abs, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch (error) {
     if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR')
       return { text: null }
     throw error
   }
-  // Sized before it is read; a pipe or a device is never read, it may not end.
-  if (!found.isFile()) return { skipped: 'binary' }
-  if (found.size > MAX_SNAPSHOT_BYTES) return { skipped: 'large' }
-  const data = await readFile(abs)
+  /** @type {Buffer} */
+  let data
+  try {
+    const found = await handle.stat()
+    if (!found.isFile()) return { skipped: 'binary' }
+    if (found.size > MAX_SNAPSHOT_BYTES) return { skipped: 'large' }
+    data = await handle.readFile()
+  } finally {
+    await handle.close()
+  }
   if (data.length > MAX_SNAPSHOT_BYTES) return { skipped: 'large' }
   if (data.includes(0)) return { skipped: 'binary' }
   // Not UTF-8 (Latin-1…): decoded loosely, two different bytes would read alike.
