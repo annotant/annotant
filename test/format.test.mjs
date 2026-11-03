@@ -127,3 +127,17 @@ test("keys a hand-over on the reader's latest message and when it was sent", () 
   // Written before sentAt was: its own date.
   assert.equal(sentKey(messages[0]), `m1@${at}`)
 })
+
+test('a message added while the comment was open or worked on opens nothing, until sent on', () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  /** @type {import('../skills/annotant/scripts/lib/format.mjs').MessageV2[]} */
+  const messages = [
+    { id: 'm1', author: 'reader', body: 'Blue', at, sentAt: at },
+    { id: 'm2', author: 'reader', body: 'And on mobile', at, during: 'r1' },
+    { id: 'm3', author: 'reader', body: 'Keep the icon', at, queued: true },
+  ]
+  assert.equal(openingOf({ messages })?.id, 'm1')
+  // The run ended before reading it: its answer opened the comment on it.
+  messages[2] = { ...messages[2], sentAt: at }
+  assert.equal(openingOf({ messages })?.id, 'm3')
+})

@@ -15,9 +15,6 @@ test('a claimed comment shows what Claude is doing, and can be cancelled', async
 
   await screen.findByTestId('an-progress')
   expect(shownStep()).toContain('Reading src/App.tsx')
-  // No reply while it works: the next move is Claude's.
-  expect(screen.queryByRole('textbox')).toBeNull()
-
   fireEvent.click(screen.getByTestId('an-cancel'))
   await waitFor(() =>
     expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
@@ -856,4 +853,73 @@ test('each changed file says whether the run added, modified or deleted it', asy
       .getAllByRole('link')
       .map((link) => link.textContent),
   ).toEqual(['src/new.ts', 'src/App.tsx'])
+})
+
+const AT = '2026-01-01T10:00:00.000Z'
+/** Run r1 at work on the comment. */
+const WORKING = [
+  { at: AT, state: 'open', by: 'reader' },
+  { at: AT, state: 'working', by: 'agent', run: 'r1' },
+] as const
+
+test.each(['open', 'working'] as const)(
+  'the reader writes to Claude while the comment is %s',
+  async (state) => {
+    const server = fakeServer([
+      comment(state === 'working' ? { state, events: [...WORKING] } : { state }),
+    ])
+    openThread('c1')
+    renderWidget()
+
+    const box = await screen.findByPlaceholderText('Add a detail for Claude…')
+    // Still cancellable: the message does not end the run.
+    expect(screen.getByTestId('an-cancel')).toBeTruthy()
+    fireEvent.change(box, { target: { value: 'Keep the icon' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(server.patches).toEqual([
+        { id: 'c1', patch: { followUp: 'Keep the icon' } },
+      ]),
+    )
+  },
+)
+
+test('a message sent during a run says whether its agent read it', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      events: [...WORKING],
+      messages: [
+        { author: 'reader', body: 'Keep the icon', at: AT, during: 'r1', readAt: AT },
+        { author: 'reader', body: 'And on mobile', at: AT, during: 'r1' },
+        { author: 'reader', body: 'Blue, not navy', at: AT, during: 'r1', queued: true },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByText('And on mobile')
+  expect(screen.getAllByTestId('an-delivery').map((label) => label.textContent)).toEqual([
+    'Read',
+    'Sent to the agent at work',
+    'Queued for the next agent',
+  ])
+})
+
+test('a message added while no agent had the comment waits for the next one', async () => {
+  fakeServer([
+    comment({
+      messages: [{ author: 'reader', body: 'Keep the icon', at: AT, queued: true }],
+      notifiedAt: AT,
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  expect((await screen.findByTestId('an-delivery')).textContent).toBe(
+    'Queued for the next agent',
+  )
+  // Still about the comment: no reply waits on the hooks.
+  expect(screen.getByTestId('an-working').textContent).not.toBe('Sent…')
 })

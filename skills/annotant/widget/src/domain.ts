@@ -192,6 +192,12 @@ export interface ReviewMessage {
   sentAt?: string
   /** With `sentAt`: when the server handed it over to the hooks. */
   notifiedAt?: string
+  /** Reader only: sent while run `during` worked, for its agent once its next tool ran. */
+  during?: string
+  /** Reader only: added with no agent to read it, for the next one. */
+  queued?: true
+  /** With `during` or `queued`: when an agent got it. */
+  readAt?: string
 }
 
 interface ReviewCancellation {
@@ -357,20 +363,45 @@ export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
   comment.events.some((event) => event.state === 'resolved')
 
 /**
- * Open again on the reader's reply: the thread ends on their message after
- * the comment, which the server sends the hooks as `FOLLOWUP`, for the
- * thread's agent when it still has one. A comment re-sent with only the
- * reader's comment in its thread is `NEW`.
- */
-export const isReply = (comment: Pick<ReviewComment, 'messages'>) =>
-  comment.messages.length > 1 && comment.messages.at(-1)?.author === 'reader'
-
-/**
- * The reader's message an open comment waits on: their latest, whose
- * `notifiedAt` says when the server handed it over.
+ * The reader's message an open comment waits on, whose `notifiedAt` says
+ * when the server handed it over: their latest, unless added while it was
+ * open or worked on (`during`, `queued`) and not sent on since (`sentAt`).
  */
 export const openingOf = (comment: Pick<ReviewComment, 'messages'>) =>
-  comment.messages.findLast((message) => message.author === 'reader')
+  comment.messages.findLast(
+    (message) =>
+      message.author === 'reader' &&
+      (!!message.sentAt || (!message.during && !message.queued)),
+  )
+
+/**
+ * Open again on the reader's reply: it waits on their message after the
+ * comment, which the server sends the hooks as `FOLLOWUP`, for the thread's
+ * agent when it still has one. A comment re-sent with only the reader's
+ * comment to go on is `NEW`.
+ */
+export const isReply = (comment: Pick<ReviewComment, 'messages'>) => {
+  const opening = openingOf(comment)
+  return !!opening && opening !== comment.messages[0]
+}
+
+/**
+ * Where a message the reader added while the comment was open or worked on
+ * stands: an agent got it, the agent at work is to get it at its next step,
+ * or the next agent will, in the thread. Undefined for any other message.
+ */
+export function deliveryOf(
+  comment: Pick<ReviewComment, 'state' | 'events'>,
+  message: Pick<ReviewMessage, 'during' | 'queued' | 'readAt'>,
+) {
+  if (!message.during && !message.queued) return undefined
+  if (message.readAt) return 'Read'
+  const atWork =
+    comment.state === 'working' && comment.events.at(-1)?.run === message.during
+  return atWork && !message.queued
+    ? 'Sent to the agent at work'
+    : 'Queued for the next agent'
+}
 
 /** Waiting for an agent, or worked on by one. */
 export function isActive(comment: Lifecycle) {
@@ -428,8 +459,8 @@ export type Status = (typeof STATUSES)[ReviewState]
 /** Where a comment stands, as its chip in the panel shows it. */
 export const statusOf = (comment: Lifecycle): Status => STATUSES[comment.state]
 
-const latestOwn = (comment: Pick<ReviewComment, 'messages'>) =>
-  comment.messages.findLast((message) => message.author === 'reader')
+// The message a re-send sends again: the one the comment was open for.
+const latestOwn = openingOf
 
 /** The reader's latest words: their comment, or what they wrote since. */
 export function latestText(comment: Pick<ReviewComment, 'messages'>): string {

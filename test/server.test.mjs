@@ -750,7 +750,7 @@ test('a server started again hands the same message over, its first date kept', 
   assert.equal(comments[0].messages[0].notifiedAt, notifiedAt)
 })
 
-test('refuses a move the comment cannot make with 409, in words for the reader', async () => {
+test('a message while it waits for Claude joins the thread; a late stop changes nothing', async () => {
   const creating = output.length
   const created = await json(await post(JSON.stringify({ route: '/', body: 'Hi' })))
   await nextLine(`NEW ${created.id} `, creating)
@@ -760,10 +760,12 @@ test('refuses a move the comment cannot make with 409, in words for the reader',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     })
-  // Nothing to follow up while it waits for Claude.
-  const refused = await patch({ followUp: 'And red' })
-  assert.equal(refused.status, 409)
-  assert.deepEqual(await json(refused), { error: `comment ${created.id} is open` })
+  // Added for the agent that claims it: the comment still waits on its first message.
+  const added = await patch({ followUp: 'And red' })
+  assert.equal(added.status, 200)
+  const thread = await json(added)
+  assert.equal(thread.state, 'open')
+  assert.equal(thread.messages.at(-1).queued, true)
 
   const printed = output.length
   assert.equal((await patch({ cancelled: true })).status, 200)
@@ -820,6 +822,38 @@ test('tells the hooks Claude answered a follow-up, which waits on the reader', a
     `answered ${created.id} (/)\n`,
   )
   await nextLine(`ANSWERED ${created.id}`, printed)
+})
+
+test('a message during a run prints no line; unread at the answer, it comes back as a follow-up', async () => {
+  const creating = output.length
+  const created = await json(await post(JSON.stringify({ route: '/', body: 'Hi' })))
+  await nextLine(`NEW ${created.id} `, creating)
+  const script = (name, ...args) =>
+    run(process.execPath, [
+      path.join(SCRIPTS, name),
+      created.id,
+      '--project',
+      root,
+      ...args,
+    ])
+  await script('claim.mjs')
+  let printed = output.length
+  const added = await fetch(`${base}/api/comments/${created.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ followUp: 'And the footer' }),
+  })
+  const { messages } = await json(added)
+  assert.equal(messages.at(-1).during, 'r1')
+  // The next line is the answer's: none for the message, no EDIT.
+  assert.equal(
+    (await script('resolve.mjs', 'Done.')).stdout,
+    `resolved ${created.id} (/); the reader sent a message you had not read, which comes to you as a follow-up\n`,
+  )
+  await nextLine(`RESOLVED ${created.id}`, printed)
+  assert.doesNotMatch(output.slice(printed), /^EDIT /m)
+  const line = await nextLine(`FOLLOWUP ${created.id} sent=m2@`, printed)
+  assert.match(line, /followup="And the footer"/)
 })
 
 test('tells the hooks when the reader resolves a comment themselves', async () => {

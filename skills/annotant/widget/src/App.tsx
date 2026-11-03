@@ -51,6 +51,7 @@ import {
   type Status,
   answered,
   byPanelOrder,
+  deliveryOf,
   folderName,
   gaveUp,
   gist,
@@ -353,6 +354,16 @@ function Waiting({
     <div className="an-working" data-testid="an-working" title={wait?.title}>
       <Spinner />
       <span>{wait?.text ?? 'Sent…'}</span>
+    </div>
+  )
+}
+
+/** Where a message the reader added while Claude worked stands, under it. */
+function Delivery({ label }: { label: string | undefined }) {
+  if (!label) return null
+  return (
+    <div className="an-delivery" data-testid="an-delivery">
+      {label}
     </div>
   )
 }
@@ -1720,13 +1731,10 @@ export default function App({ root }: { root: Element }) {
 
   const drafting = view === 'page' && !!draft
   const openedId = drafting ? undefined : thread?.id
-  // The thread the message box replies to: only once Claude is done or asks.
-  const replying =
-    !drafting &&
-    thread &&
-    (thread.state === 'resolved' || isAsking(thread) || answered(thread))
-      ? thread
-      : undefined
+  // The thread the message box writes in, whatever its state: while it waits
+  // for an agent or one works on it, the message joins the thread for it. A
+  // stopped thread has its own, which sends the comment again.
+  const replying = !drafting && thread && !paused(thread) ? thread : undefined
   const ownReply = replying && followUp?.id === replying.id ? followUp : undefined
   const reply = ownReply?.body ?? ''
   const replyImages = ownReply?.images ?? []
@@ -2435,6 +2443,7 @@ export default function App({ root }: { root: Element }) {
                   <Linked text={message.body} repository={repository} />
                 </div>
               )}
+              <Delivery label={deliveryOf(comment, message)} />
             </Message>
           ),
         )}
@@ -3028,7 +3037,9 @@ export default function App({ root }: { root: Element }) {
                       ? 'Or answer in your own words…'
                       : isAsking(replying)
                         ? 'Answer Claude…'
-                        : 'Follow up, clarify, ask for a change…'
+                        : isActive(replying)
+                          ? 'Add a detail for Claude…'
+                          : 'Follow up, clarify, ask for a change…'
                   }
                   disabled={busy}
                   onChange={(value) =>

@@ -15,6 +15,7 @@ import {
   openingOf,
   parseFile,
   sentKey,
+  unreadDuring,
   wasResolved,
 } from './format.mjs'
 import { wroteAt } from './git.mjs'
@@ -225,6 +226,37 @@ export async function readRoute(project, id) {
 const historyPath = (project, id) => path.join(project.progressDir, `${id}.history.jsonl`)
 
 /**
+ * The reader's messages run `run` ended before its agent read: those sent
+ * during it, and those queued before it, when it started with no claim to
+ * print them. Queued, for the next agent, which reads them in the thread.
+ * @param {CommentV2} comment
+ * @param {string | undefined} run
+ * @returns {MessageV2[]}
+ */
+function queueUnread(comment, run) {
+  const unread = comment.messages.filter(
+    (message) =>
+      message.author === 'reader' &&
+      !message.readAt &&
+      (message.queued || (!!run && message.during === run)),
+  )
+  for (const message of unread) message.queued = true
+  return unread
+}
+
+/**
+ * The thread a claim prints holds every message added while the comment was
+ * open or worked on: its agent has read them.
+ * @param {CommentV2} comment
+ * @param {string} at
+ */
+function markRead(comment, at) {
+  for (const message of comment.messages) {
+    if ((message.queued || message.during) && !message.readAt) message.readAt = at
+  }
+}
+
+/**
  * The reader's answer to Claude's question: the options they chose, from the
  * ones it offered, then their own words. Undefined when it holds neither,
  * unless images, elements or an area go with it (`attached`): an image, an
@@ -406,6 +438,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         if (!run || (claimed && claimed !== agent)) return undefined
         const at = move(comment, 'stopped', { by: 'agent', run })
         comment.cancellation = await cancellationOf(id, at, run)
+        queueUnread(comment, run)
         return comment
       })
     },
@@ -422,12 +455,15 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     claim(id, { agent, model, complexity, git } = {}) {
       return changeOne(id, (comment) => {
         const working = currentRun(comment)
-        if (working) return { comment, run: working }
+        if (working) {
+          markRead(comment, new Date().toISOString())
+          return { comment, run: working }
+        }
         if (comment.state !== 'open') {
           throw new StoreRefusal(`comment ${id} is ${stateOf(comment)}`)
         }
         const run = nextRunId(comment)
-        move(comment, 'working', {
+        const at = move(comment, 'working', {
           by: 'agent',
           run,
           agent,
@@ -435,6 +471,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           complexity: COMPLEXITIES.find((known) => known === complexity),
           git,
         })
+        markRead(comment, at)
         return { comment, run }
       })
     },
@@ -467,6 +504,32 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     },
 
     /**
+     * The reader's messages sent while run `run` works that its agent has
+     * not read, marked read: its hooks give them to it, once each. None once
+     * the run ended, nor to an agent other than the one that claimed it (one
+     * stopped, its last hook still running).
+     * @param {string} id
+     * @param {string} run
+     * @param {string} agent
+     * @returns {Promise<MessageV2[]>}
+     */
+    deliver(id, run, agent) {
+      return exclusive(async () => {
+        const comments = await readAll()
+        const comment = comments.find((entry) => entry.id === id)
+        if (!comment || currentRun(comment) !== run) return []
+        const claimed = comment.events.at(-1)?.agent
+        if (claimed && claimed !== agent) return []
+        const unread = unreadDuring(comment, run)
+        if (!unread.length) return []
+        const at = new Date().toISOString()
+        for (const message of unread) message.readAt = at
+        await writeAll(comments)
+        return unread
+      })
+    },
+
+    /**
      * Files Claude's answer under the comment, with the run that wrote it.
      * The first answer resolves it; once it was resolved, a later one leaves
      * it `answered`, and only the reader resolves it again. A
@@ -478,6 +541,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * run changed (`changed`, with `added` and `deleted`).
      * A question may offer `options`, the reader picking one, or several when
      * `multiple`; they can always answer in their own words instead.
+     * The reader's messages sent during the run that its agent never read are
+     * queued for the next one; after an answer, the latest of them opens the
+     * comment again, as a follow-up would.
      * @param {string} id
      * @param {string} body
      * @param {{ question?: boolean, options?: { label: string, description?: string }[], multiple?: boolean }} [options]
@@ -515,6 +581,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           },
         )
         await endRun(id, run)
+        const unread = queueUnread(comment, run)
+        const latest = unread.at(-1)
+        if (!question && latest) latest.sentAt = move(comment, 'open', { by: 'reader' })
         return comment
       })
     },
@@ -605,7 +674,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * answer or follow up (`followUp`, `choices`, with the `images` the
      * reader attached, and the `elements` they picked in the page or the
      * `area` they drew on it), or
-     * resolve it (`status`).
+     * resolve it (`status`). Written while it is open or worked on, the
+     * reader's message joins the thread, the comment where it was, for the
+     * agent at work or the next one.
      * A stop or a re-send the comment is past changes nothing: a double
      * click, or a click on a button a poll late, is not an error. Undefined
      * when there is no such comment.
@@ -627,6 +698,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         if (cancelled === true && isActive(comment)) {
           const at = move(comment, 'stopped', { by: 'reader', run })
           comment.cancellation = await cancellationOf(id, at, run)
+          queueUnread(comment, run)
         }
         if (cancelled === false && comment.state === 'stopped') {
           const sentAt = move(comment, 'open', { by: 'reader' })
@@ -661,7 +733,22 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           id,
           () => names,
           async () => {
-            if (reply) {
+            if (reply && isActive(comment)) {
+              // Added to the thread, the comment where it was: the agent at
+              // work gets it from its hooks, the next one in the thread.
+              comment.messages.push({
+                id: nextMessageId(comment),
+                author: 'reader',
+                ...reply,
+                ...(elements.length ? { elements } : {}),
+                ...(area ? { area } : {}),
+                at: new Date().toISOString(),
+                ...(run ? { during: run } : { queued: true }),
+              })
+              const message = comment.messages.at(-1)
+              if (message) names = await saveImages(project, id, message.id, images)
+              if (message && names.length) message.images = names
+            } else if (reply) {
               const sentAt = move(comment, 'open', {
                 by: 'reader',
                 message: {

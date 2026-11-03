@@ -22,7 +22,12 @@ type Fields = Partial<Omit<ReviewComment, 'anchor' | 'messages'>> &
 
 /** The thread, its reader's latest message handed over at `at`. */
 function notified(messages: ReviewMessage[], at: string | undefined) {
-  const last = messages.findLastIndex((message) => message.author === 'reader')
+  // The message the comment is open for: not one added while it waited.
+  const last = messages.findLastIndex(
+    (message) =>
+      message.author === 'reader' &&
+      (!!message.sentAt || (!message.during && !message.queued)),
+  )
   return messages.map((message, index) =>
     at && index === last ? { ...message, notifiedAt: at } : message,
   )

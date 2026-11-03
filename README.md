@@ -290,6 +290,10 @@ floats or is docked, hold for every tab of the app and the next sessions.
   Claude Code settings.
   Cancelling stops the agent and lists the files it had already changed; edit
   the comment and send it again to hand it to a new agent.
+  The message box stays: a detail you add ("and on mobile too") reaches the
+  agent at its next step, marked _Sent to the agent at work_, then _Read_.
+  One it never read, as it was already answering, opens the comment again for
+  the next agent (_Queued for the next agent_).
 - Once answered: the files the run changed, under its answer (a count when
   there are several, which opens on a click), and reply in the thread to follow up,
   reusing the same agent and its context when it is still around. A click on
