@@ -30,6 +30,18 @@ released to the `stable` branch.
   commit) and wrote on another, or switched between two writes, is flagged. Nothing shows
   outside a git repository. (#238)
 
+### Security
+
+- **Agents edit only under `editable`.** When `.annotant.json` lists
+  `editable`, a hook now refuses an Edit, Write, MultiEdit or NotebookEdit of
+  a comment's agent outside those paths (a folder above the project such as
+  `../api` included), links followed as the system follows them, and tells
+  the agent to ask in the thread when the change needs another one. An
+  `editable` that is not a list of paths refuses every write, and
+  `.annotant.json` and the comments file are never written. Before, only
+  the agent's instructions kept it there. Writes from Bash are refused
+  separately, as before. (#201)
+
 ## 0.4.0 - 2026-10-30
 
 https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1
