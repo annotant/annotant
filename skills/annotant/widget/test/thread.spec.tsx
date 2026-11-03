@@ -786,6 +786,19 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
     'removed:const b = 2',
     'added:const b = 3',
   ])
+  // A TypeScript file's code is highlighted, under each line's colour.
+  expect(
+    [...diff.querySelectorAll('.an-tok')].map(
+      (token) => `${token.className.split('--')[1]}:${token.textContent}`,
+    ),
+  ).toEqual([
+    'keyword:const',
+    'number:1',
+    'keyword:const',
+    'number:2',
+    'keyword:const',
+    'number:3',
+  ])
   // Each line's number before and after the run.
   expect(
     [...diff.querySelectorAll('.an-diff-line')].map((line) =>

@@ -1,17 +1,19 @@
 import { Fragment, type ReactNode } from 'react'
 import { Linked, type Repository } from './links'
+import { Code, languageOfFence, type Language } from './syntax'
 
 /**
  * A block of a message: a paragraph, a list (`ordered` from `start`) or a
- * fenced code block.
+ * fenced code block, in the language its fence names when the widget
+ * highlights it.
  */
 type Block =
   | { kind: 'paragraph'; text: string }
   | { kind: 'list'; ordered: boolean; start: number; items: string[] }
-  | { kind: 'code'; text: string }
+  | { kind: 'code'; text: string; language: Language | undefined }
 
 // A fence opens on a line of its own: ```` ```npm test``` ```` is inline code.
-const FENCE = /^\s*```[^`]*$/
+const FENCE = /^\s*```\s*([^`\s]*)[^`]*$/
 const BULLET = /^\s*-\s+(.*)$/
 const NUMBERED = /^\s*(\d{1,9})\.\s+(.*)$/
 
@@ -28,6 +30,7 @@ export function blocks(body: string): Block[] {
   let current: Block | undefined
   // The lines of the code block open, until its closing fence.
   let code: string[] | undefined
+  let language: Language | undefined
   const end = () => {
     if (current) result.push(current)
     current = undefined
@@ -35,14 +38,16 @@ export function blocks(body: string): Block[] {
   for (const line of body.split(/\r?\n/)) {
     if (code) {
       if (/^\s*```\s*$/.test(line)) {
-        result.push({ kind: 'code', text: code.join('\n') })
+        result.push({ kind: 'code', text: code.join('\n'), language })
         code = undefined
       } else code.push(line)
       continue
     }
-    if (FENCE.test(line)) {
+    const fence = FENCE.exec(line)
+    if (fence) {
       end()
       code = []
+      language = languageOfFence(fence[1])
       continue
     }
     if (!line.trim()) {
@@ -74,7 +79,7 @@ export function blocks(body: string): Block[] {
     }
   }
   // A fence never closed runs to the end.
-  if (code) result.push({ kind: 'code', text: code.join('\n') })
+  if (code) result.push({ kind: 'code', text: code.join('\n'), language })
   end()
   return result
 }
@@ -155,7 +160,7 @@ function inline(
 
 /**
  * Claude's message, its small subset of Markdown formatted: paragraphs, `-`
- * and `1.` lists, fenced code, `code`, **bold**, *italic* and http(s) links.
+ * and `1.` lists, fenced code (TypeScript, JavaScript and JSON highlighted), `code`, **bold**, *italic* and http(s) links.
  * Headings, tables, images and HTML show as the text they are.
  */
 export function Markdown({
@@ -172,7 +177,9 @@ export function Markdown({
         <Fragment key={index}>
           {block.kind === 'code' ? (
             <pre>
-              <code>{block.text}</code>
+              <code>
+                <Code code={block.text} language={block.language} />
+              </code>
             </pre>
           ) : block.kind === 'paragraph' ? (
             <p>{inline(block.text, repository)}</p>

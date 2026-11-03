@@ -609,7 +609,9 @@ function ChangedFiles({
                     )
                   )}
                 </div>
-                {diffOf && shown.has(file) && <FileDiffView loaded={diffs[file]} />}
+                {diffOf && shown.has(file) && (
+                  <FileDiffView file={file} loaded={diffs[file]} />
+                )}
               </li>
             )
           })}

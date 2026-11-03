@@ -75,6 +75,14 @@ export const WIDGET_CSS = `
   --cb-amber-ink: #4a2f06;
   --cb-amber-border: #f2d9a8;
   --cb-bubble: #eff3f8;
+  /* The syntax of code in diffs and answers: 4.5:1 on the surface, the diff's
+     green and red, the bubble, and a code block's tint on it. */
+  --cb-code-keyword: #8b2fb8;
+  --cb-code-string: #106634;
+  --cb-code-number: #9a4100;
+  --cb-code-comment: #526076;
+  --cb-code-tag: #1a5aab;
+  --cb-code-attr: #7a5000;
   /* The in-progress rainbow, dark enough for white text. */
   --cb-unicorn: linear-gradient(135deg, #d6336c, #7048e8 50%, #1c7ed6);
   --cb-radius: 8px;
@@ -111,6 +119,12 @@ export const WIDGET_CSS = `
   --cb-amber-ink: #f7e5bd;
   --cb-amber-border: #5e4919;
   --cb-bubble: #232c3a;
+  --cb-code-keyword: #d4a5ff;
+  --cb-code-string: #8fdca2;
+  --cb-code-number: #ffb27a;
+  --cb-code-comment: #9aa9bd;
+  --cb-code-tag: #7cc0ff;
+  --cb-code-attr: #f2cc60;
   --cb-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 .an-live { pointer-events: auto; }
@@ -446,6 +460,13 @@ code { font-family: var(--cb-mono); }
 .an-md code { padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, currentColor 10%, transparent); font-size: .92em; }
 .an-md pre { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); overflow-x: auto; white-space: pre; }
 .an-md pre code { padding: 0; background: none; }
+/* Highlighted code (syntax.tsx): colours only, over a diff line's background. */
+.an-tok--keyword { color: var(--cb-code-keyword); }
+.an-tok--string { color: var(--cb-code-string); }
+.an-tok--number { color: var(--cb-code-number); }
+.an-tok--comment { color: var(--cb-code-comment); font-style: italic; }
+.an-tok--tag, .an-tok--key { color: var(--cb-code-tag); }
+.an-tok--attr { color: var(--cb-code-attr); }
 .an-ask-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-amber-fg); }
 /* The answers Claude offers: one button each, ticked once chosen. */
 .an-options { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; white-space: normal; }

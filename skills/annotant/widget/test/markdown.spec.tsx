@@ -22,7 +22,7 @@ describe('blocks', () => {
 
   test('keeps a fenced block as written, up to its fence or the end', () => {
     expect(blocks('```ts\nconst a = 1\n\n- not a list\n```\nAfter\n```\nopen')).toEqual([
-      { kind: 'code', text: 'const a = 1\n\n- not a list' },
+      { kind: 'code', text: 'const a = 1\n\n- not a list', language: 'ts' },
       { kind: 'paragraph', text: 'After' },
       { kind: 'code', text: 'open' },
     ])
