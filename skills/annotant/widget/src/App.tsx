@@ -871,8 +871,8 @@ function GitLabel({ place }: { place: GitNow }) {
 }
 
 /**
- * Where run `run` changed files, kept on the comment; flagged when the
- * branch changed during the run.
+ * Where run `run` changed files, kept on the comment; flagged when its
+ * branch, commit or worktree changed during the run.
  */
 function WrittenOn({
   comment,
@@ -1008,7 +1008,7 @@ export default function App({ root }: { root: Element }) {
   const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
-  // Where the agents write: shown at the panel's foot while it is open, but
+  // Where the agents write: shown at the panel's foot while it is open, except
   // while the send hint takes the foot.
   const gitNow = useGitPlace(open)
   // Open since the page loaded, as the tab kept it: it shows up in place, without sliding in.

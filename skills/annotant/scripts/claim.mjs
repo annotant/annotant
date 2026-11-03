@@ -75,7 +75,9 @@ try {
     model: process.env.ANNOTANT_MODEL || route.model || undefined,
     complexity: process.env.ANNOTANT_COMPLEXITY || route.complexity || undefined,
     // Where the run starts, to flag one that writes on another branch.
-    git: await gitPlace(project.root),
+    git: await gitPlace(project.root, (why) =>
+      console.error(`annotant: cannot tell the git branch the run starts on: ${why}`),
+    ),
   })
   // The project found and the run started, for the agent and the logs.
   console.log(`claimed ${id} (${comment.route}) project=${project.root} run=${run}`)

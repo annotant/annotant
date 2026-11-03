@@ -9,7 +9,8 @@
 //      file an edit writes (another comment's agent may hold it), and records
 //      the step for the widget.
 // post: records the step done or failed; after a file of the repository
-//      written by Edit, Write, MultiEdit or NotebookEdit, or deleted with rm,
+//      written by Edit, Write, MultiEdit or NotebookEdit, or deleted (rm, git
+//      rm, unlink),
 //      where the project is in git, on the comment (the run's first write,
 //      and a move); after resolve.mjs or ask.mjs, ends the run: the agent's
 //      locks are released.
@@ -566,11 +567,11 @@ function hooksFor({ comment, root, lockRoot, agent }) {
         : undefined
       /** @type {Step[]} */
       const deleted = []
-      /** @type {string | undefined} The first file it deleted, for the git branch. */
+      /** @type {string | undefined} The first file of the repository it deleted, for the git branch. */
       let removed
       for (const { path: file, folder } of started?.removing ?? []) {
         if ((await presence(file)) !== 'missing') continue
-        removed ??= file
+        if (within(lockRoot, path.resolve(root, file)) !== undefined) removed ??= file
         deleted.push({
           at: step.at,
           ...fileStep('delete', file),
@@ -610,7 +611,7 @@ function hooksFor({ comment, root, lockRoot, agent }) {
   }
 
   /**
-   * A file written in the repository: where the project is in git, on the
+   * A file written or deleted in the repository: where the project is in git, on the
    * comment, at the run's first write and when a later one finds it
    * elsewhere. A file outside it (a scratch file) is not the project's change.
    * @param {CommentV2} found

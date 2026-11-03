@@ -135,7 +135,7 @@ copy.
 | `agent` | string, optional, `working` only | The Claude Code agent that claimed it (`main` for a session's main loop), which the hooks pass to `claim.mjs`. |
 | `model` | string, optional, `working` only | The model its agent runs on, as Claude Code resolved it when the hooks started it (`claude-haiku-5-5`); the widget names its family (`haiku`). |
 | `complexity` | `trivial`, `standard` or `hard`, optional, `working` only | How the hooks' classifier sorted the comment, which picked `model` through `.annotant.json`'s `models` (see [Models](#models)). Absent when the classifier did not run or failed. |
-| `git` | GitPlace, optional, `working` only | Where the project was in git when the agent claimed it: `branch`, or `commit` (short) on a detached HEAD, and `worktree`, the folder of its checkout, when it is not the repository's main one. Absent outside a git repository. |
+| `git` | GitPlace, optional, `working` only | Where the project was in git when the agent claimed it: `branch`, or `commit` (12 characters) on a detached HEAD, and `worktree`, the folder of its checkout, when it is not the repository's main one. Absent outside a git repository, and when git fails (`claim.mjs` says why on stderr). |
 
 ### A write
 
@@ -147,13 +147,14 @@ copy.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `run` | `r1`, `r2`… | The run that wrote; one write per run. |
-| `at` | ISO date | Its first file written. |
+| `at` | ISO date | Its first file written or deleted. |
 | `branch` or `commit` | string | Where the project was then: its branch, or its short commit on a detached HEAD. |
 | `worktree` | string, optional | The folder of its checkout, when not the repository's main one. |
 | `switched` | GitPlace, optional | A later write of the run found the project elsewhere: the last such place other than the first. A write back where it first wrote records nothing. |
 
 The hooks record one per run, after its first file of the repository written
-by Edit, Write, MultiEdit or NotebookEdit, or deleted with `rm`, where the
+by Edit, Write, MultiEdit or NotebookEdit, or deleted (`rm`, `git rm` or
+`unlink`: the command's first path in the repository it deleted), where the
 project then was in git,
 so the thread keeps where its changes went after a branch switch or a reload.
 The widget flags a run that wrote elsewhere (another branch, commit or

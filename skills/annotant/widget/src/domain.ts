@@ -495,7 +495,9 @@ export function writtenOn(
   comment: Pick<ReviewComment, 'events' | 'writes'>,
   run: string | undefined,
 ) {
-  const write = run ? comment.writes?.find((one) => one.run === run) : undefined
+  // A hand-edited file may hold anything: none rather than a broken thread.
+  const writes = Array.isArray(comment.writes) ? comment.writes : []
+  const write = run ? writes.find((one) => one.run === run) : undefined
   if (!write) return undefined
   const started = comment.events.find(
     (event) => event.state === 'working' && event.run === run,

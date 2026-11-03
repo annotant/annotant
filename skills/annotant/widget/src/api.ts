@@ -302,18 +302,25 @@ export function useGitPlace(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return undefined
     let live = true
-    const show = (now: GitNow | undefined) => {
-      if (live)
-        setPlace((current) =>
-          JSON.stringify(current) === JSON.stringify(now) ? current : now,
-        )
+    // Each read numbered: an answer slower than a later one is dropped, never
+    // shown over it.
+    let asked = 0
+    let shown = 0
+    const show = (read: number, now: GitNow | undefined) => {
+      if (!live || read < shown) return
+      shown = read
+      setPlace((current) =>
+        JSON.stringify(current) === JSON.stringify(now) ? current : now,
+      )
     }
     // No server, or an older one: no branch, rather than one that may be stale.
-    const load = () =>
+    const load = () => {
+      const read = ++asked
       void request<unknown>(GIT).then(
-        (answer) => show(parseGitNow(answer)),
-        () => show(undefined),
+        (answer) => show(read, parseGitNow(answer)),
+        () => show(read, undefined),
       )
+    }
     load()
     const timer = setInterval(load, POLL_MS)
     window.addEventListener(CHANGED, load)

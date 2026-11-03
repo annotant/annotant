@@ -57,9 +57,11 @@ export async function gitPlace(dir, report = () => undefined) {
     return undefined
   }
   const branch = head.out
-  const commit = detached
-    ? (await git(dir, ['rev-parse', '--short', 'HEAD'])).out
-    : undefined
+  // A fixed length: `--short` alone grows with the repository, and the same
+  // HEAD would read as a move.
+  const read = detached ? await git(dir, ['rev-parse', '--short=12', 'HEAD']) : undefined
+  const commit = read?.out
+  if (read && !commit) report(`git rev-parse HEAD failed: ${read.stderr}`)
   if (!branch && !commit) return undefined
   // A linked worktree has a git folder of its own, under the main one's. git
   // may print one through a symbolic link and not the other (/var,
@@ -75,18 +77,30 @@ export async function gitPlace(dir, report = () => undefined) {
 
 /**
  * The repository's default branch: `origin`'s, else `main` or `master` when
- * the repository has it. Undefined when none of them is known.
+ * the repository has it. Undefined when none of them is known, and when git
+ * fails: then `report` gets why (a missing ref is no failure: `-q` exits 1).
  * @param {string} dir
+ * @param {(why: string) => void} [report]
  * @returns {Promise<string | undefined>}
  */
-export async function defaultBranch(dir) {
-  const remote = (
-    await git(dir, ['symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'])
-  ).out
-  if (remote) return remote.replace(/^origin\//, '')
+export async function defaultBranch(dir, report = () => undefined) {
+  /** @param {string[]} args */
+  const read = async (args) => {
+    const done = await git(dir, args)
+    if (done.out === undefined && (done.code !== 1 || done.stderr)) {
+      if (!NOT_A_REPOSITORY.test(done.stderr))
+        report(`git ${args[0]} failed: ${done.stderr}`)
+      return { out: undefined, failed: true }
+    }
+    return { out: done.out, failed: false }
+  }
+  const remote = await read(['symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'])
+  if (remote.out) return remote.out.replace(/^origin\//, '')
+  if (remote.failed) return undefined
   for (const name of ['main', 'master']) {
-    if ((await git(dir, ['rev-parse', '-q', '--verify', `refs/heads/${name}`])).out)
-      return name
+    const found = await read(['rev-parse', '-q', '--verify', `refs/heads/${name}`])
+    if (found.out) return name
+    if (found.failed) return undefined
   }
   return undefined
 }

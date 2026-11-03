@@ -50,6 +50,40 @@ test('the branch is read again when the reader comes back to the page', async ()
   await waitFor(() => expect(screen.getByTestId('an-git').textContent).toBe('main'))
 })
 
+test('a slow answer never shows over a later one', async () => {
+  const server = fakeServer([], { git: { branch: 'feature/blue' } })
+  openPanel()
+  renderWidget()
+  expect((await screen.findByTestId('an-git')).textContent).toBe('feature/blue')
+
+  // The next read hangs until the one after it answered.
+  let release: ((response: Response) => void) | undefined
+  const original = server.fetch.getMockImplementation()
+  server.fetch.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve
+      }),
+  )
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+  })
+  server.fetch.mockImplementation(async (input: string, init?: RequestInit) =>
+    new URL(input).pathname.endsWith('/api/git')
+      ? Response.json({ branch: 'main' })
+      : (original?.(input, init) ?? Response.json([])),
+  )
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+  })
+  await waitFor(() => expect(screen.getByTestId('an-git').textContent).toBe('main'))
+  await act(async () => {
+    release?.(Response.json({ branch: 'feature/old' }))
+    await Promise.resolve()
+  })
+  expect(screen.getByTestId('an-git').textContent).toBe('main')
+})
+
 test('nothing shows with an older server, which has no /api/git', async () => {
   fakeServer([comment({ state: 'resolved' })])
   openPanel()
@@ -201,4 +235,14 @@ test('a stopped run says where the files it left changed are', async () => {
   expect(within(stopped).getByTestId('an-written').textContent).toBe(
     'Started on main, changed files on feature/blue',
   )
+})
+
+test('a hand-edited `writes` that is no list shows no branch, and the thread', async () => {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a broken file, on purpose
+  fakeServer([answeredOn({ writes: {} as unknown as [] })])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByText('Done.')
+  expect(screen.queryByTestId('an-written')).toBeNull()
 })

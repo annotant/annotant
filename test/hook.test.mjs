@@ -223,6 +223,34 @@ test('a file rm deleted records the branch as a write does', async (t) => {
   assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
 })
 
+test('a build records no branch: it changes no file of its own', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'Bash', { command: 'npm run build' })
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('an rm whose first path is out of the repository records the branch of the next', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/cleanup')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const scratch = path.join(await tempDir(t), 'scratch.txt')
+  const old = path.join(w.root, 'src/old.ts')
+  await mkdir(path.dirname(old), { recursive: true })
+  await writeFile(scratch, 'x')
+  await writeFile(old, 'x')
+  await w.tool(
+    0,
+    'Bash',
+    { command: `rm ${scratch} src/old.ts` },
+    { between: () => Promise.all([rm(scratch), rm(old)]) },
+  )
+  assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
+})
+
 test('records no branch for a file written outside the repository', async (t) => {
   const repo = await tempDir(t)
   git(repo, 'init', '-q', '-b', 'main')

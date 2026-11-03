@@ -84,19 +84,27 @@ function reportGit(why) {
 }
 function gitNow() {
   if (!gitRead || Date.now() - gitRead.at > GIT_MS) {
+    let failed = false
+    /** @param {string} why */
+    const report = (why) => {
+      failed = true
+      reportGit(why)
+    }
     gitRead = {
       at: Date.now(),
       place: Promise.all([
-        gitPlace(project.root, reportGit),
-        defaultBranch(project.root),
-      ]).then(([place, main]) =>
-        place
+        gitPlace(project.root, report),
+        defaultBranch(project.root, report),
+      ]).then(([place, main]) => {
+        // Read again: the same failure, later, is said again.
+        if (!failed) gitFailure = ''
+        return place
           ? {
               ...place,
               ...(place.branch && place.branch === main && { default: true }),
             }
-          : {},
-      ),
+          : {}
+      }),
     }
   }
   return gitRead.place

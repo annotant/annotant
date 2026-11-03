@@ -202,7 +202,7 @@ export const MAX_PICKED = 1
 
 /**
  * Where a run wrote: recorded by the hooks at its first file of the
- * repository written, in a git repository only. `switched`: a later write of
+ * repository written or deleted, in a git repository only. `switched`: a later write of
  * the run found the project elsewhere (the last other place: a write back
  * where it first wrote records nothing).
  * @typedef {GitPlace & { run: string, at: string, switched?: GitPlace }} Write

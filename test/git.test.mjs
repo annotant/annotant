@@ -69,7 +69,7 @@ test('names the short commit of a detached HEAD', async (t) => {
   const dir = await repository(t)
   gitIn(dir, 'switch', '-q', '--detach')
   assert.deepEqual(await git.gitPlace(dir), {
-    commit: gitIn(dir, 'rev-parse', '--short', 'HEAD'),
+    commit: gitIn(dir, 'rev-parse', '--short=12', 'HEAD'),
   })
 })
 
