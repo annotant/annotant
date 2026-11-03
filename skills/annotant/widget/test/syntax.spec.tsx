@@ -103,16 +103,14 @@ describe('tokens', () => {
     expect(colored("  className='row'", 'js')).toEqual(['attr:className', "string:'row'"])
   })
 
-  test('read a comparison as no tag, a keyword before a tag as none', () => {
+  test('read a comparison as no tag, JSX text or a keyword before a tag as none', () => {
     expect(colored('for (let i = 0; i < len; i++)', 'js')).toEqual([
       'keyword:for',
       'keyword:let',
       'number:0',
     ])
-    expect(colored('if (a < b || this <c) x', 'tsx')).toEqual([
-      'keyword:if',
-      'keyword:this',
-    ])
+    expect(colored('if (a < b) x', 'tsx')).toEqual(['keyword:if'])
+    expect(colored('  Shop <span>Hi</span>', 'tsx')).toEqual(['tag:span', 'tag:span'])
     expect(colored('x < new Date()', 'js')).toEqual(['keyword:new'])
     expect(colored('return <div>', 'tsx')).toEqual(['keyword:return', 'tag:div'])
     expect(colored('ok ? <A /> : <B/>', 'js')).toEqual(['tag:A', 'tag:B'])

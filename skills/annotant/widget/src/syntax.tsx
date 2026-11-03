@@ -165,23 +165,13 @@ export function tokens(line: string, language: Language): Token[] {
 const MAX_LINE = 2000
 
 /**
- * Whether the `<` at `at` in `line` opens a JSX tag: not right after a name or
- * a bracket (`Array<T>`, `f<T>()`), nor after one and spaces (`i < n`), unless
- * that name is a keyword (`return <div>`, `? <A /> : null` has no name).
+ * Whether the `<` at `at` in `line`, a name right after it, opens a JSX tag:
+ * not right after a name or a bracket, where it is a type's (`Array<T>`,
+ * `f<T>()`). A comparison has a space after its `<` (`i < n`): never matched.
  */
 function opensTag(line: string, at: number) {
-  let end = at
-  while (end > 0 && /\s/.test(line[end - 1] ?? '')) end--
-  if (!/[\w$)\]]/.test(line[end - 1] ?? '')) return true
-  if (end === at) return false
-  let start = end
-  while (start > 0 && /[\w$]/.test(line[start - 1] ?? '')) start--
-  const word = line.slice(start, end)
-  return KEYWORDS.has(word) && !LITERALS.has(word)
+  return !/[\w$)\]]/.test(line[at - 1] ?? '')
 }
-
-/** Keywords that are values, a `<` after them a comparison. */
-const LITERALS = new Set(['false', 'null', 'super', 'this', 'true', 'undefined'])
 
 /**
  * Whether `word`, at `at` in `line`, is a keyword: not a property's name after
