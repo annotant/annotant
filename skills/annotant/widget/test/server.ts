@@ -106,6 +106,7 @@ export function fakeServer(
     editor,
     git,
     diffs = {},
+    settings = { instructions: '', max: 4000 },
   }: {
     reachable?: boolean
     theme?: unknown
@@ -114,9 +115,16 @@ export function fakeServer(
     editor?: unknown
     git?: unknown
     diffs?: Record<string, unknown>
+    /** What /api/settings answers; a save makes it pending, as the server does. */
+    settings?: {
+      instructions: string
+      pending?: { instructions: string; at: string }
+      max: number
+    }
   } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
+  const saved: string[] = []
   const fetch = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input)
     if (url.pathname.endsWith('/api/health'))
@@ -127,6 +135,26 @@ export function fakeServer(
       return diff === undefined
         ? new Response(null, { status: 404 })
         : Response.json(diff)
+    }
+    if (url.pathname.endsWith('/api/settings')) {
+      if (init?.method !== 'POST') return Response.json(settings)
+      const body = typeof init.body === 'string' ? init.body : ''
+      const { instructions }: { instructions: string } = JSON.parse(body)
+      saved.push(instructions)
+      if (instructions.includes('\u202e'))
+        return Response.json(
+          { error: 'The instructions hold control or invisible characters.' },
+          { status: 422 },
+        )
+      if (instructions.trim() === settings.instructions) {
+        settings = { instructions: settings.instructions, max: settings.max }
+        return Response.json(settings)
+      }
+      settings = {
+        ...settings,
+        pending: { instructions: instructions.trim(), at: '2026-01-01T10:00:00.000Z' },
+      }
+      return Response.json(settings, { status: 202 })
     }
     if (url.pathname.endsWith('/api/git')) {
       return git === undefined ? new Response(null, { status: 404 }) : Response.json(git)
@@ -162,7 +190,7 @@ export function fakeServer(
     )
   })
   vi.stubGlobal('fetch', fetch)
-  return { patches, fetch }
+  return { patches, saved, fetch }
 }
 
 /** Opens the panel on a thread, as the reader left it. */

@@ -62,6 +62,9 @@ export function project(root) {
         '.annotant/comments.json',
     ),
     progressDir: path.join(state, 'progress'),
+    // A change of the settings the widget sent, until the reader accepts or
+    // rejects it (lib/settings.mjs); hooks/register.ts finds it the same way.
+    settingsFile: path.join(state, 'settings.json'),
   }
 }
 

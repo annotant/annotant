@@ -233,6 +233,17 @@ code { font-family: var(--cb-mono); }
 @keyframes an-fade-out { to { opacity: 0; } }
 .an-resize { position: absolute; top: 0; bottom: 0; left: -3px; width: 7px; cursor: col-resize; z-index: 1; }
 .an-resize:hover, .an-resize[data-dragging] { background: var(--cb-accent); opacity: .6; }
+/* The settings dialog, over the panel's whole height, as a sheet of its own. */
+.an-settings { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--cb-surface); border-radius: inherit; animation: an-fade-in ${PANEL_OUT_MS}ms ease-out; }
+.an-settings-body { flex: 1; overflow-y: auto; padding: 20px; }
+.an-settings-body form { display: flex; flex-direction: column; gap: 8px; }
+.an-settings-label { font-weight: 700; font-size: 14px; }
+.an-settings-hint { margin: 0; color: var(--cb-muted); font-size: 13px; }
+.an-settings-count { align-self: flex-end; color: var(--cb-muted); font-size: 12px; }
+.an-settings-count[data-over] { color: var(--cb-red); font-weight: 600; }
+.an-settings-pending { margin: 0; padding: 10px 12px; border: 1px solid var(--cb-amber-border); border-radius: var(--cb-radius); background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 13px; }
+.an-settings-pending code { font-family: var(--cb-mono); font-weight: 600; }
+.an-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .an-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--cb-border); }
 .an-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .an-title h2 { margin: 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

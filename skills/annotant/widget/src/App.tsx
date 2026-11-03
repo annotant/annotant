@@ -136,6 +136,7 @@ import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
 import { editorLink, locate, type Editor } from './editor'
 import { FileDiffView } from './diff'
+import { SettingsDialog } from './settings'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -1155,6 +1156,8 @@ export default function App({ root }: { root: Element }) {
   const widget = useRef<HTMLDivElement>(null)
   // The list of the keyboard shortcuts, in the panel.
   const [showKeys, setShowKeys] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsButton = useRef<HTMLButtonElement>(null)
 
   // The cards' relative dates move on while the panel is open: one timer for
   // every card, and the time gone by while it was closed shows as it opens.
@@ -1367,6 +1370,7 @@ export default function App({ root }: { root: Element }) {
 
   const close = () => {
     setOpen(false)
+    setSettingsOpen(false)
     setRestored(false)
     setAttachingTo(undefined)
     setLeaving(true)
@@ -2888,6 +2892,13 @@ export default function App({ root }: { root: Element }) {
                 onClick={() => startDraft(PAGE_LEVEL)}
               />
               <IconButton
+                ref={settingsButton}
+                icon="gear"
+                label="Settings"
+                aria-haspopup="dialog"
+                onClick={() => setSettingsOpen(true)}
+              />
+              <IconButton
                 icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
                 label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
                 onClick={toggleDocked}
@@ -2901,6 +2912,14 @@ export default function App({ root }: { root: Element }) {
               />
             </div>
           </header>
+          {settingsOpen && (
+            <SettingsDialog
+              onClose={() => {
+                setSettingsOpen(false)
+                settingsButton.current?.focus()
+              }}
+            />
+          )}
           <div className="an-body" ref={setScroller}>
             {showKeys && (
               <section
