@@ -9,6 +9,11 @@ released to the `stable` branch.
 
 ### Added
 
+- **Highlighted code.** The diff of a TypeScript, JavaScript (JSX included)
+  or JSON file, and a code block of Claude's whose fence says `ts`, `tsx`,
+  `js`, `jsx` or `json`, colour their keywords, strings, numbers, comments,
+  JSX tags and attributes, and JSON keys, in the light and dark themes. Other
+  languages stay plain text. (#291)
 - **The widget on the left.** _Move to the left_, in the panel's menu,
   puts the panel (floating or docked) and the strip of tools on the left of
   the page, out of the way of an app's own controls on the right; _Move to the
