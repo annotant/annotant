@@ -258,9 +258,10 @@ it was open for (`openingOf` in `format.mjs` skips the ones added), and no
   the comment again on the latest of them (`sentAt`), which the server hands
   over as `FOLLOWUP`.
 
-The widget reads, under such a message: _Sent to the agent at work_, _Read_,
-or _Queued for the next agent_. A stopped thread keeps its own box, which
-sends the comment again.
+The widget fades such a message until it has a `readAt`, and shows it where
+an agent got it: last while none has, so an answer its agent wrote without it
+comes first (`threadOrder` in `domain.ts`). A stopped thread keeps its own
+box, which sends the comment again.
 
 ### A message's target
 

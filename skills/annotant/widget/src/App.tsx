@@ -53,12 +53,12 @@ import {
   type Status,
   answered,
   byPanelOrder,
-  deliveryOf,
   folderName,
   gaveUp,
   gist,
   isActive,
   isAsking,
+  isPending,
   isReply,
   latestAttached,
   latestText,
@@ -67,6 +67,7 @@ import {
   paused,
   placeName,
   statusOf,
+  threadOrder,
   writtenOn,
 } from './domain'
 import { fits } from './images'
@@ -362,16 +363,6 @@ function Waiting({
   )
 }
 
-/** Where a message the reader added while Claude worked stands, under it. */
-function Delivery({ label }: { label: string | undefined }) {
-  if (!label) return null
-  return (
-    <div className="an-delivery" data-testid="an-delivery">
-      {label}
-    </div>
-  )
-}
-
 /** How far the pointer moves, in pixels, before a press is a drag. */
 const DRAG = 4
 
@@ -385,19 +376,23 @@ function Message({
   author,
   at,
   dated,
+  pending = false,
   onToggle,
   children,
 }: {
   author: ReviewMessage['author']
   at: string
   dated: boolean
+  /** No agent got it yet: faded until one does. */
+  pending?: boolean
   onToggle: () => void
   children: ReactNode
 }) {
   const pressedAt = useRef<{ x: number; y: number }>(undefined)
   return (
     <div
-      className={`an-msg an-msg--${author}`}
+      className={`an-msg an-msg--${author}${pending ? ' an-msg--pending' : ''}`}
+      data-pending={pending || undefined}
       tabIndex={0}
       data-testid="an-msg"
       onMouseDown={(event) => {
@@ -2492,7 +2487,7 @@ export default function App({ root }: { root: Element }) {
         {deleteButton(comment)}
       </div>
       <div className="an-chat">
-        {comment.messages.map((message, index, messages) =>
+        {threadOrder(comment.messages).map((message, index, messages) =>
           message.author === 'claude' ? (
             // Its steps were only there to wait on it: an answer shows alone.
             <Message
@@ -2542,6 +2537,7 @@ export default function App({ root }: { root: Element }) {
               author="reader"
               at={message.at}
               dated={dated.has(`${comment.id}/${message.id}`)}
+              pending={isPending(message)}
               onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
             >
               {message.images?.length ? (
@@ -2585,7 +2581,6 @@ export default function App({ root }: { root: Element }) {
                   <Linked text={message.body} repository={repository} />
                 </div>
               )}
-              <Delivery label={deliveryOf(comment, message)} />
             </Message>
           ),
         )}
