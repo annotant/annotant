@@ -388,8 +388,8 @@ code { font-family: var(--cb-mono); }
 .an-changed .an-file-action svg { width: 12px; height: 12px; }
 .an-diff { flex-basis: 100%; max-height: 320px; overflow: auto; border: 1px solid var(--cb-border); border-radius: 6px; font: 12px/1.5 var(--cb-mono); color: var(--cb-text); }
 .an-diff--note { padding: 4px 8px; font-family: inherit; color: var(--cb-muted); }
-.an-changed li.an-file--open { margin: 2px 0; padding: 3px 6px 0; border: 1px solid var(--cb-border); border-radius: 6px; background: var(--cb-bubble); overflow: hidden; }
-.an-file--open .an-diff { flex-basis: calc(100% + 12px); margin: 3px -6px 0; border: none; border-top: 1px solid var(--cb-border); border-radius: 0; background: var(--cb-surface); }
+.an-changed li.an-file--open { row-gap: 0; margin: 2px 0; padding: 4px 6px 0; border: 1px solid var(--cb-border); border-radius: 6px; background: var(--cb-bubble); overflow: hidden; }
+.an-file--open .an-diff { flex-basis: calc(100% + 12px); margin: 4px -6px 0; border: none; border-top: 1px solid var(--cb-border); border-radius: 0; background: var(--cb-surface); }
 .an-file--open .an-file-action:hover { background: var(--cb-surface); }
 .an-diff-hunk { min-width: max-content; }
 .an-diff-head { padding: 0 8px; background: var(--cb-bubble); color: var(--cb-muted); }
