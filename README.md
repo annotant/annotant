@@ -220,11 +220,16 @@ or from `/plugin`.
 ## In the widget
 
 While the panel is closed, the tools sit in a small strip of icons in the
-bottom right corner, their names and shortcuts in the tooltips; a tool in
-progress shows its _Cancel_ after its icon. Drag the strip by its grip, or move it with
-the arrow keys once the grip has the focus, wherever it covers nothing; a
-double-click on the grip puts it back. Where it is, and whether the panel
-floats or is docked, hold for every tab of the app and the next sessions.
+bottom right corner (or left, see below), their names and shortcuts in the
+tooltips; a tool in progress shows its _Cancel_ after its icon. Drag the strip
+by its grip, or move it with the arrow keys once the grip has the focus,
+wherever it covers nothing; a double-click on the grip puts it back. **Move to
+the left**, in the menu of the panel's header (`⋯`), puts the panel and the
+strip on the left of the page, for an app whose own controls sit on the right;
+**Move to the right** brings them back. A strip moved by hand goes to the same
+place on the other side. Where the strip is, which side the widget is on, and
+whether the panel floats or is docked, hold for every tab of the app and the
+next sessions.
 
 - **Comments**, at the strip's end, opens the panel. Its **New comment**
   (`+`) starts a comment for the page, or the whole app; so does the comment
@@ -316,7 +321,7 @@ floats or is docked, hold for every tab of the app and the next sessions.
   of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
   code blocks); anything else, HTML included, shows as its text. Your own
   messages stay as you typed them.
-- **Settings**, the gear in the panel's header: the project's instructions
+- **Settings**, in the menu of the panel's header (`⋯`): the project's instructions
   for the agents (`instructions` in `.annotant.json`), what every comment's
   agent should know: "we use Tailwind, never inline styles", "copy is in
   Canadian French", "don't touch `src/legacy/`". Agents follow them after

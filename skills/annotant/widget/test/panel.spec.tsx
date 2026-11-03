@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
 import { comment, fakeEvents, fakeServer, openPanel } from './server'
-import { renderWidget } from './widget'
+import { fromMenu, renderWidget } from './widget'
 
 function renderOpenPanel(layout: { docked?: boolean; width?: number } = {}) {
   fakeServer([])
@@ -61,12 +61,12 @@ test('the page makes room for the widened panel in step with it', () => {
   const { animate } = renderOpenPanel()
   const from = getComputedStyle(document.documentElement).paddingRight
 
-  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+  fromMenu('Widen panel to half the page')
   expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
   expect(animate).toHaveBeenCalledOnce()
   expect(animate.mock.calls[0]?.[0]).toEqual([{ paddingRight: from, offset: 0 }])
 
-  fireEvent.click(screen.getByRole('button', { name: 'Narrow panel' }))
+  fromMenu('Narrow panel')
   expect(document.documentElement.style.paddingRight).toBe('')
   expect(animate).toHaveBeenCalledTimes(2)
   expect(animate.mock.calls[1]?.[0]).toEqual([
@@ -76,7 +76,7 @@ test('the page makes room for the widened panel in step with it', () => {
 
 test('the page follows a dragged panel at once', () => {
   const { animate, panel } = renderOpenPanel()
-  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+  fromMenu('Widen panel to half the page')
   animate.mockClear()
 
   const handle = panel.querySelector('.an-resize')
@@ -93,7 +93,7 @@ test('the page makes room at once when motion is reduced', () => {
   reduceMotion()
   const { animate } = renderOpenPanel()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+  fromMenu('Widen panel to half the page')
   expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
   expect(animate).not.toHaveBeenCalled()
 })
@@ -134,7 +134,7 @@ test("the docked panel leaves the host's inline styles as it found them", async 
   hostStyles(document.documentElement, 'padding-right: 8px')
   const { panel } = renderOpenPanel()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+  fromMenu('Widen panel to half the page')
   expect(document.body.style.paddingRight).toBe('15px')
   expect(document.documentElement.style.paddingRight).toBe(`${window.innerWidth / 2}px`)
 
@@ -154,7 +154,7 @@ test("the docked panel leaves the host's inline styles as it found them", async 
 test('what the host writes while the panel is docked stays once it closes', () => {
   hostStyles(document.documentElement, '')
   renderOpenPanel()
-  fireEvent.click(screen.getByRole('button', { name: 'Widen panel to half the page' }))
+  fromMenu('Widen panel to half the page')
 
   document.documentElement.style.paddingRight = '20px'
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))

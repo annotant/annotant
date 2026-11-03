@@ -1,16 +1,17 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, test } from 'vitest'
 import { fakeServer, openPanel } from './server'
-import { renderWidget } from './widget'
+import { fromMenu, renderWidget } from './widget'
 
 const openSettings = async () => {
-  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+  await screen.findByRole('button', { name: 'More actions' })
+  fromMenu('Settings')
   const field = await screen.findByLabelText('Instructions for the agents')
   if (!(field instanceof HTMLTextAreaElement)) throw new Error('no text box')
   return field
 }
 
-test("the panel's gear opens the project's instructions for the agents", async () => {
+test("Settings, in the panel's menu, opens the project's instructions for the agents", async () => {
   fakeServer([], { settings: { instructions: 'We use Tailwind.', max: 4000 } })
   openPanel()
   renderWidget()
@@ -74,7 +75,7 @@ test('instructions over the limit cannot be saved', async () => {
   expect(screen.getByText('11 / 10')).toBeTruthy()
 })
 
-test('Escape closes the settings, not the panel, and gives the focus back to the gear', async () => {
+test("Escape closes the settings, not the panel, and gives the focus back to the menu's button", async () => {
   fakeServer([])
   openPanel()
   renderWidget()
@@ -84,7 +85,9 @@ test('Escape closes the settings, not the panel, and gives the focus back to the
 
   expect(screen.queryByTestId('an-settings')).toBeNull()
   expect(screen.getByTestId('annotant-panel')).toBeTruthy()
-  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }))
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'More actions' }),
+  )
 })
 
 test("a refused save shows the server's words, and keeps the text", async () => {
@@ -111,7 +114,8 @@ test('settings that cannot be read say why', async () => {
   openPanel()
   renderWidget()
 
-  fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+  await screen.findByRole('button', { name: 'More actions' })
+  fromMenu('Settings')
   expect(
     await screen.findByText(/could not be read \(Request failed \(500\)\)/),
   ).toBeTruthy()

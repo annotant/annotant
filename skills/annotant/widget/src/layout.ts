@@ -1,11 +1,13 @@
 // How the reader laid the widget out, kept for every tab of the app and the
-// next sessions: the panel floating or docked, its width, and where the closed
-// widget's tool strip is.
+// next sessions: the side of the page it sits on, the panel floating or docked,
+// its width, and where the closed widget's tool strip is.
 import { readLocal, writeLocal } from './session'
 
 const LAYOUT_KEY = 'annotant:layout'
 
-type Corner = `${'top' | 'bottom'}-${'left' | 'right'}`
+export type Side = 'left' | 'right'
+
+type Corner = `${'top' | 'bottom'}-${Side}`
 
 /** From the window's corner nearest to it, so it stays there as the window changes size. */
 export interface StripPlace {
@@ -17,9 +19,11 @@ export interface StripPlace {
 }
 
 export interface Layout {
+  /** None: on the right. */
+  side?: Side
   docked?: boolean
   width?: number
-  /** None: its own place, in the bottom right corner. */
+  /** None: its own place, in the bottom corner of the widget's side. */
   strip?: StripPlace
 }
 
@@ -64,7 +68,8 @@ export function readLayout(): Layout {
   const saved = readLocal(LAYOUT_KEY)
   const layout: Layout = {}
   if (!isRecord(saved)) return layout
-  const { docked, width, strip } = saved
+  const { side, docked, width, strip } = saved
+  if (side === 'left' || side === 'right') layout.side = side
   if (typeof docked === 'boolean') layout.docked = docked
   if (isNumber(width)) layout.width = width
   if (isStripPlace(strip)) layout.strip = strip
@@ -136,6 +141,13 @@ export function fitBox(left: number, top: number, size: Size, bounds: Size): Box
     top: clamp(top, bounds.height - size.height),
     ...size,
   }
+}
+
+/** The same place, from the corner across the window: the strip goes with the widget to its other side. */
+export function mirrorPlace(place: StripPlace): StripPlace {
+  const [vertical, horizontal] = place.corner.split('-')
+  const corner: Corner = `${vertical === 'top' ? 'top' : 'bottom'}-${horizontal === 'left' ? 'right' : 'left'}`
+  return { ...place, corner }
 }
 
 /** Its CSS: from its corner's two sides, so that it grows away from them, towards the window's inside. */

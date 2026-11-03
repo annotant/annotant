@@ -9,8 +9,15 @@ released to the `stable` branch.
 
 ### Added
 
-- **Instructions for the agents, from the widget.** A gear in the panel's
-  header opens the settings: the project's instructions for every comment's
+- **The widget on the left.** _Move to the left_, in the panel's menu,
+  puts the panel (floating or docked) and the strip of tools on the left of
+  the page, out of the way of an app's own controls on the right; _Move to the
+  right_ brings them back. A strip moved by hand goes to the same place on the
+  other side. The side holds for every tab of the app and the next sessions.
+  The panel's header keeps the buttons used most; a menu (`⋯`) holds the
+  others: _Settings_, the side, and widening the panel. (#290)
+- **Instructions for the agents, from the widget.** _Settings_, in the
+  panel's menu, opens the project's instructions for every comment's
   agent (`instructions` in `.annotant.json`), such as "we use Tailwind, never
   inline styles" or "copy is in Canadian French". Agents follow them after
   their own rules, which they cannot override. Saving writes them to
