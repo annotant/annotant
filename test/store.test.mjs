@@ -198,6 +198,52 @@ test('an answer tells the files its run added and deleted from those it modified
   assert.deepEqual(answer.deleted, ['src/old.ts'])
 })
 
+test('a deleted folder stands for the files the run changed in it', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    doneStep(1, 'write', 'src/tmp/a.ts', { created: true }),
+    doneStep(2, 'edit', 'src/tmp/b.ts'),
+    doneStep(3, 'edit', 'src/tmpl.ts'),
+    doneStep(4, 'delete', 'src/tmp', { folder: true }),
+  )
+  await comments.answer(comment.id, 'Done.')
+  const answer = lastOf((await comments.readAll())[0].messages)
+  assert.deepEqual(answer.changed, ['src/tmpl.ts', 'src/tmp/'])
+  assert.deepEqual(answer.deleted, ['src/tmp/'])
+})
+
+test('a Write keeps the file it created as it ends', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // The hooks' two lines: `created` only on the one written as it started.
+  await appendProgress(
+    project,
+    comment.id,
+    {
+      at: 1,
+      id: 'w',
+      kind: 'write',
+      label: 'src/new.ts',
+      created: true,
+      state: 'running',
+    },
+    { at: 2, id: 'w', kind: 'write', label: 'src/new.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  assert.deepEqual(lastOf((await comments.readAll())[0].messages).added, ['src/new.ts'])
+})
+
+test('an answer is refused when its step file cannot be read', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // A folder where the file should be: it cannot be read.
+  await mkdir(path.join(project.progressDir, `${comment.id}.jsonl`), { recursive: true })
+  await assert.rejects(comments.answer(comment.id, 'Done.'), { code: 'EISDIR' })
+})
+
 test('a question lists the files written before it, the answer after only its own', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)

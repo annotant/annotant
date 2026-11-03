@@ -739,6 +739,54 @@ test('a changed file is no link when the project turned the editor off', async (
   expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
 })
 
+test('a changed file says how to name another editor than the assumed VS Code', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const link = await screen.findByRole('link', { name: 'src/App.tsx' })
+  expect(link.getAttribute('title')).toBe(
+    'Open in VS Code (another editor: "editor" in .annotant.json)',
+  )
+})
+
+test('a changed file says the editor setting names nothing it can open', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: 'webstorm' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  await waitFor(() =>
+    expect(screen.getByText('src/App.tsx').getAttribute('title')).toBe(
+      '"editor" in .annotant.json names no editor Annotant can open',
+    ),
+  )
+  expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
+})
+
 test('a file out of the project is marked external, its path shown on hover', async () => {
   const at = '2026-01-01T10:00:00.000Z'
   fakeServer(

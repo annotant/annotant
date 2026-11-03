@@ -216,6 +216,8 @@ export function useServerSettings() {
     repository?: Repository | undefined
     root?: string | undefined
     editor?: Editor | undefined
+    /** `editor` in `.annotant.json` names nothing the widget can open. */
+    editorIgnored?: true | undefined
   }>({})
   useEffect(() => {
     let live = true
@@ -238,10 +240,17 @@ export function useServerSettings() {
       const root = typeof project === 'string' && project ? project : undefined
       const named = 'editor' in health ? health.editor : undefined
       const editor = parseEditor(named)
-      if (named !== undefined && named !== false && !editor) {
+      const editorIgnored = named !== undefined && named !== false && !editor
+      if (editorIgnored) {
         console.warn('Annotant: ignoring `editor` in .annotant.json:', named)
       }
-      setSettings({ theme: parsed, repository, root, editor })
+      setSettings({
+        theme: parsed,
+        repository,
+        root,
+        editor,
+        ...(editorIgnored && { editorIgnored }),
+      })
     }
     // No server: the lists say so; the page's background picks the theme meanwhile.
     load().catch(() => undefined)

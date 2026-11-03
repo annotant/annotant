@@ -41,7 +41,8 @@ const NARRATION_KINDS = new Set(['thinking', 'message'])
  * it in the end: a failed write changed nothing; one still running, or cut
  * short by a stop, may have. A file the run added then deleted is no change.
  * A file outside the repository by its absolute path, its name alone telling
- * nothing of where.
+ * nothing of where; a deleted folder with a `/` at its end, the files the run
+ * changed in it left out.
  * @param {import('./format.mjs').Step[]} steps
  */
 function changesOf(steps) {
@@ -51,7 +52,13 @@ function changesOf(steps) {
     const file = step.external ?? step.label
     if (!file || step.state === 'failed') continue
     const before = files.get(file)
-    if (step.kind === 'delete') {
+    if (step.kind === 'delete' && step.folder) {
+      for (const inside of files.keys()) {
+        if (inside.startsWith(`${file}/`) || inside.startsWith(`${file}\\`))
+          files.delete(inside)
+      }
+      files.set(`${file}/`, 'deleted')
+    } else if (step.kind === 'delete') {
       if (before === 'added') files.delete(file)
       else files.set(file, 'deleted')
     } else if (WRITE_KINDS.has(step.kind)) {
@@ -141,8 +148,10 @@ export async function readProgress(project, id, { history = false } = {}) {
   try {
     const file = history ? historyPath(project, id) : progressPath(project, id)
     lines = (await readFile(file, 'utf8')).trim().split('\n')
-  } catch {
-    return []
+  } catch (error) {
+    // No step yet. Any other failure is said: an answer would list no file.
+    if (errorCode(error) === 'ENOENT') return []
+    throw error
   }
   const steps = []
   const byTool = new Map()
@@ -435,7 +444,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * agent, showing "Waiting for Claude" to a reader who was the one being
      * waited on. The run's steps are dropped: the comments file holds the
      * discussion, not the agent's log, and the message only the files the
-     * run wrote (`changed`).
+     * run changed (`changed`, with `added` and `deleted`).
      * A question may offer `options`, the reader picking one, or several when
      * `multiple`; they can always answer in their own words instead.
      * @param {string} id

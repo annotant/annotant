@@ -152,8 +152,9 @@ export const MAX_PICKED = 1
  * @property {Option[]} [options] A question only: the answers it offers.
  * @property {boolean} [multiple] With `options`: the reader may pick several.
  * @property {string[]} [changed] Claude only: the files the run it closes
- *   wrote, relative to the project (`../` out of it), a file outside the
- *   repository by its absolute path; absent when it wrote none.
+ *   changed with its file tools or deleted with `rm`, relative to the project
+ *   (`../` out of it), a file outside the repository by its absolute path, a
+ *   deleted folder with a `/` at its end; absent when it changed none.
  * @property {string[]} [added] With `changed`: those of them the run created.
  * @property {string[]} [deleted] With `changed`: those of them it deleted.
  * @property {string[]} [choices] Reader only: the options they picked.
@@ -191,7 +192,7 @@ export const MAX_PICKED = 1
  * What a stopped run had done.
  * @typedef {object} Cancellation
  * @property {string} at
- * @property {string[]} changed Files it had written, relative to the repository.
+ * @property {string[]} changed The files it had changed, as a message's `changed` names them.
  * @property {number} steps
  * @property {string} [run]
  */
@@ -219,9 +220,13 @@ export const MAX_PICKED = 1
  *   `delete`, `bash`, `search`, `web`, `mcp`, `skill`, `tool`, `thinking` or
  *   `message`.
  * @property {string} label Empty for thinking the API redacted.
- * @property {string} [external] A file tool's, on a file outside the
- *   repository: its absolute path, `label` holding only its name.
+ * @property {string} [external] A file tool's or a `delete`, on a file outside
+ *   the repository: its absolute path, `label` holding only its name.
  * @property {true} [created] `write` only: the file did not exist before.
+ * @property {true} [folder] `delete` only: the path was a folder.
+ * @property {{ path: string, folder?: true }[]} [removing] `bash` only, as it
+ *   starts: what it names to delete that is there, absolute; those gone once
+ *   it ended are recorded as `delete` steps.
  * @property {string} [id] Tools only: Claude Code's tool_use_id.
  * @property {'running' | 'done' | 'failed'} [state] Tools only.
  * @property {string} [error] Why it failed.

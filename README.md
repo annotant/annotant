@@ -289,7 +289,7 @@ floats or is docked, hold for every tab of the app and the next sessions.
   a file opens it in VS Code; `editor` in `.annotant.json` names another
   (`cursor`, `windsurf`, `zed`, `vscode-insiders`), a URL of your editor's
   own with `{path}` and `{line}` (`"idea://open?file={path}&line={line}"`),
-  or `false` for no link. The browser asks once before handing it over. A
+  or `false` for no link. The browser may ask before handing it over. A
   file out of the project shows an _external_ badge, its full path on hover.
   Its icon says what the run did: green when it added the file, orange when
   it modified it, red when it deleted it.

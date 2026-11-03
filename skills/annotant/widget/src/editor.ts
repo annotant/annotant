@@ -7,6 +7,8 @@ export interface Editor {
   /** What the link says it opens the file in. */
   name: string
   template: string
+  /** VS Code when the project named none: the link says how to name another. */
+  assumed?: true
 }
 
 const VSCODE: Editor = { name: 'VS Code', template: 'vscode://file{path}:{line}' }
@@ -27,11 +29,11 @@ const UNSAFE = /^\s*(javascript|data|vbscript):/i
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i
 
 /**
- * The editor `setting` names: VS Code when it names none, none with `false`
- * or a value the widget cannot read.
+ * The editor `setting` names: VS Code, `assumed`, when it names none; none
+ * with `false` or a value the widget cannot read.
  */
 export function parseEditor(setting: unknown): Editor | undefined {
-  if (setting === undefined) return VSCODE
+  if (setting === undefined) return { ...VSCODE, assumed: true }
   if (typeof setting !== 'string') return undefined
   const known = Object.hasOwn(KNOWN, setting) ? KNOWN[setting] : undefined
   if (known) return known
@@ -47,7 +49,8 @@ const DRIVE = /^[a-z]:$/i
 /**
  * A changed file as the hooks named it: from the project's `root`, `../` out of
  * it, or by its absolute path outside the repository. `name` is what the list
- * shows, `path` where it is (unknown until the server gave `root`), and
+ * shows, `path` where it is (for a relative one, unknown until the server
+ * gave `root`), and
  * `external` says it is not in the project.
  */
 export function locate(root: string | undefined, file: string) {

@@ -176,6 +176,7 @@ const STEP_ICONS: Record<string, IconName> = {
   read: 'file-text',
   edit: 'pencil',
   write: 'file-plus',
+  delete: 'file-minus',
   multiedit: 'pencil',
   bash: 'terminal',
   search: 'search',
@@ -410,10 +411,10 @@ function Message({
   )
 }
 
-/** Up to this many files show by name under an answer; more fold into a count. */
+/** No file: `added` and `deleted` when the message has none. */
 const NONE: string[] = []
 
-/** What the run did to a file: its icon, in its colour, and the word that says it. */
+/** What the run did to a file: its icon and the word that says it (its colour: `an-changed--*`). */
 const CHANGES = {
   added: { icon: 'file-plus', label: 'Added' },
   modified: { icon: 'file-text', label: 'Modified' },
@@ -421,22 +422,25 @@ const CHANGES = {
 } as const
 
 /**
- * The files the run behind Claude's message wrote, under it: by name when it
- * wrote one, else folded into a count that opens on a click. Each opens in the
- * project's editor, once the server said where the project is; one out of
- * the project is marked external.
+ * The files the run behind Claude's message changed, under it: by name when
+ * it changed one, else folded into a count that opens on a click. Each but a
+ * deleted one opens in the project's editor, once the server said where the
+ * project is and unless `editor` is `false`; one out of the project is marked
+ * external.
  */
 function ChangedFiles({
   files,
   added = NONE,
   deleted = NONE,
   editor,
+  editorIgnored,
   root,
 }: {
   files: string[]
   added?: string[] | undefined
   deleted?: string[] | undefined
   editor: Editor | undefined
+  editorIgnored?: true | undefined
   root: string | undefined
 }) {
   const [open, setOpen] = useState(false)
@@ -477,11 +481,26 @@ function ChangedFiles({
                 </span>
                 {/* A deleted file has nothing left to open. */}
                 {editor && path && status !== 'deleted' ? (
-                  <a href={editorLink(editor, path)} title={`Open in ${editor.name}`}>
+                  <a
+                    href={editorLink(editor, path)}
+                    title={
+                      editor.assumed
+                        ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
+                        : `Open in ${editor.name}`
+                    }
+                  >
                     <code>{name}</code>
                   </a>
                 ) : (
-                  <code>{name}</code>
+                  <code
+                    title={
+                      editorIgnored && status !== 'deleted'
+                        ? '"editor" in .annotant.json names no editor Annotant can open'
+                        : undefined
+                    }
+                  >
+                    {name}
+                  </code>
                 )}
                 {external && (
                   // Out of the project: the badge tells where, on hover.
@@ -891,7 +910,13 @@ function focusedElement() {
 
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
-  const { theme, repository, root: projectRoot, editor } = useServerSettings()
+  const {
+    theme,
+    repository,
+    root: projectRoot,
+    editor,
+    editorIgnored,
+  } = useServerSettings()
   const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
@@ -2266,6 +2291,7 @@ export default function App({ root }: { root: Element }) {
                   added={message.added}
                   deleted={message.deleted}
                   editor={editor}
+                  editorIgnored={editorIgnored}
                   root={projectRoot}
                 />
               ) : null}
