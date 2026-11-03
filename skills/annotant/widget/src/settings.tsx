@@ -2,14 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { fetchSettings, saveSettings, type ProjectSettings } from './api'
 import { Button, IconButton, Spinner, Textarea, toast } from './ui'
 
-/** What the reader types in Claude Code to read the change, then accept it. */
-const REVIEW_COMMAND = '/annotant-settings'
-
 /**
  * The project's settings, over the panel: today the instructions for the
- * agents. Saving writes nothing that steers them: the change waits for the
- * reader in Claude Code (lib/settings.mjs), since the page's own scripts could
- * call the server too. Escape or ✕ close it.
+ * agents. Saving writes them to `.annotant.json` at once (lib/settings.mjs);
+ * each agent reads them when it starts, and a follow-up resumes its agent. Escape or ✕ close it.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<ProjectSettings | null>()
@@ -28,7 +24,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       })
       if (!live) return
       setSettings(read)
-      if (read) setText(read.pending?.instructions ?? read.instructions)
+      if (read) setText(read.instructions)
     }
     void load()
     return () => {
@@ -39,7 +35,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     if (settings) field.current?.focus()
   }, [settings])
 
-  const saved = settings ? (settings.pending?.instructions ?? settings.instructions) : ''
+  const saved = settings ? settings.instructions.trim() : ''
   const tooLong = !!settings && text.trim().length > settings.max
   const changed = !!settings && text.trim() !== saved
 
@@ -48,8 +44,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     try {
       const next = await saveSettings(text)
       setSettings(next)
-      setText(next.pending?.instructions ?? next.instructions)
-      if (!next.pending) toast('The instructions stay as they are.')
+      setText(next.instructions)
+      toast(
+        next.instructions.trim()
+          ? "Saved: the next comments' agents follow these instructions."
+          : "Saved: the next comments' agents get no instructions.",
+      )
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Request failed', true)
     } finally {
@@ -101,6 +101,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               its design system, the language of its copy, what not to touch. They follow
               it after their own rules.
             </p>
+            <p className="an-settings-hint">
+              Saved to <code>.annotant.json</code> at once. Each agent reads them when it
+              starts: the next comments get them; the agents already working, and a
+              follow-up to their comment, keep the ones they had.
+            </p>
             <Textarea
               ref={field}
               id="an-instructions"
@@ -113,13 +118,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <div className="an-settings-count" data-over={tooLong || undefined}>
               {text.trim().length} / {settings.max}
             </div>
-            {settings.pending && (
-              <p className="an-settings-pending" data-testid="an-settings-pending">
-                Saved, and waiting for you in Claude Code: run{' '}
-                <code>{REVIEW_COMMAND}</code> to read the change and accept it. Until
-                then, agents follow the instructions they had.
-              </p>
-            )}
             <div className="an-settings-actions">
               <Button variant="secondary" small onClick={onClose}>
                 Close

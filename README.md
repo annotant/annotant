@@ -165,7 +165,6 @@ No icons? See [the widget does not show](#the-widget-does-not-show).
 | `/annotant [dir]`                 | Watch the app: open your dev app and comment                                   |
 | `/annotant stop`                  | Stop watching                                                                  |
 | `/annotant status`                | The server, the agents at work and the comments waiting                        |
-| `/annotant-settings`              | Review the settings saved in the widget, then `accept` or `reject` them        |
 | `/annotant:annotant update`     | Migrate an older install                                                       |
 | `/annotant:annotant uninstall`  | Remove Annotant from the project                                             |
 
@@ -320,11 +319,12 @@ floats or is docked, hold for every tab of the app and the next sessions.
   agent should know: "we use Tailwind, never inline styles", "copy is in
   Canadian French", "don't touch `src/legacy/`". Agents follow them after
   their own rules, which they cannot override (`editable`, no writes from
-  Bash). Saving there changes nothing yet: the app's own scripts could call
-  the server too, so the change waits for you in Claude Code, where
-  `/annotant-settings` shows it (in a session watching the project) and
-  `/annotant-settings accept <code>` writes it. 4000 characters at most; `.annotant.json` is usually committed, so the
-  instructions are your team's.
+  Bash). Saving writes them to `.annotant.json` at once, and Claude Code
+  tells you: each agent reads them when it starts, so the next comments get
+  them; the agents already working, and a follow-up to their comment, keep
+  the ones they had. 4000 characters
+  at most; `.annotant.json` is usually committed, so the instructions are
+  your team's.
 - **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
   focus is but in a field of your app: `,` comments on the selected text (or
   on the page), `.` points at an element (while you write a comment or a
@@ -447,9 +447,11 @@ each agent, with no restart:
 - The server listens on `127.0.0.1` only and accepts cross-origin requests
   from `localhost` origins only (and `devOrigins`); it refuses any change
   from another origin (403).
-- Nothing the browser sends changes the agents' instructions by itself: those
-  saved in the widget's settings wait for your `/annotant-settings accept`,
-  typed in Claude Code, and a comment reaches its agent fenced as data.
+- A comment reaches its agent fenced as data. The instructions saved in the
+  widget's settings go to `.annotant.json` at once, and Claude Code tells you
+  each time: the app's own scripts could save them too, so a change you did
+  not make shows there, and in `git diff`. Agents follow them after their own
+  rules, which they cannot override.
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.

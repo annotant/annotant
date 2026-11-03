@@ -268,16 +268,8 @@ export function useServerSettings() {
   return settings
 }
 
-/**
- * The settings dialog's: the instructions `.annotant.json` holds for the
- * agents, and the change the reader saved, which waits for their
- * `/annotant-settings accept` in Claude Code.
- */
-export type ProjectSettings = {
-  instructions: string
-  pending?: { instructions: string; at: string }
-  max: number
-}
+/** The settings dialog's: the instructions `.annotant.json` holds for the agents. */
+export type ProjectSettings = { instructions: string; max: number }
 
 export const fetchSettings = () => request<ProjectSettings>(SETTINGS)
 

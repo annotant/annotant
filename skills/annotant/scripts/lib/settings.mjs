@@ -1,23 +1,20 @@
 // The project's settings the widget's dialog shows: today `instructions`, what
-// the reader wants every comment's agent to know about the project.
-//
-// The page's own scripts run beside the widget and can call the server, so
-// nothing the browser sends reaches `.annotant.json` by itself: the server
-// keeps it as a pending change, in the project's state folder, and only the
-// reader's `/annotant-settings accept <code>` in Claude Code (hooks/register.ts)
-// writes it.
+// the reader wants every comment's agent to know about the project. Saving
+// writes them to `.annotant.json` at once; each agent reads that file when it
+// starts, so the agents already working, and a follow-up that resumes one,
+// keep the instructions they had.
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { CONFIG_FILE } from './project.mjs'
 import { errorCode } from './errors.mjs'
 
-/** The most characters `instructions` may hold: every agent reads them. hooks/register.ts checks it too. */
+/** The most characters `instructions` may hold: every agent reads them. */
 const MAX_INSTRUCTIONS = 4000
 /**
- * Control, zero-width and bidi characters: in Claude Code, they could make the
- * text the reader reads differ from the text they accept. Tabs and line
- * breaks stay. hooks/register.ts checks it too.
+ * Control, zero-width and bidi characters, refused in the text the widget
+ * saves: they could make what an agent reads differ from what the reader
+ * sees. Tabs and line breaks stay.
  */
 const HIDDEN =
   // oxlint-disable-next-line no-control-regex -- matching control characters is the point
@@ -27,67 +24,71 @@ const HIDDEN =
 export class SettingsRefusal extends Error {}
 
 /**
- * `instructions` as `.annotant.json` holds them: '' when absent or not text.
- * @param {unknown} config
- */
-const instructionsOf = (config) =>
-  typeof config === 'object' &&
-  config !== null &&
-  'instructions' in config &&
-  typeof config.instructions === 'string'
-    ? config.instructions
-    : ''
-
-/**
- * @typedef {{ instructions: string, at: string }} Pending
- * @typedef {{ instructions: string, pending?: Pending, max: number }} Settings
+ * @typedef {{ instructions: string, max: number }} Settings
  */
 
+/** @param {{ root: string }} project */
+const configFile = (project) => path.join(project.root, CONFIG_FILE)
+
 /**
- * The pending change, if any; a file that is not one counts as none.
- * @param {{ settingsFile: string }} project
- * @returns {Promise<Pending | undefined>}
+ * `.annotant.json` as it is now, read again: it may have changed since the
+ * server started. One the reader can fix (unreadable, not JSON, not an
+ * object) is a refusal that says so: the dialog shows it.
+ * @param {{ root: string }} project
+ * @returns {Promise<Record<string, unknown>>}
  */
-async function readPending(project) {
-  const text = await readFile(project.settingsFile, 'utf8').catch((error) => {
-    if (errorCode(error) === 'ENOENT') return undefined
-    throw error
-  })
-  if (text === undefined) return undefined
+async function readConfig(project) {
+  let text
   try {
-    const pending = JSON.parse(text)
-    return typeof pending?.instructions === 'string' && typeof pending.at === 'string'
-      ? { instructions: pending.instructions, at: pending.at }
-      : undefined
-  } catch {
-    return undefined
+    text = await readFile(configFile(project), 'utf8')
+  } catch (error) {
+    throw new SettingsRefusal(
+      `${CONFIG_FILE} cannot be read: ${String(errorCode(error) ?? error)}`,
+    )
   }
+  /** @type {unknown} */
+  let config
+  try {
+    config = JSON.parse(text)
+  } catch (error) {
+    throw new SettingsRefusal(
+      `${CONFIG_FILE} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  // An array or a value would lose `instructions` on the way back to text.
+  if (!isObject(config))
+    throw new SettingsRefusal(`${CONFIG_FILE} must hold a JSON object.`)
+  return config
 }
 
 /**
- * The settings as they are now: `.annotant.json` read again (the reader may
- * have accepted a change since the server started), and the change waiting.
- * @param {{ root: string, settingsFile: string }} project
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+const isObject = (value) =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The settings `.annotant.json` holds: `instructions` '' when absent or not text.
+ * @param {{ root: string }} project
  * @returns {Promise<Settings>}
  */
 export async function readSettings(project) {
-  const config = JSON.parse(await readFile(path.join(project.root, CONFIG_FILE), 'utf8'))
-  const pending = await readPending(project)
+  const { instructions } = await readConfig(project)
   return {
-    instructions: instructionsOf(config),
-    ...(pending && { pending }),
+    instructions: typeof instructions === 'string' ? instructions : '',
     max: MAX_INSTRUCTIONS,
   }
 }
 
 /**
- * Keeps the instructions the reader saved as a pending change. The same as
- * `.annotant.json`'s, it withdraws the change instead.
- * @param {{ root: string, settingsFile: string }} project
+ * Writes the instructions the reader saved to `.annotant.json`, its other keys
+ * kept; none removes the key.
+ * @param {{ root: string }} project
  * @param {unknown} input The request's body.
- * @returns {Promise<{ settings: Settings, proposed: boolean }>}
+ * @returns {Promise<{ settings: Settings, changed: boolean }>}
  */
-export async function proposeSettings(project, input) {
+export async function saveSettings(project, input) {
   const sent =
     typeof input === 'object' && input !== null && 'instructions' in input
       ? input.instructions
@@ -102,17 +103,25 @@ export async function proposeSettings(project, input) {
     throw new SettingsRefusal(
       'The instructions hold control or invisible characters: write them as plain text.',
     )
-  const current = await readSettings(project)
-  if (instructions === current.instructions.trim()) {
-    await rm(project.settingsFile, { force: true })
-    const { pending: _, ...settings } = current
-    return { settings, proposed: false }
-  }
-  const pending = { instructions, at: new Date().toISOString() }
-  await mkdir(path.dirname(project.settingsFile), { recursive: true })
+  const config = await readConfig(project)
+  const before = typeof config.instructions === 'string' ? config.instructions : ''
+  const settings = { instructions, max: MAX_INSTRUCTIONS }
+  if (instructions === before.trim())
+    return { settings: { ...settings, instructions: before }, changed: false }
+  if (instructions) config.instructions = instructions
+  else delete config.instructions
+  const file = configFile(project)
   // One per request: two saves at once must not share it.
-  const temp = `${project.settingsFile}.${randomUUID()}.tmp`
-  await writeFile(temp, `${JSON.stringify(pending, null, 2)}\n`)
-  await rename(temp, project.settingsFile)
-  return { settings: { ...current, pending }, proposed: true }
+  const temp = `${file}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temp, `${JSON.stringify(config, null, 2)}\n`)
+    await rename(temp, file)
+  } catch (error) {
+    // Not left in the reader's project, where it could be committed.
+    await rm(temp, { force: true })
+    throw new SettingsRefusal(
+      `${CONFIG_FILE} cannot be written: ${String(errorCode(error) ?? error)}`,
+    )
+  }
+  return { settings, changed: true }
 }
