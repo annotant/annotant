@@ -391,21 +391,29 @@ export const isReply = (comment: Pick<ReviewComment, 'messages'>) => {
 }
 
 /**
- * Where a message the reader added while the comment was open or worked on
- * stands: an agent got it, the agent at work is to get it at its next step,
- * or the next agent will, in the thread. Undefined for any other message.
+ * A message the reader added while the comment was open or worked on that no
+ * agent got yet: the agent at work gets it after its next step, the next
+ * agent in the thread.
  */
-export function deliveryOf(
-  comment: Pick<ReviewComment, 'state' | 'events'>,
-  message: Pick<ReviewMessage, 'during' | 'queued' | 'readAt'>,
-) {
-  if (!message.during && !message.queued) return undefined
-  if (message.readAt) return 'Read'
-  const atWork =
-    comment.state === 'working' && comment.events.at(-1)?.run === message.during
-  return atWork && !message.queued
-    ? 'Sent to the agent at work'
-    : 'Queued for the next agent'
+export const isPending = (message: Pick<ReviewMessage, 'during' | 'queued' | 'readAt'>) =>
+  (!!message.during || !!message.queued) && !message.readAt
+
+/**
+ * The thread in the order the reader sees it: a message added while the
+ * comment was worked on takes its place once an agent got it, so an answer
+ * written without it comes first; one no agent got yet comes last.
+ */
+export function threadOrder<
+  M extends Pick<ReviewMessage, 'at' | 'during' | 'queued' | 'readAt'>,
+>(messages: readonly M[]): M[] {
+  const placed = (message: M) =>
+    message.during || message.queued
+      ? message.readAt
+        ? Date.parse(message.readAt)
+        : Number.POSITIVE_INFINITY
+      : Date.parse(message.at)
+  // Stable: messages placed at the same time keep the file's order.
+  return messages.toSorted((a, b) => placed(a) - placed(b))
 }
 
 /** Waiting for an agent, or worked on by one. */

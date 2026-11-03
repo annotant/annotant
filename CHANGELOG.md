@@ -40,9 +40,9 @@ released to the `stable` branch.
   at the first line the run changed. (#221)
 - **Write to Claude while it works.** The message box stays while a comment
   waits for an agent or one works on it: a detail you add reaches the agent
-  at work after its next step, and the thread marks it _Sent to the agent at
-  work_, then _Read_. One it never read, as it was already answering, opens
-  the comment again as a follow-up (_Queued for the next agent_). (#250)
+  at work after its next step, and shows faded until then. One it never got,
+  as it was already answering, comes after the answer and opens the comment
+  again as a follow-up. (#250)
 - **Each answer lists the files its run changed.** Under Claude's answer or
   question, the thread names the files that run edited, wrote or deleted
   (with `rm`), those out of your project marked _external_; several, a count

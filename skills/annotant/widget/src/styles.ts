@@ -351,7 +351,7 @@ code { font-family: var(--cb-mono); }
 .an-keys dd { color: var(--cb-muted); }
 .an-keys kbd { font: inherit; font-weight: 600; white-space: nowrap; }
 .an-idle { font-size: 13px; color: var(--cb-muted); }
-.an-delivery { margin-top: 2px; font-size: 11px; color: var(--cb-muted); text-align: right; }
+.an-msg--pending { opacity: 0.5; }
 
 .an-section, .an-author, .an-label, .an-model { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-muted); }
 .an-author { display: block; }
@@ -384,7 +384,7 @@ code { font-family: var(--cb-mono); }
 /* The thread as a chat: the reader's messages right, in the accent; Claude's left, in a tint. */
 .an-chat { display: flex; flex-direction: column; gap: 16px; }
 /* A message takes the focus, to show its date on Enter or Space: outlined for the keyboard only. */
-.an-msg { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; outline: none; }
+.an-msg { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; outline: none; transition: opacity 0.3s; }
 .an-msg:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; border-radius: 14px; }
 .an-msg--reader { align-items: flex-end; padding-left: 40px; }
 .an-msg--claude { align-items: flex-start; }

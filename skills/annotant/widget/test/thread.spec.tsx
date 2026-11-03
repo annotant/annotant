@@ -1192,7 +1192,16 @@ test.each(['open', 'working'] as const)(
   },
 )
 
-test('a message sent during a run says whether its agent read it', async () => {
+/** The bodies of the thread's messages, in the order the reader sees them, those no agent got yet marked. */
+const thread = () =>
+  screen
+    .getAllByTestId('an-msg')
+    .map(
+      (message) =>
+        `${message.dataset['pending'] ? '…' : ''}${message.querySelector('.an-bubble')?.textContent?.trim()}`,
+    )
+
+test('a message sent during a run is faded until its agent gets it', async () => {
   fakeServer([
     comment({
       state: 'working',
@@ -1200,7 +1209,6 @@ test('a message sent during a run says whether its agent read it', async () => {
       messages: [
         { author: 'reader', body: 'Keep the icon', at: AT, during: 'r1', readAt: AT },
         { author: 'reader', body: 'And on mobile', at: AT, during: 'r1' },
-        { author: 'reader', body: 'Blue, not navy', at: AT, during: 'r1', queued: true },
       ],
     }),
   ])
@@ -1208,12 +1216,55 @@ test('a message sent during a run says whether its agent read it', async () => {
   renderWidget()
 
   await screen.findByText('And on mobile')
-  expect(screen.getAllByTestId('an-delivery').map((label) => label.textContent)).toEqual([
-    'Read',
-    'Sent to the agent at work',
-    'Queued for the next agent',
-  ])
+  expect(thread()).toEqual(['Make the title bigger', 'Keep the icon', '…And on mobile'])
+  expect(screen.queryByText(/Sent to the agent|Queued for the next|^Read$/)).toBeNull()
 })
+
+const later = (minutes: number) =>
+  new Date(Date.parse(AT) + minutes * 60_000).toISOString()
+
+test.each([
+  ['no agent got it yet', undefined, ['Keep the icon', 'Done', '…And on mobile']],
+  ['the next agent got it', later(4), ['Keep the icon', 'Done', 'And on mobile']],
+  [
+    'its agent got it before answering',
+    later(2),
+    ['Keep the icon', 'And on mobile', 'Done'],
+  ],
+] as const)(
+  'a message sent during a run, %s, takes its place in the thread',
+  async (_, readAt, order) => {
+    fakeServer([
+      comment({
+        state: 'resolved',
+        events: [...WORKING, { at: later(3), state: 'resolved', by: 'agent', run: 'r1' }],
+        messages: [
+          {
+            author: 'reader',
+            body: 'Keep the icon',
+            at: later(1),
+            during: 'r1',
+            readAt: later(1),
+          },
+          {
+            author: 'reader',
+            body: 'And on mobile',
+            at: later(2),
+            during: 'r1',
+            queued: true,
+            ...(readAt ? { readAt } : {}),
+          },
+          { author: 'claude', body: 'Done', at: later(3), run: 'r1' },
+        ],
+      }),
+    ])
+    openThread('c1')
+    renderWidget()
+
+    await screen.findByText('Done')
+    expect(thread()).toEqual(['Make the title bigger', ...order])
+  },
+)
 
 test('a message added while no agent had the comment waits for the next one', async () => {
   fakeServer([
@@ -1225,9 +1276,8 @@ test('a message added while no agent had the comment waits for the next one', as
   openThread('c1')
   renderWidget()
 
-  expect((await screen.findByTestId('an-delivery')).textContent).toBe(
-    'Queued for the next agent',
-  )
+  await screen.findByText('Keep the icon')
+  expect(thread()).toEqual(['Make the title bigger', '…Keep the icon'])
   // Still about the comment: no reply waits on the hooks.
   expect(screen.getByTestId('an-working').textContent).not.toBe('Sent…')
 })
