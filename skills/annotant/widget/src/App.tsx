@@ -135,7 +135,7 @@ import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
 import { editorLink, locate, type Editor } from './editor'
-import { FileDiffView, type LineCounts } from './diff'
+import { FileDiffView, countsOf, useDiffs, type LineCounts } from './diff'
 import { SettingsDialog } from './settings'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
@@ -478,8 +478,6 @@ function ChangedFiles({
     if (!next.delete(file)) next.add(file)
     setShown(next)
   }
-  // How many lines the run changed in each file whose diff was loaded.
-  const [counts, setCounts] = useState<Readonly<Record<string, LineCounts>>>({})
   // The file whose path was just copied, ticked for a moment.
   const [copied, setCopied] = useState<string>()
   const copyPath = async (file: string) => {
@@ -496,6 +494,8 @@ function ChangedFiles({
     )
   }
   const folds = files.length > 1
+  // Loaded once the list shows, for the counts on each file's row.
+  const diffs = useDiffs(files, diffOf, !folds || open)
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
   return (
     <div className="an-changed" data-testid="an-changed">
@@ -520,6 +520,7 @@ function ChangedFiles({
                 ? 'added'
                 : 'modified'
             const change = CHANGES[status]
+            const counts = countsOf(diffs[file])
             return (
               <li
                 key={file}
@@ -558,7 +559,7 @@ function ChangedFiles({
                     </span>
                   )}
                   <span className="an-file-fill" />
-                  {counts[file] && <LineCountsView counts={counts[file]} />}
+                  {counts && <LineCountsView counts={counts} />}
                   <button
                     type="button"
                     className="an-file-action"
@@ -598,14 +599,7 @@ function ChangedFiles({
                     )
                   )}
                 </div>
-                {diffOf && shown.has(file) && (
-                  <FileDiffView
-                    load={() => diffOf(file)}
-                    onCounts={(loaded) =>
-                      setCounts((current) => ({ ...current, [file]: loaded }))
-                    }
-                  />
-                )}
+                {diffOf && shown.has(file) && <FileDiffView loaded={diffs[file]} />}
               </li>
             )
           })}

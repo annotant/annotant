@@ -1,49 +1,76 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FileDiff } from './api'
 
 /** How many lines a run added to a file and removed from it. */
 export type LineCounts = { added: number; removed: number }
 
-type Loaded =
+/** A file's diff, as far as it has loaded. */
+export type Loaded =
   | { state: 'loading' }
   | { state: 'failed'; error: string }
   | { state: 'done'; diff: FileDiff }
 
 /**
- * What one run did to one file: its unified diff, loaded once it opens, added
- * lines green and removed ones red, each with its old and new line numbers, in
- * a box that scrolls when long. `onCounts` hears how many lines it changed.
+ * The run's diff of each of `files` (a folder has none), each loaded once,
+ * from the first render where `active` holds: the list shows each file's
+ * counts before the reader opens it, and opening it again loads nothing.
  */
-export function FileDiffView({
-  load,
-  onCounts,
-}: {
-  load: () => Promise<FileDiff>
-  onCounts?: ((counts: LineCounts) => void) | undefined
-}) {
-  const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' })
+export function useDiffs(
+  files: string[],
+  load: ((file: string) => Promise<FileDiff>) | undefined,
+  active: boolean,
+): Readonly<Record<string, Loaded>> {
+  const [diffs, setDiffs] = useState<Readonly<Record<string, Loaded>>>({})
+  const asked = useRef(new Set<string>())
+  const mounted = useRef(true)
+  useEffect(
+    () => () => {
+      mounted.current = false
+    },
+    [],
+  )
   useEffect(() => {
-    let current = true
-    void (async () => {
-      try {
-        const diff = await load()
-        if (!current) return
-        setLoaded({ state: 'done', diff })
-        if ('hunks' in diff) onCounts?.(countLines(diff.hunks))
-      } catch (error) {
-        if (current)
-          setLoaded({
+    // `load` is a new function each render: `asked` keeps each file to one call.
+    if (!active || !load) return
+    const set = (file: string, loaded: Loaded) => {
+      if (mounted.current) setDiffs((current) => ({ ...current, [file]: loaded }))
+    }
+    for (const file of files) {
+      if (file.endsWith('/') || asked.current.has(file)) continue
+      asked.current.add(file)
+      set(file, { state: 'loading' })
+      void (async () => {
+        try {
+          set(file, { state: 'done', diff: await load(file) })
+        } catch (error) {
+          set(file, {
             state: 'failed',
             error: error instanceof Error ? error.message : String(error),
           })
-      }
-    })()
-    return () => {
-      current = false
+        }
+      })()
     }
-    // Loaded once per opening: the run's diff never changes.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `load` is a new function each render
-  }, [])
+  }, [active, files, load])
+  return diffs
+}
+
+/** The lines `loaded` added and removed, once it has hunks. */
+export function countsOf(loaded: Loaded | undefined): LineCounts | undefined {
+  if (loaded?.state !== 'done' || !('hunks' in loaded.diff)) return undefined
+  const counts = { added: 0, removed: 0 }
+  for (const { lines } of loaded.diff.hunks)
+    for (const { kind } of lines) if (kind !== 'context') counts[kind]++
+  return counts
+}
+
+const LOADING: Loaded = { state: 'loading' }
+
+/**
+ * What one run did to one file: its unified diff, added lines green and
+ * removed ones red, each with its old and new line numbers, in a box that
+ * scrolls when long.
+ */
+export function FileDiffView({ loaded = LOADING }: { loaded?: Loaded | undefined }) {
   if (loaded.state === 'loading')
     return (
       <div className="an-diff an-diff--note" role="status">
@@ -123,11 +150,4 @@ function numbered(hunk: Hunk) {
     old: line.kind === 'added' ? undefined : old++,
     now: line.kind === 'removed' ? undefined : now++,
   }))
-}
-
-function countLines(hunks: Hunk[]): LineCounts {
-  const counts = { added: 0, removed: 0 }
-  for (const { lines } of hunks)
-    for (const { kind } of lines) if (kind !== 'context') counts[kind]++
-  return counts
 }

@@ -296,9 +296,9 @@ floats or is docked, hold for every tab of the app and the next sessions.
   the next agent (_Queued for the next agent_).
 - Once answered: the files the run changed, under its answer (a count when
   there are several, which opens on a click), and reply in the thread to follow up,
-  reusing the same agent and its context when it is still around. A click on
-  a file's name shows that run's own diff of it, with line numbers and how
-  many lines it added and removed, from before its first write
+  reusing the same agent and its context when it is still around. Each file
+  says how many lines the run added and removed; a click on its name shows
+  that run's own diff of it, with line numbers, from before its first write
   to after its last: not what you or other agents changed before or after it.
   Beside it, a button copies its path in the project, and _Open_ opens it in
   VS Code at the first line the run changed; `editor` in `.annotant.json` names another

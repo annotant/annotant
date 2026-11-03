@@ -754,16 +754,25 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
 
   const [first, second] = await screen.findAllByTestId('an-changed')
   if (!first || !second) throw new Error('two lists expected')
+  // A folded list loads no diff.
+  const diffsAsked = () =>
+    fetch.mock.calls.filter(([url]) => url.includes('/diff')).length
+  expect(diffsAsked()).toBe(1)
   fireEvent.click(within(first).getByRole('button', { name: '3 files changed' }))
   expect(
     (
       await within(first).findByRole('link', { name: 'Open src/data.ts in VS Code' })
     ).getAttribute('href'),
   ).toBe('vscode://file/work/shop/src/data.ts:12')
-  // No diff loaded before the reader asks for one.
-  expect(fetch.mock.calls.some(([url]) => url.includes('/diff'))).toBe(false)
-
+  // Unfolded, each file's row counts the lines the run added and removed,
+  // before the reader opens its diff.
+  expect((await within(first).findByLabelText('1 added, 1 removed')).textContent).toBe(
+    '+1−1',
+  )
   const show = within(first).getByRole('button', { name: 'src/data.ts' })
+  expect(show.getAttribute('aria-expanded')).toBe('false')
+  expect(diffsAsked()).toBe(4)
+
   fireEvent.click(show)
   expect(show.getAttribute('aria-expanded')).toBe('true')
   const diff = await within(first).findByTestId('an-diff')
@@ -787,8 +796,8 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
     ['12', ''],
     ['', '12'],
   ])
-  // Once loaded, the file's head counts the lines the run added and removed.
-  expect(within(first).getByLabelText('1 added, 1 removed').textContent).toBe('+1−1')
+  // Opening it loads nothing more.
+  expect(diffsAsked()).toBe(4)
 
   fireEvent.click(within(first).getByRole('button', { name: 'src/big.json' }))
   expect(await within(first).findByText('Too large to show.')).toBeTruthy()
