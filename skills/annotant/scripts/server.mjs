@@ -20,8 +20,11 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
+import { RUN_ID, readDiff } from './lib/diffs.mjs'
 import { errorCode } from './lib/errors.mjs'
+import { defaultBranch, gitPlace } from './lib/git.mjs'
 import { originOf } from './lib/remote.mjs'
+import { SettingsRefusal, readSettings, saveSettings } from './lib/settings.mjs'
 import {
   CONTENT_TYPES,
   IMAGE_NAME,
@@ -66,6 +69,48 @@ const store = createStore(project)
 // The `origin` remote, read once (a change needs a restart): the widget
 // links the issues a message cites to its repository.
 const repository = originOf(project.root)
+// Where the agents write: read on demand, at most every GIT_MS, however many
+// widgets ask.
+const GIT_MS = 3000
+/** @type {{ at: number, place: Promise<import('./lib/format.mjs').GitPlace & { default?: true }> } | undefined} */
+let gitRead
+/** Why git failed, said once until it changes: the widget then shows no branch. */
+let gitFailure = ''
+/** @param {string} why */
+function reportGit(why) {
+  if (why === gitFailure) return
+  gitFailure = why
+  console.error(
+    `annotant server: cannot read the git branch, the widget shows none: ${why}`,
+  )
+}
+function gitNow() {
+  if (!gitRead || Date.now() - gitRead.at > GIT_MS) {
+    let failed = false
+    /** @param {string} why */
+    const report = (why) => {
+      failed = true
+      reportGit(why)
+    }
+    gitRead = {
+      at: Date.now(),
+      place: Promise.all([
+        gitPlace(project.root, report),
+        defaultBranch(project.root, report),
+      ]).then(([place, main]) => {
+        // Read again: the same failure, later, is said again.
+        if (!failed) gitFailure = ''
+        return place
+          ? {
+              ...place,
+              ...(place.branch && place.branch === main && { default: true }),
+            }
+          : {}
+      }),
+    }
+  }
+  return gitRead.place
+}
 const WIDGET = path.join(SKILL_DIR, 'widget', 'dist', 'widget.js')
 // Releases ship the built widget; a clone of the repository builds it first.
 if (!existsSync(WIDGET)) {
@@ -596,8 +641,22 @@ async function handle(req, res) {
     return res.end(data)
   }
 
+  // What run `run` did to one of the files it changed (`file`, as the message's
+  // `changed` names it): its line diff, from the sides the hooks kept
+  // (lib/diffs.mjs). Loaded once the widget lists the file, for its counts and
+  // its diff.
+  const [, diffOf, diffRun] =
+    /^\/api\/comments\/([\w-]+)\/runs\/([^/]+)\/diff$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && diffOf && diffRun) {
+    const file = url.searchParams.get('file')
+    if (!RUN_ID.test(diffRun) || !file)
+      return send(res, 404, { error: 'not found' }, cors)
+    return send(res, 200, await readDiff(project, diffOf, diffRun, file), cors)
+  }
+
   // `theme` tells the widget how the app switches between light and dark
-  // (theme.ts); `repository`, where the issues a message cites are (links.tsx).
+  // (theme.ts); `repository`, where the issues a message cites are (links.tsx);
+  // `project` and `editor`, where a changed file opens (editor.ts).
   if (url.pathname === '/api/health') {
     return send(
       res,
@@ -607,10 +666,16 @@ async function handle(req, res) {
         name: config.name,
         version: WIDGET_VERSION,
         theme: config.theme,
+        editor: config.editor,
         repository: await repository,
       },
       cors,
     )
+  }
+
+  // The branch (or commit) and worktree the agents write to (lib/git.mjs).
+  if (req.method === 'GET' && url.pathname === '/api/git') {
+    return send(res, 200, await gitNow(), cors)
   }
 
   // The dev widget's debug panel, from Claude Code's transcripts: a tool call
@@ -642,6 +707,24 @@ async function handle(req, res) {
       'cache-control': 'no-store',
     })
     return res.end(await stepFiles(project, steps))
+  }
+
+  // The settings dialog: what `.annotant.json` holds, written there on a save.
+  if (url.pathname === '/api/settings') {
+    if (req.method === 'GET' || req.method === 'POST') {
+      const input = req.method === 'POST' ? await readJson(req) : undefined
+      try {
+        if (req.method === 'GET') return send(res, 200, await readSettings(project), cors)
+        const { settings, changed } = await saveSettings(project, input)
+        // For the hooks: they tell the reader in Claude Code.
+        if (changed) console.log('SETTINGS changed')
+        return send(res, 200, settings, cors)
+      } catch (error) {
+        if (error instanceof SettingsRefusal)
+          return send(res, 422, { error: error.message }, cors)
+        throw error
+      }
+    }
   }
 
   if (url.pathname === '/api/comments') {
@@ -759,10 +842,10 @@ const goneLine = (id, state) =>
         ? `RESOLVED ${id}`
         : `CANCELLED ${id}`
 
-/** The reader's latest message after their comment, when the thread ends on it. */
+/** The reader's message the comment is open for, when it is not their comment. */
 function latestReply(comment) {
-  const last = comment.messages.at(-1)
-  return comment.messages.length > 1 && last?.author === 'reader' ? last : undefined
+  const opening = openingOf(comment)
+  return opening && opening !== comment.messages[0] ? opening : undefined
 }
 
 /**
@@ -874,7 +957,9 @@ function tick(comments, first) {
   for (const comment of comments) {
     if (!isActive(comment)) continue
     current.add(comment.id)
-    const latest = comment.messages.findLast((message) => message.author === 'reader')
+    // A message added while it is open or worked on is no edit: the hooks give
+    // it to the agent at work, the thread to the next one.
+    const latest = openingOf(comment)
     const text = `${latest?.id} ${latest?.body}`
     const opened = comment.events.findLastIndex((event) => event.state === 'open')
     const previous = seen.get(comment.id)

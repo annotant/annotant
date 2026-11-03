@@ -1,7 +1,9 @@
 // scripts/hook.mjs, run as Claude Code runs a comment's agent's hooks: the
 // event as JSON on stdin, a deny as JSON on stdout.
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
@@ -28,15 +30,16 @@ let ids = 0
  * `folder` the project's folder there.
  * @param {import('node:test').TestContext} t
  * @param {number} [count]
- * @param {{ lockRoot?: string, folder?: string }} [options]
+ * `config`: more of its .annotant.json.
+ * @param {{ lockRoot?: string, folder?: string, config?: Record<string, unknown> }} [options]
  */
-async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
-  const root = lockRoot ? path.join(lockRoot, folder) : await tempProject(t)
+async function world(t, count = 1, { lockRoot, folder = 'web', config = {} } = {}) {
+  const root = lockRoot ? path.join(lockRoot, folder) : await tempProject(t, config)
   if (lockRoot) {
     await mkdir(root, { recursive: true })
     await writeFile(
       path.join(root, '.annotant.json'),
-      JSON.stringify({ version: 1, commentsFile: '.annotant/comments.json' }),
+      JSON.stringify({ version: 1, commentsFile: '.annotant/comments.json', ...config }),
     )
   }
   const project = projects.project(root)
@@ -57,7 +60,7 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
    * @param {string} mode
    * @param {Record<string, unknown> | string} [event] A string as is.
    */
-  const hook = async (index, mode, event = {}) => {
+  const output = async (index, mode, event = {}) => {
     const ran = await run(
       process.execPath,
       [
@@ -78,10 +81,10 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
       },
     )
     assert.equal(ran.code, 0, ran.stderr)
-    return ran.stdout
-      ? JSON.parse(ran.stdout).hookSpecificOutput.permissionDecisionReason
-      : undefined
+    return ran.stdout ? JSON.parse(ran.stdout).hookSpecificOutput : undefined
   }
+  /** The hook's deny, when it refuses the tool. @type {typeof output} */
+  const hook = async (...args) => (await output(...args))?.permissionDecisionReason
   /**
    * A tool's two hooks, `between` run between them; the deny when pre refuses it.
    * @param {number} index
@@ -119,7 +122,7 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
     file.comments.find((one) => one.id === id(index)).state = state
     await writeFile(project.commentsFile, JSON.stringify(file))
   }
-  return { root, project, comments, hook, tool, claim, progress, setState, id }
+  return { root, project, comments, hook, output, tool, claim, progress, setState, id }
 }
 
 const edit = (file) => ({ file_path: file, old_string: 'a', new_string: 'b' })
@@ -158,6 +161,215 @@ test("records a claimed run's steps, and ends the run on resolve", async (t) => 
   // Its locks went with the run.
   await w.claim(1)
   assert.equal(await w.tool(1, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
+})
+
+test("gives the agent the reader's message sent during its run, once", async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.comments.update(w.id(0), { followUp: 'Keep the icon' })
+  const read = { tool_name: 'Read', tool_input: { file_path: 'src/App.tsx' } }
+  // Before the tool runs, nothing: the message goes with its result.
+  assert.equal(await w.output(0, 'pre', { ...read, tool_use_id: 'p1' }), undefined)
+  const given = await w.output(0, 'post', { ...read, tool_use_id: 'p1' })
+  assert.equal(given?.hookEventName, 'PostToolUse')
+  assert.match(given?.additionalContext ?? '', /The reader added to comment/)
+  assert.match(
+    given?.additionalContext ?? '',
+    /reader-[0-9a-f]{8} .*"body": "Keep the icon"/,
+  )
+  const [saved] = await w.comments.readAll()
+  assert.ok(saved?.messages.at(-1)?.readAt)
+  // Once: the next tool says nothing more.
+  assert.equal(await w.output(0, 'post', { ...read, tool_use_id: 'p2' }), undefined)
+})
+
+test('gives the images of a message as files the agent opens', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.comments.update(w.id(0), {
+    followUp: 'Like this',
+    images: [{ data: Buffer.from('89504e470d0a1a0a', 'hex'), ext: 'png' }],
+  })
+  const read = { tool_name: 'Read', tool_input: { file_path: 'x' }, tool_use_id: 'i1' }
+  const given = (await w.output(0, 'post', read))?.additionalContext ?? ''
+  const file = /"(\/[^"]+m2-1\.png)"/.exec(given)?.[1]
+  assert.ok(file, given)
+  assert.ok(existsSync(file))
+})
+
+test('keeps a message for a failed tool, whose context may not reach the agent', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.comments.update(w.id(0), { followUp: 'And on mobile' })
+  const read = { tool_name: 'Read', tool_input: { file_path: 'x' }, tool_use_id: 'f1' }
+  const failed = { ...read, hook_event_name: 'PostToolUseFailure', error: 'ENOENT' }
+  assert.equal(await w.output(0, 'post', failed), undefined)
+  const given = await w.output(0, 'post', { ...read, hook_event_name: 'PostToolUse' })
+  assert.match(given?.additionalContext ?? '', /And on mobile/)
+})
+
+test('a message sent after the last tool goes to the next agent, the locks released', async (t) => {
+  const w = await world(t, 2)
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  const resolve = `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project . "Done."`
+  await w.tool(
+    0,
+    'Bash',
+    { command: resolve },
+    {
+      between: async () => {
+        await w.comments.update(w.id(0), { followUp: 'Also the footer' })
+        await w.comments.answer(w.id(0), 'Done.')
+      },
+    },
+  )
+  const [saved] = await w.comments.readAll()
+  assert.equal(saved?.state, 'open')
+  assert.equal(saved?.messages.at(-2)?.body, 'Also the footer')
+  assert.equal(saved?.messages.at(-2)?.readAt, undefined)
+  // Open again, its run ended: the other comment's agent may take its file.
+  await w.claim(1)
+  assert.equal(await w.tool(1, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
+})
+
+/**
+ * Runs git in `dir`, without the user's signing or hooks.
+ * @param {string} dir
+ * @param {string[]} args
+ */
+const git = (dir, ...args) =>
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'core.hooksPath=/dev/null',
+      ...args,
+    ],
+    { cwd: dir },
+  )
+
+test('records the branch a run wrote on, and a switch during the run', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/blue')
+  git(repo, 'commit', '-q', '--allow-empty', '-m', 'first')
+  const w = await world(t, 1, { lockRoot: repo })
+  const writes = async () => (await w.comments.readAll())[0]?.writes
+  const file = path.join(w.root, 'src/App.tsx')
+  await w.tool(0, 'Edit', edit(file))
+  // Before the claim, no run to record it in.
+  assert.equal(await writes(), undefined)
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(file))
+  assert.deepEqual(
+    (await writes())?.map((write) => ({
+      run: write.run,
+      branch: write.branch,
+      switched: write.switched,
+    })),
+    [{ run: 'r1', branch: 'feature/blue', switched: undefined }],
+  )
+  git(repo, 'switch', '-q', '-c', 'main')
+  // A failed write changed nothing.
+  await w.tool(0, 'Edit', edit(file), { error: 'String to replace not found' })
+  assert.equal((await writes())?.[0]?.switched, undefined)
+  await w.tool(0, 'Write', { file_path: file, content: 'b' })
+  assert.deepEqual((await writes())?.[0]?.switched, { branch: 'main' })
+})
+
+test('a file rm deleted records the branch as a write does', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/cleanup')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const old = path.join(w.root, 'src/old.ts')
+  await mkdir(path.dirname(old), { recursive: true })
+  await writeFile(old, 'x')
+  await w.tool(0, 'Bash', { command: 'rm src/old.ts' }, { between: () => rm(old) })
+  assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
+})
+
+test("a notebook edit is listed in the answer's files, with its branch", async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/analysis')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'NotebookEdit', {
+    notebook_path: path.join(w.root, 'src/report.ipynb'),
+    new_source: 'print(1)',
+  })
+  await w.comments.answer(w.id(0), 'Done.')
+  const [comment] = await w.comments.readAll()
+  assert.deepEqual(comment?.messages.at(-1)?.changed, ['src/report.ipynb'])
+  assert.equal(comment?.writes?.[0]?.branch, 'feature/analysis')
+})
+
+test('a build records no branch: it changes no file of its own', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'Bash', { command: 'npm run build' })
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('an rm whose first path is out of the repository records the branch of the next', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/cleanup')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const scratch = path.join(await tempDir(t), 'scratch.txt')
+  const old = path.join(w.root, 'src/old.ts')
+  await mkdir(path.dirname(old), { recursive: true })
+  await writeFile(scratch, 'x')
+  await writeFile(old, 'x')
+  await w.tool(
+    0,
+    'Bash',
+    { command: `rm ${scratch} src/old.ts` },
+    { between: () => Promise.all([rm(scratch), rm(old)]) },
+  )
+  assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
+})
+
+test('records no branch for a file written outside the repository', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'Write', {
+    file_path: path.join(await tempDir(t), 'notes.md'),
+    content: 'b',
+  })
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('a write the comments file cannot record its branch for still ends done', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const folder = path.dirname(w.project.commentsFile)
+  await chmod(folder, 0o555)
+  // Removed with the project by then, once the test passed.
+  t.after(() => chmod(folder, 0o755).catch(() => undefined))
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  assert.equal((await w.progress(0)).at(-1)?.state, 'done')
+  await chmod(folder, 0o755)
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('records no branch outside a git repository', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
 })
 
 test("refuses a file another comment's agent holds, after the wait", async (t) => {
@@ -265,6 +477,186 @@ test('refuses a Bash command that writes files, which no lock covers', async (t)
   )
 })
 
+test('refuses an edit outside `editable`, telling the agent to ask in the thread', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  assert.equal(await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
+  /** @type {[string, Record<string, unknown>][]} */
+  const writes = [
+    ['Edit', edit(path.join(w.root, 'package.json'))],
+    ['Write', { file_path: path.join(w.root, 'srcs/a.ts'), content: 'x' }],
+    ['MultiEdit', { file_path: path.join(w.root, 'tsconfig.json'), edits: [] }],
+    ['NotebookEdit', { notebook_path: path.join(w.root, 'a.ipynb'), new_source: 'x' }],
+  ]
+  for (const [name, input] of writes) {
+    const deny = (await w.tool(0, name, input)) ?? ''
+    assert.match(deny, /is outside the paths this project lets agents edit/, name)
+    assert.match(deny, /\(`editable` in \.annotant\.json: src\)/, name)
+    assert.match(deny, new RegExp(`ask\\.mjs" ${w.id(0)} --project`), name)
+  }
+  const step = (await w.progress(0)).at(-1)
+  assert.equal(step.state, 'failed')
+  assert.equal(step.error, 'outside `editable`')
+})
+
+test('`editable` reaches a folder above the project, and nothing else there', async (t) => {
+  const repo = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo, config: { editable: ['src', '../api'] } })
+  await w.claim(0)
+  for (const file of ['web/src/a.ts', 'api/routes.ts', 'api/deep/er.ts']) {
+    assert.equal(await w.tool(0, 'Edit', edit(path.join(repo, file))), undefined, file)
+  }
+  for (const file of ['web/a.ts', 'apis/routes.ts', 'other/x.ts', '../outside.ts']) {
+    assert.match(
+      (await w.tool(0, 'Edit', edit(path.join(repo, file)))) ?? '',
+      /outside the paths .*: src, \.\.\/api\)/,
+      file,
+    )
+  }
+})
+
+test('refuses a path that leaves `editable` through `..` or a link', async (t) => {
+  const w = await world(t)
+  const outside = await tempDir(t)
+  await w.claim(0)
+  await symlink(outside, path.join(w.root, 'src/out'))
+  await symlink(path.join(outside, 'new.ts'), path.join(w.root, 'src/dangling.ts'))
+  await symlink(path.join(w.root, 'src/App.tsx'), path.join(w.root, 'src/inside.ts'))
+  for (const file of [
+    path.join(w.root, 'src/../package.json'),
+    `${w.root}/src/../../x.ts`,
+    path.join(w.root, 'src/out/a.ts'),
+    path.join(w.root, 'src/dangling.ts'),
+  ]) {
+    assert.match(
+      (await w.tool(0, 'Write', { file_path: file, content: 'x' })) ?? '',
+      /is outside the paths/,
+      file,
+    )
+  }
+  // A link that stays under `editable` is followed there.
+  assert.equal(
+    await w.tool(0, 'Edit', edit(path.join(w.root, 'src/inside.ts'))),
+    undefined,
+  )
+})
+
+test('follows a link before the `..` after it, as the system does', async (t) => {
+  const w = await world(t)
+  const outside = await tempDir(t)
+  await mkdir(path.join(outside, 'dir'))
+  await w.claim(0)
+  await symlink(path.join(outside, 'dir'), path.join(w.root, 'src/ext'))
+  // Written as `<outside>/secret.js`, not `src/secret.js`.
+  assert.match(
+    (await w.tool(0, 'Write', {
+      file_path: `${w.root}/src/ext/../secret.js`,
+      content: 'x',
+    })) ?? '',
+    /is outside the paths/,
+  )
+  // A name that only starts with `..` stays in its folder; a relative path is
+  // the project's.
+  for (const file of [path.join(w.root, 'src/..config.ts'), 'src/App.tsx']) {
+    assert.equal(
+      await w.tool(0, 'Write', { file_path: file, content: 'x' }),
+      undefined,
+      file,
+    )
+  }
+  assert.match(
+    (await w.tool(0, 'Write', { file_path: 'package.json', content: 'x' })) ?? '',
+    /is outside the paths/,
+  )
+})
+
+test('refuses a loop of links, and follows an `editable` path that is a link', async (t) => {
+  const w = await world(t, 1, { config: { editable: ['src', 'shared'] } })
+  const shared = await tempDir(t)
+  await w.claim(0)
+  await symlink(path.join(w.root, 'src/b'), path.join(w.root, 'src/a'))
+  await symlink(path.join(w.root, 'src/a'), path.join(w.root, 'src/b'))
+  assert.match(
+    (await w.tool(0, 'Write', { file_path: path.join(w.root, 'src/a'), content: 'x' })) ??
+      '',
+    /could not tell where .* leads/,
+  )
+  await symlink(shared, path.join(w.root, 'shared'))
+  assert.equal(await w.tool(0, 'Edit', edit(path.join(shared, 'Button.tsx'))), undefined)
+})
+
+test('refuses every write when `editable` is empty, malformed or unreadable', async (t) => {
+  /** @type {[unknown, RegExp][]} */
+  const configs = [
+    [[], /: none\)/],
+    ['src', /is not a list of paths/],
+    [['src', 42], /is not a list of paths/],
+  ]
+  for (const [editable, message] of configs) {
+    const w = await world(t, 1, { config: { editable } })
+    await w.claim(0)
+    assert.match(
+      (await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))) ?? '',
+      message,
+      JSON.stringify(editable),
+    )
+  }
+  const w = await world(t)
+  await w.claim(0)
+  await rm(path.join(w.root, '.annotant.json'))
+  assert.match(
+    (await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))) ?? '',
+    /could not read \.annotant\.json/,
+  )
+})
+
+test("refuses Annotant's own files, whatever `editable` covers", async (t) => {
+  const w = await world(t, 1, { config: { editable: ['.'] } })
+  await w.claim(0)
+  assert.equal(
+    await w.tool(0, 'Edit', edit(path.join(w.root, 'package.json'))),
+    undefined,
+  )
+  for (const file of [
+    '.annotant.json',
+    '.annotant/comments.json',
+    // What the reader sees a run did.
+    `.annotant/diffs/${w.id(0)}/r1/0123456789abcdef.json`,
+  ]) {
+    assert.match(
+      (await w.tool(0, 'Edit', edit(path.join(w.root, file)))) ?? '',
+      /is Annotant's own file/,
+      file,
+    )
+  }
+})
+
+/** A Write of `src/x.ts` from `cwd`. @param {string} cwd */
+const relativeWrite = (cwd) => ({
+  tool_name: 'Write',
+  tool_input: { file_path: 'src/x.ts', content: 'x' },
+  cwd,
+})
+
+test("starts a relative path from the agent's folder", async (t) => {
+  const repo = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo, config: { editable: ['src'] } })
+  await w.claim(0)
+  // The session's folder is the repository: `src/x.ts` is not the project's.
+  assert.match(
+    (await w.hook(0, 'pre', relativeWrite(repo))) ?? '',
+    /is outside the paths/,
+  )
+  assert.equal(await w.hook(0, 'pre', relativeWrite(w.root)), undefined)
+})
+
+test('a project that declares no `editable` leaves the paths to the instructions', async (t) => {
+  const repo = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  assert.equal(await w.tool(0, 'Edit', edit(path.join(repo, 'anywhere/x.ts'))), undefined)
+})
+
 test("sends AskUserQuestion to the comment's thread", async (t) => {
   const w = await world(t)
   await w.claim(0)
@@ -295,6 +687,138 @@ test('locks files across the git repository, outside the project too', async (t)
     (await w.tool(1, 'Edit', edit(shared))) ?? '',
     /scanner\/x\.py is being changed/,
   )
+})
+
+test('records the absolute path of a file written outside the repository', async (t) => {
+  const repo = await tempDir(t)
+  const outside = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const notes = path.join(outside, 'notes.md')
+  assert.equal(
+    await w.tool(
+      0,
+      'Write',
+      { file_path: notes, content: 'x' },
+      { between: () => writeFile(notes, 'x\n') },
+    ),
+    undefined,
+  )
+  const step = (await w.progress(0)).at(-1)
+  assert.equal(step.label, 'notes.md')
+  assert.equal(step.external, notes)
+  // Its content, out of the repository, is never copied into the project.
+  const diffs = await import('../skills/annotant/scripts/lib/diffs.mjs')
+  assert.deepEqual(await diffs.readDiff(w.project, w.id(0), 'r1', notes), {
+    missing: true,
+  })
+  // Inside the repository, the path from the project says where it is.
+  await w.tool(0, 'Edit', edit(path.join(repo, 'scanner/x.py')))
+  assert.equal((await w.progress(0)).at(-1).external, undefined)
+})
+
+test('marks a file a Write creates, and records the files rm deleted', async (t) => {
+  const w = await world(t, 1)
+  await w.claim(0)
+  const fresh = path.join(w.root, 'src/new.ts')
+  await w.tool(
+    0,
+    'Write',
+    { file_path: fresh, content: 'x' },
+    {
+      between: () => writeFile(fresh, 'x'),
+    },
+  )
+  // Overwritten, it was there before.
+  await w.tool(0, 'Write', { file_path: fresh, content: 'y' })
+  const old = path.join(w.root, 'src/old.ts')
+  await writeFile(old, 'x')
+  // Named, but still there once the command ran.
+  await writeFile(path.join(w.root, 'src/kept.ts'), 'x')
+  await w.tool(
+    0,
+    'Bash',
+    { command: 'rm -f src/old.ts src/*.css src/kept.ts' },
+    {
+      between: () => rm(old),
+    },
+  )
+  const steps = await w.progress(0)
+  const writes = steps.filter((step) => step.kind === 'write' && step.state === 'running')
+  assert.deepEqual(
+    writes.map((step) => step.created),
+    [true, undefined],
+  )
+  // Only what is gone, never a glob.
+  assert.deepEqual(
+    steps.filter((step) => step.kind === 'delete').map((step) => step.label),
+    ['src/old.ts'],
+  )
+})
+
+test('records as deleted only what was there and is gone', async (t) => {
+  const w = await world(t, 1)
+  await w.claim(0)
+  const at = (/** @type {string} */ file) => path.join(w.root, file)
+  await mkdir(at('src/tmp'), { recursive: true })
+  for (const file of [
+    'src/my file.ts',
+    'src/a.ts',
+    'src/b.ts',
+    'src/c.ts',
+    'src/tmp/x.ts',
+  ])
+    await writeFile(at(file), 'x')
+  const gone = (/** @type {string[]} */ ...files) => ({
+    between: () => Promise.all(files.map((file) => rm(at(file), { recursive: true }))),
+  })
+  // Never there, and a redirection: no file.
+  await w.tool(0, 'Bash', { command: 'rm -f src/never.ts 2>/dev/null' })
+  // A quoted name with a space, as one path.
+  await w.tool(0, 'Bash', { command: 'rm "src/my file.ts"' }, gone('src/my file.ts'))
+  // From the folder a `cd` went to.
+  await w.tool(0, 'Bash', { command: 'cd src && rm a.ts' }, gone('src/a.ts'))
+  // Not rm.
+  await w.tool(0, 'Bash', { command: 'rm-cache src/b.ts' }, gone('src/b.ts'))
+  // Failed past the deletion: still deleted.
+  await w.tool(
+    0,
+    'Bash',
+    { command: 'rm src/c.ts src/missing.ts' },
+    { ...gone('src/c.ts'), error: 'rm: src/missing.ts: No such file or directory' },
+  )
+  // A folder.
+  await w.tool(0, 'Bash', { command: 'rm -rf src/tmp' }, gone('src/tmp'))
+  const deletes = (await w.progress(0)).filter((step) => step.kind === 'delete')
+  assert.deepEqual(
+    deletes.map((step) => [step.label, step.folder]),
+    [
+      ['src/my file.ts', undefined],
+      ['src/a.ts', undefined],
+      ['src/c.ts', undefined],
+      ['src/tmp', true],
+    ],
+  )
+})
+
+test('refuses a deletion in the command that answers', async (t) => {
+  const w = await world(t, 1)
+  await w.claim(0)
+  await writeFile(path.join(w.root, 'old.ts'), 'x')
+  const deny = await w.tool(0, 'Bash', {
+    command: `rm old.ts && node ${SCRIPTS}resolve.mjs ${w.id(0)} --project ${w.root} "Done; rm nothing"`,
+  })
+  assert.match(deny ?? '', /command of their own/)
+  // The answer's text is not a command.
+  const answer = await w.tool(
+    0,
+    'Bash',
+    {
+      command: `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project ${w.root} "Done; rm old.ts"`,
+    },
+    { between: () => w.comments.answer(w.id(0), 'Done') },
+  )
+  assert.equal(answer, undefined)
 })
 
 test('keeps a lock another project of the repository holds while its comment is at work', async (t) => {
@@ -382,4 +906,73 @@ test("records what the hooks module notes of the agent's thinking, in the run", 
 test('never stands in the way of the tool when it cannot read its input', async (t) => {
   const w = await world(t)
   assert.equal(await w.hook(0, 'pre', 'not json'), undefined)
+})
+
+test("keeps each run's own diff of a file, whatever happened to it around the run", async (t) => {
+  const diffs = await import('../skills/annotant/scripts/lib/diffs.mjs')
+  const w = await world(t, 1)
+  const file = path.join(w.root, 'src/App.tsx')
+  await mkdir(path.dirname(file), { recursive: true })
+  await writeFile(file, 'a\nb\nc\n')
+  const resolve = () =>
+    w.tool(
+      0,
+      'Bash',
+      { command: `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project . "Done."` },
+      { between: () => w.comments.answer(w.id(0), 'Done.') },
+    )
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(file), { between: () => writeFile(file, 'a\nB\nc\n') })
+  // A failed edit changes nothing: the side after stays the last write's.
+  await w.tool(0, 'Edit', edit(file), { error: 'String not found' })
+  const gone = path.join(w.root, 'src/old.ts')
+  await writeFile(gone, 'x\n')
+  await w.tool(0, 'Bash', { command: 'rm src/old.ts' }, { between: () => rm(gone) })
+  await resolve()
+  // The reader edits the file, then sends the comment again.
+  await writeFile(file, 'reader\na\nB\nc\n')
+  await w.setState(0, 'open')
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(file), {
+    between: () => writeFile(file, 'reader\na\nB\nC\n'),
+  })
+  await resolve()
+
+  const answers = (await w.comments.list(undefined))
+    .find((one) => one.id === w.id(0))
+    ?.messages.filter((message) => message.author === 'claude')
+  assert.deepEqual(
+    answers?.map((answer) => ({
+      run: answer.run,
+      changed: answer.changed,
+      firstLines: answer.firstLines,
+    })),
+    [
+      // A deleted file has no line to open at.
+      {
+        run: 'r1',
+        changed: ['src/App.tsx', 'src/old.ts'],
+        firstLines: { 'src/App.tsx': 2 },
+      },
+      { run: 'r2', changed: ['src/App.tsx'], firstLines: { 'src/App.tsx': 4 } },
+    ],
+  )
+  const changes = async (/** @type {string} */ ran, /** @type {string} */ name) => {
+    const diff = await diffs.readDiff(w.project, w.id(0), ran, name)
+    return diff && 'hunks' in diff
+      ? diff.hunks.flatMap((hunk) =>
+          hunk.lines.filter((line) => line.kind !== 'context').map((line) => line.text),
+        )
+      : diff
+  }
+  // Each run's own change, not the reader's line between them.
+  assert.deepEqual(await changes('r1', 'src/App.tsx'), ['b', 'B'])
+  assert.deepEqual(await changes('r2', 'src/App.tsx'), ['c', 'C'])
+  assert.deepEqual(await changes('r1', 'src/old.ts'), ['x'])
+  // Deleting the comment deletes its diffs.
+  await w.comments.remove(w.id(0))
+  assert.equal(
+    existsSync(diffs.snapshotPath(w.project, w.id(0), 'r1', 'src/App.tsx')),
+    false,
+  )
 })

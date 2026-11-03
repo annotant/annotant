@@ -26,15 +26,20 @@ import { drawingImage } from './drawing'
 import {
   createComment,
   deleteComment,
+  fetchDiff,
+  type FileDiff,
   imageUrl,
   updateComment,
   useAllComments,
   useComments,
+  type GitNow,
+  useGitPlace,
   useRoute,
   useServerSettings,
 } from './api'
 import {
   APP_ROUTE,
+  type GitPlace,
   type NewImage,
   type ReviewAnchor,
   type ReviewArea,
@@ -48,26 +53,33 @@ import {
   type Status,
   answered,
   byPanelOrder,
+  folderName,
   gaveUp,
   gist,
   isActive,
   isAsking,
+  isPending,
   isReply,
   latestAttached,
   latestText,
   modelOf,
   openingOf,
   paused,
+  placeName,
   statusOf,
+  threadOrder,
+  writtenOn,
 } from './domain'
 import { fits } from './images'
 import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
 import {
   type Box,
+  type Side,
   type Size,
   fitBox,
   fitPlace,
+  mirrorPlace,
   placeOf,
   placeStyle,
   readLayout,
@@ -96,6 +108,7 @@ import {
   type IconName,
   Icon,
   IconButton,
+  MenuButton,
   Spinner,
   Textarea,
   Toasts,
@@ -125,6 +138,9 @@ import {
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
+import { editorLink, locate, type Editor } from './editor'
+import { FileDiffView, countsOf, useDiffs, type LineCounts } from './diff'
+import { SettingsDialog } from './settings'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -175,6 +191,7 @@ const STEP_ICONS: Record<string, IconName> = {
   read: 'file-text',
   edit: 'pencil',
   write: 'file-plus',
+  delete: 'file-minus',
   multiedit: 'pencil',
   bash: 'terminal',
   search: 'search',
@@ -362,19 +379,23 @@ function Message({
   author,
   at,
   dated,
+  pending = false,
   onToggle,
   children,
 }: {
   author: ReviewMessage['author']
   at: string
   dated: boolean
+  /** No agent got it yet: faded until one does. */
+  pending?: boolean
   onToggle: () => void
   children: ReactNode
 }) {
   const pressedAt = useRef<{ x: number; y: number }>(undefined)
   return (
     <div
-      className={`an-msg an-msg--${author}`}
+      className={`an-msg an-msg--${author}${pending ? ' an-msg--pending' : ''}`}
+      data-pending={pending || undefined}
       tabIndex={0}
       data-testid="an-msg"
       onMouseDown={(event) => {
@@ -406,6 +427,243 @@ function Message({
       {children}
       <DateTime className={dated ? 'an-message-time' : 'an-visually-hidden'} at={at} />
     </div>
+  )
+}
+
+/** No file: `added` and `deleted` when the message has none. */
+const NONE: string[] = []
+
+/** What the run did to a file: its icon and the word that says it (its colour: `an-changed--*`). */
+const CHANGES = {
+  added: { icon: 'file-plus', label: 'Added' },
+  modified: { icon: 'file-text', label: 'Modified' },
+  deleted: { icon: 'file-minus', label: 'Deleted' },
+} as const
+
+/**
+ * The files the run behind Claude's message changed, under it: by name when
+ * it changed one, else folded into a count that opens on a click. Once the
+ * list shows, each file's diff loads, for the lines it added and removed on
+ * its row; a click on the row unfolds the diff. Each file's path copies, and
+ * each but a deleted one opens in the project's editor, once the server said
+ * where the project is and unless `editor` is `false`; one out of the project
+ * is marked external.
+ */
+function ChangedFiles({
+  files,
+  added = NONE,
+  deleted = NONE,
+  firstLines,
+  diffOf,
+  editor,
+  editorIgnored,
+  root,
+}: {
+  files: string[]
+  added?: string[] | undefined
+  deleted?: string[] | undefined
+  /** The first line the run changed in each file: where the editor opens it. */
+  firstLines?: Record<string, number> | undefined
+  /** The run's diff of a file; none without a run to ask for it. */
+  diffOf?: ((file: string) => Promise<FileDiff>) | undefined
+  editor: Editor | undefined
+  editorIgnored?: true | undefined
+  root: string | undefined
+}) {
+  const [open, setOpen] = useState(false)
+  const folds = files.length > 1
+  // Loaded once the list shows, for the counts on each file's row.
+  const { diffs, retry } = useDiffs(files, diffOf, !folds || open)
+  // The files whose diff is open.
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set())
+  const toggleDiff = (file: string) => {
+    const next = new Set(shown)
+    // Opening a diff that failed asks for it again.
+    if (!next.delete(file)) {
+      next.add(file)
+      retry(file)
+    }
+    setShown(next)
+  }
+  // The file whose path was just copied, or could not be, for a moment.
+  const [copied, setCopied] = useState<{ file: string; error?: string }>()
+  const copyPath = async (file: string) => {
+    let error: string | undefined
+    try {
+      // Undefined out of a secure context (http on a LAN address, `*.test`…).
+      if (!(navigator.clipboard as Clipboard | undefined))
+        throw new Error('the browser allows it only on https or localhost')
+      await navigator.clipboard.writeText(file)
+    } catch (failure) {
+      console.warn('annotant: the path could not be copied', failure)
+      error = failure instanceof Error ? failure.message : String(failure)
+    }
+    setCopied({ file, ...(error === undefined ? {} : { error }) })
+    setTimeout(
+      () => setCopied((current) => (current?.file === file ? undefined : current)),
+      error === undefined ? 1500 : 4000,
+    )
+  }
+  const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
+  return (
+    <div className="an-changed" data-testid="an-changed">
+      {folds && (
+        <button
+          type="button"
+          className="an-changed-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <Icon name="chevron-down" />
+          {count}
+        </button>
+      )}
+      {(!folds || open) && (
+        <ul aria-label={folds ? undefined : count}>
+          {files.map((file) => {
+            const { name, path, external } = locate(root, file)
+            const status = deleted.includes(file)
+              ? 'deleted'
+              : added.includes(file)
+                ? 'added'
+                : 'modified'
+            const change = CHANGES[status]
+            const counts = countsOf(diffs[file])
+            return (
+              <li
+                key={file}
+                className={`an-changed--${status}${shown.has(file) ? ' an-file--open' : ''}`}
+              >
+                <div className="an-file-head">
+                  <span
+                    className="an-change"
+                    role="img"
+                    aria-label={change.label}
+                    title={change.label}
+                  >
+                    <Icon name={change.icon} />
+                  </span>
+                  {/* The name, and through its ::after the whole row, unfolds the run's
+                      diff; a deleted folder has no lines. */}
+                  {diffOf && !file.endsWith('/') ? (
+                    <button
+                      type="button"
+                      className="an-file-name"
+                      // The visible path, whole: its folders are a span of their own.
+                      aria-label={name}
+                      aria-expanded={shown.has(file)}
+                      title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
+                      onClick={() => toggleDiff(file)}
+                    >
+                      <Icon name="chevron-down" />
+                      <FilePath name={name} />
+                    </button>
+                  ) : (
+                    <FilePath name={name} />
+                  )}
+                  {external && (
+                    // Out of the project: the badge tells where, on hover.
+                    <span className="an-external" title={path ?? file}>
+                      external
+                    </span>
+                  )}
+                  <span className="an-file-fill" />
+                  {counts && <LineCountsView counts={counts} />}
+                  <CopyPath
+                    name={name}
+                    copied={copied?.file === file ? copied : undefined}
+                    onCopy={() => void copyPath(file)}
+                  />
+                  {/* A deleted file has nothing left to open. */}
+                  {editor && path && status !== 'deleted' ? (
+                    <a
+                      className="an-file-action"
+                      href={editorLink(editor, path, firstLines?.[file])}
+                      aria-label={`Open ${name} in ${editor.name}`}
+                      title={
+                        editor.assumed
+                          ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
+                          : `Open in ${editor.name}`
+                      }
+                    >
+                      <Icon name="external" />
+                      Open
+                    </a>
+                  ) : (
+                    editorIgnored &&
+                    status !== 'deleted' && (
+                      <span
+                        className="an-file-action an-file-action--off"
+                        title={
+                          '"editor" in .annotant.json names no editor Annotant can open'
+                        }
+                      >
+                        <Icon name="external" />
+                        Open
+                      </span>
+                    )
+                  )}
+                </div>
+                {diffOf && shown.has(file) && (
+                  <FileDiffView file={file} loaded={diffs[file]} />
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** Copies a file's path: ticked once copied, a cross with the reason when not. */
+function CopyPath({
+  name,
+  copied,
+  onCopy,
+}: {
+  name: string
+  /** The last copy of this path, for a moment: failed when it has an error. */
+  copied: { error?: string } | undefined
+  onCopy: () => void
+}) {
+  const failed = copied?.error !== undefined
+  return (
+    <button
+      type="button"
+      className={`an-file-action${failed ? ' an-file-action--failed' : ''}`}
+      aria-label={`Copy the path of ${name}`}
+      title={
+        !copied ? 'Copy the path' : failed ? `Could not copy: ${copied.error}` : 'Copied'
+      }
+      onClick={onCopy}
+    >
+      <Icon name={!copied ? 'copy' : failed ? 'x' : 'check'} />
+    </button>
+  )
+}
+
+/** A file's path, its folders dimmed so its name stands out. */
+function FilePath({ name }: { name: string }) {
+  const cut = name.lastIndexOf('/') + 1
+  return (
+    <code className="an-file-path">
+      {cut > 0 && <span className="an-file-dir">{name.slice(0, cut)}</span>}
+      {name.slice(cut)}
+    </code>
+  )
+}
+
+/** The lines a run added to a file (green) and removed from it (red), when any. */
+function LineCountsView({ counts }: { counts: LineCounts }) {
+  return (
+    <span
+      className="an-file-counts"
+      aria-label={`${counts.added} added, ${counts.removed} removed`}
+    >
+      {counts.added > 0 && <span className="an-file-added">+{counts.added}</span>}
+      {counts.removed > 0 && <span className="an-file-removed">−{counts.removed}</span>}
+    </span>
   )
 }
 
@@ -652,9 +910,6 @@ interface PendingCenter {
 
 interface UiState {
   open: boolean
-  /** Kept by this tab before the layout was kept for all of them. */
-  docked?: boolean
-  width?: number
   view: View
   threadId?: string
   statusFilter: StatusFilter
@@ -711,6 +966,91 @@ function ModelLabel({ comment }: { comment: ReviewComment }) {
     >
       {model.complexity ? `${model.name} · ${model.complexity}` : model.name}
     </span>
+  )
+}
+
+/** A git place: its branch (or commit), and its worktree's folder, the full path on hover. */
+function Place({ place }: { place: GitPlace }) {
+  return (
+    <>
+      <code>{placeName(place)}</code>
+      {place.worktree && (
+        <>
+          {' in '}
+          <code title={place.worktree}>{folderName(place.worktree)}</code>
+        </>
+      )}
+    </>
+  )
+}
+
+/**
+ * Where the agents write, at the panel's foot: the project's branch, and its
+ * worktree when it is not the main checkout. On the default branch, a hint,
+ * not a block.
+ */
+function GitLabel({ place }: { place: GitNow }) {
+  const name = placeName(place)
+  return (
+    <span
+      className={`an-git ${place.default ? 'an-git--default' : ''}`}
+      data-testid="an-git"
+      title={[
+        place.default
+          ? `Claude writes on ${name}, the default branch`
+          : `Claude writes on ${name}`,
+        place.worktree && `in the worktree ${place.worktree}`,
+      ]
+        .filter(Boolean)
+        .join(', ')}
+    >
+      <Icon name="git-branch" />
+      <span className="an-git-name">{name}</span>
+      {place.worktree && (
+        <span className="an-git-name">· {folderName(place.worktree)}</span>
+      )}
+      {place.default && <span className="an-visually-hidden">(default branch)</span>}
+    </span>
+  )
+}
+
+/**
+ * Where run `run` changed files, kept on the comment; flagged when its
+ * branch, commit or worktree changed during the run.
+ */
+function WrittenOn({
+  comment,
+  run,
+}: {
+  comment: ReviewComment
+  run?: string | undefined
+}) {
+  const wrote = writtenOn(comment, run)
+  if (!wrote) return null
+  const { place, from, switched } = wrote
+  return (
+    <div
+      className={`an-written ${from || switched ? 'an-written--moved' : ''}`}
+      data-testid="an-written"
+    >
+      <Icon name="git-branch" />
+      <span>
+        {from ? (
+          <>
+            Started on <Place place={from} />, changed files on <Place place={place} />
+          </>
+        ) : (
+          <>
+            Changed files on <Place place={place} />
+          </>
+        )}
+        {switched && (
+          <>
+            , and also on <Place place={switched} />
+          </>
+        )}
+      </span>
+    </div>
   )
 }
 
@@ -802,20 +1142,29 @@ function focusedElement() {
 
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
-  const { theme, repository } = useServerSettings()
+  const {
+    theme,
+    repository,
+    root: projectRoot,
+    editor,
+    editorIgnored,
+  } = useServerSettings()
   const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
+  // Where the agents write: shown at the panel's foot while it is open, except
+  // while the send hint takes the foot.
+  const gitNow = useGitPlace(open)
   // Open since the page loaded, as the tab kept it: it shows up in place, without sliding in.
   const [restored, setRestored] = useState(open)
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
   const [savedLayout] = useState(readLayout)
-  const [docked, setDocked] = useState(savedLayout.docked ?? saved?.docked ?? false)
+  // The side of the page the panel and the strip's own place are on.
+  const [side, setSide] = useState<Side>(savedLayout.side ?? 'right')
+  const [docked, setDocked] = useState(savedLayout.docked ?? false)
   // The width chosen, kept as is: the window, maybe narrower, only caps the one shown.
-  const [chosenWidth, setWidth] = useState(
-    savedLayout.width ?? saved?.width ?? PANEL_WIDTH,
-  )
+  const [chosenWidth, setWidth] = useState(savedLayout.width ?? PANEL_WIDTH)
   const [windowSize, setWindow] = useState(viewport)
   // Where the reader put the closed widget's tools, kept as is: the window only keeps them on screen.
   const [strip, setStrip] = useState(savedLayout.strip)
@@ -900,7 +1249,7 @@ export default function App({ root }: { root: Element }) {
   const paddingAnimation = useRef<Animation>(undefined)
   // Puts back the page's own inline padding, while the docked panel squeezes it.
   const restorePadding = useRef<() => void>(undefined)
-  const layout = useRef({ open, docked })
+  const layout = useRef({ open, docked, side })
   // Where the focus was when the panel opened: it goes back there once the panel closes.
   const opener = useRef<HTMLElement>(undefined)
   const refocus = useRef(false)
@@ -911,6 +1260,9 @@ export default function App({ root }: { root: Element }) {
   const widget = useRef<HTMLDivElement>(null)
   // The list of the keyboard shortcuts, in the panel.
   const [showKeys, setShowKeys] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  // The menu's button, which opened the settings: the focus goes back to it once they close.
+  const settingsButton = useRef<HTMLButtonElement>(null)
 
   // The cards' relative dates move on while the panel is open: one timer for
   // every card, and the time gone by while it was closed shows as it opens.
@@ -958,6 +1310,7 @@ export default function App({ root }: { root: Element }) {
   }, [open, view, threadId, statusFilter])
 
   // Each on its own, so that a tab writes only what was changed in it.
+  useEffect(() => writeLayout('side', side === 'left' ? side : undefined), [side])
   useEffect(() => writeLayout('docked', docked), [docked])
   useEffect(() => writeLayout('width', chosenWidth), [chosenWidth])
   useEffect(() => writeLayout('strip', strip), [strip])
@@ -1089,22 +1442,26 @@ export default function App({ root }: { root: Element }) {
   // Floating: the panel floats over the page, which is left untouched. Docked: the page is squeezed,
   // in step with the panel as it opens, closes, widens or narrows; at once while it is dragged.
   // Through `html`'s padding, which hosts leave alone: libraries pad `body` for a modal's scrollbar.
+  // On the panel's side: moved to the other, the page is squeezed there at once.
   useEffect(() => {
     const html = document.documentElement
-    const from = getComputedStyle(html).paddingRight
+    const padding = side === 'left' ? 'paddingLeft' : 'paddingRight'
+    const from = getComputedStyle(html)[padding]
     paddingAnimation.current?.cancel()
     restorePadding.current?.()
     restorePadding.current =
-      open && docked ? setInlineStyle(html, 'padding-right', `${width}px`) : undefined
-    const moved = open !== layout.current.open || docked !== layout.current.docked
-    layout.current = { open, docked }
+      open && docked ? setInlineStyle(html, `padding-${side}`, `${width}px`) : undefined
+    const moved =
+      side === layout.current.side &&
+      (open !== layout.current.open || docked !== layout.current.docked)
+    layout.current = { open, docked, side }
     if (!moved || matchMedia(REDUCED_MOTION).matches) return
-    if (getComputedStyle(html).paddingRight === from) return
-    paddingAnimation.current = html.animate([{ paddingRight: from, offset: 0 }], {
+    if (getComputedStyle(html)[padding] === from) return
+    paddingAnimation.current = html.animate([{ [padding]: from, offset: 0 }], {
       duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
       easing: open ? 'ease-out' : 'ease-in',
     })
-  }, [open, docked, width])
+  }, [open, docked, width, side])
 
   useEffect(
     () => () => {
@@ -1123,6 +1480,7 @@ export default function App({ root }: { root: Element }) {
 
   const close = () => {
     setOpen(false)
+    setSettingsOpen(false)
     setRestored(false)
     setAttachingTo(undefined)
     setLeaving(true)
@@ -1143,6 +1501,12 @@ export default function App({ root }: { root: Element }) {
   useEffect(() => {
     if (toTitle) title.current?.focus()
   }, [toTitle])
+
+  // The strip goes along, to the same place on the other side: moved back, it is where it was.
+  const toggleSide = () => {
+    setSide(side === 'left' ? 'right' : 'left')
+    setStrip((place) => place && mirrorPlace(place))
+  }
 
   const toggleDocked = () => {
     setDocked(!docked)
@@ -1233,7 +1597,9 @@ export default function App({ root }: { root: Element }) {
   }
 
   const resizeTo = (move: MouseEvent) => {
-    setWidth(clampWidth(window.innerWidth - move.clientX))
+    setWidth(
+      clampWidth(side === 'left' ? move.clientX : window.innerWidth - move.clientX),
+    )
   }
 
   const startResize = (event: ReactMouseEvent) => {
@@ -1517,13 +1883,10 @@ export default function App({ root }: { root: Element }) {
 
   const drafting = view === 'page' && !!draft
   const openedId = drafting ? undefined : thread?.id
-  // The thread the message box replies to: only once Claude is done or asks.
-  const replying =
-    !drafting &&
-    thread &&
-    (thread.state === 'resolved' || isAsking(thread) || answered(thread))
-      ? thread
-      : undefined
+  // The thread the message box writes in, whatever its state: while it waits
+  // for an agent or one works on it, the message joins the thread for it. A
+  // stopped thread has its own, which sends the comment again.
+  const replying = !drafting && thread && !paused(thread) ? thread : undefined
   const ownReply = replying && followUp?.id === replying.id ? followUp : undefined
   const reply = ownReply?.body ?? ''
   const replyImages = ownReply?.images ?? []
@@ -2145,7 +2508,7 @@ export default function App({ root }: { root: Element }) {
         {deleteButton(comment)}
       </div>
       <div className="an-chat">
-        {comment.messages.map((message, index, messages) =>
+        {threadOrder(comment.messages).map((message, index, messages) =>
           message.author === 'claude' ? (
             // Its steps were only there to wait on it: an answer shows alone.
             <Message
@@ -2171,6 +2534,23 @@ export default function App({ root }: { root: Element }) {
                   <Markdown text={message.body} repository={repository} />
                 </div>
               )}
+              {message.changed?.length ? (
+                <ChangedFiles
+                  files={message.changed}
+                  added={message.added}
+                  deleted={message.deleted}
+                  firstLines={message.firstLines}
+                  diffOf={
+                    message.run
+                      ? (file) => fetchDiff(comment.id, message.run ?? '', file)
+                      : undefined
+                  }
+                  editor={editor}
+                  editorIgnored={editorIgnored}
+                  root={projectRoot}
+                />
+              ) : null}
+              <WrittenOn comment={comment} run={message.run} />
             </Message>
           ) : (
             <Message
@@ -2178,6 +2558,7 @@ export default function App({ root }: { root: Element }) {
               author="reader"
               at={message.at}
               dated={dated.has(`${comment.id}/${message.id}`)}
+              pending={isPending(message)}
               onToggle={() => toggleDate(`${comment.id}/${message.id}`)}
             >
               {message.images?.length ? (
@@ -2229,6 +2610,7 @@ export default function App({ root }: { root: Element }) {
         (comment.state === 'working' ? (
           <div data-testid="an-working">
             <CurrentStep step={comment.progress?.at(-1)} />
+            <WrittenOn comment={comment} run={comment.events.at(-1)?.run} />
           </div>
         ) : watching ? (
           <Waiting notifiedAt={openingOf(comment)?.notifiedAt} reply={isReply(comment)} />
@@ -2260,6 +2642,7 @@ export default function App({ root }: { root: Element }) {
           ) : (
             'It had not started yet.'
           )}
+          <WrittenOn comment={comment} run={comment.cancellation?.run} />
         </div>
       )}
       {paused(comment) && (
@@ -2481,6 +2864,7 @@ export default function App({ root }: { root: Element }) {
           role="group"
           aria-label="Annotant tools"
           className="an-dock an-live"
+          data-side={side}
           data-moving={moving ? true : undefined}
           style={
             moving
@@ -2550,6 +2934,7 @@ export default function App({ root }: { root: Element }) {
           ref={panel}
           className={`an-panel an-live ${docked ? 'an-panel--docked' : ''}`}
           style={{ width }}
+          data-side={side}
           data-closing={!open || undefined}
           data-restored={restored || undefined}
           data-drawing={drawing || undefined}
@@ -2626,10 +3011,27 @@ export default function App({ root }: { root: Element }) {
                 disabled={drafting}
                 onClick={() => startDraft(PAGE_LEVEL)}
               />
-              <IconButton
-                icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
-                label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
-                onClick={toggleDocked}
+              {/* What is set once and left: in the menu, out of the way. */}
+              <MenuButton
+                ref={settingsButton}
+                label="More actions"
+                items={[
+                  {
+                    icon: docked ? 'collapse-horizontal' : 'expand-horizontal',
+                    label: docked ? 'Narrow panel' : 'Widen panel to half the page',
+                    onSelect: toggleDocked,
+                  },
+                  {
+                    icon: side === 'left' ? 'panel-right' : 'panel-left',
+                    label: side === 'left' ? 'Move to the right' : 'Move to the left',
+                    onSelect: toggleSide,
+                  },
+                  {
+                    icon: 'gear',
+                    label: 'Settings',
+                    onSelect: () => setSettingsOpen(true),
+                  },
+                ]}
               />
               <IconButton
                 icon="x"
@@ -2640,6 +3042,14 @@ export default function App({ root }: { root: Element }) {
               />
             </div>
           </header>
+          {settingsOpen && (
+            <SettingsDialog
+              onClose={() => {
+                setSettingsOpen(false)
+                settingsButton.current?.focus()
+              }}
+            />
+          )}
           <div className="an-body" ref={setScroller}>
             {showKeys && (
               <section
@@ -2812,7 +3222,9 @@ export default function App({ root }: { root: Element }) {
                       ? 'Or answer in your own words…'
                       : isAsking(replying)
                         ? 'Answer Claude…'
-                        : 'Follow up, clarify, ask for a change…'
+                        : isActive(replying)
+                          ? 'Add a detail for Claude…'
+                          : 'Follow up, clarify, ask for a change…'
                   }
                   disabled={busy}
                   onChange={(value) =>
@@ -2872,11 +3284,13 @@ export default function App({ root }: { root: Element }) {
                 Annotant v{ANNOTANT_VERSION}
               </a>
             </span>
-            {composing && overflowing && (
+            {composing && overflowing ? (
               <span className="an-panel-foot-hint">
                 {drafting && cancelDraft}
                 {sendHint}
               </span>
+            ) : (
+              gitNow && <GitLabel place={gitNow} />
             )}
           </footer>
         </section>

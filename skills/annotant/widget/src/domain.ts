@@ -169,6 +169,22 @@ export interface ReviewMessage {
   options?: ReviewOption[]
   /** With `options`: the reader may pick several. */
   multiple?: boolean
+  /**
+   * Claude only: the files the run it closes changed with its file tools or
+   * deleted with `rm`, relative to the project (`../` out of it), a file
+   * outside the repository by its absolute path, a deleted folder with a `/`
+   * at its end; absent when none.
+   */
+  changed?: string[]
+  /** With `changed`: those of them the run created. */
+  added?: string[]
+  /** With `changed`: those of them the run deleted. */
+  deleted?: string[]
+  /**
+   * With `changed`: the first line the run changed in each file it kept the
+   * diff of, from 1, where the editor opens it; a file with no key opens at line 1.
+   */
+  firstLines?: Record<string, number>
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */
@@ -181,11 +197,17 @@ export interface ReviewMessage {
   sentAt?: string
   /** With `sentAt`: when the server handed it over to the hooks. */
   notifiedAt?: string
+  /** Reader only: sent while run `during` worked, for its agent once its next tool ran. */
+  during?: string
+  /** Reader only: added with no agent to read it, for the next one. */
+  queued?: true
+  /** With `during` or `queued`: when an agent got it. */
+  readAt?: string
 }
 
 interface ReviewCancellation {
   at: string
-  /** Files the cancelled agent had already written, relative to the repo. */
+  /** The files the cancelled agent had changed, as a message's `changed` names them. */
   changed: string[]
   steps: number
   run?: string
@@ -205,6 +227,29 @@ interface ReviewEvent {
   model?: string
   /** `working` only: how the classifier sorted the comment, which picked `model`. */
   complexity?: ReviewComplexity
+  /** `working` only: where the project was in git when the agent claimed it. */
+  git?: GitPlace
+}
+
+/**
+ * Where the project is in git: its branch, or its short `commit` on a
+ * detached HEAD, and `worktree`, its checkout's folder, when it is not the
+ * repository's main one.
+ */
+export interface GitPlace {
+  branch?: string
+  commit?: string
+  worktree?: string
+}
+
+/**
+ * Where a run changed files: recorded at its first write. `switched`: a later
+ * write found the project elsewhere.
+ */
+interface ReviewWrite extends GitPlace {
+  run: string
+  at: string
+  switched?: GitPlace
 }
 
 export interface ReviewComment {
@@ -221,9 +266,11 @@ export interface ReviewComment {
   events: ReviewEvent[]
   /** Last cancelled run; kept after a re-send so the next agent sees it. */
   cancellation?: ReviewCancellation
+  /** Where each run that changed files wrote them, in git. */
+  writes?: ReviewWrite[]
   /** Latest tool calls of the agent working on it; never stored in the file. */
   progress?: ReviewProgress[]
-  /** Working only: its agent has written, or is writing, a file in this run; never stored in the file. */
+  /** Working only: its agent has changed, or is changing, a file in this run; never stored in the file. */
   edited?: true
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
@@ -321,20 +368,53 @@ export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
   comment.events.some((event) => event.state === 'resolved')
 
 /**
- * Open again on the reader's reply: the thread ends on their message after
- * the comment, which the server sends the hooks as `FOLLOWUP`, for the
- * thread's agent when it still has one. A comment re-sent with only the
- * reader's comment in its thread is `NEW`.
- */
-export const isReply = (comment: Pick<ReviewComment, 'messages'>) =>
-  comment.messages.length > 1 && comment.messages.at(-1)?.author === 'reader'
-
-/**
- * The reader's message an open comment waits on: their latest, whose
- * `notifiedAt` says when the server handed it over.
+ * The reader's message an open comment waits on, whose `notifiedAt` says
+ * when the server handed it over: their latest, unless added while it was
+ * open or worked on (`during`, `queued`) and not sent on since (`sentAt`).
  */
 export const openingOf = (comment: Pick<ReviewComment, 'messages'>) =>
-  comment.messages.findLast((message) => message.author === 'reader')
+  comment.messages.findLast(
+    (message) =>
+      message.author === 'reader' &&
+      (!!message.sentAt || (!message.during && !message.queued)),
+  )
+
+/**
+ * Open again on the reader's reply: it waits on their message after the
+ * comment, which the server sends the hooks as `FOLLOWUP`, for the thread's
+ * agent when it still has one. A comment re-sent with only the reader's
+ * comment to go on is `NEW`.
+ */
+export const isReply = (comment: Pick<ReviewComment, 'messages'>) => {
+  const opening = openingOf(comment)
+  return !!opening && opening !== comment.messages[0]
+}
+
+/**
+ * A message the reader added while the comment was open or worked on that no
+ * agent got yet: the agent at work gets it after its next step, the next
+ * agent in the thread.
+ */
+export const isPending = (message: Pick<ReviewMessage, 'during' | 'queued' | 'readAt'>) =>
+  (!!message.during || !!message.queued) && !message.readAt
+
+/**
+ * The thread in the order the reader sees it: a message added while the
+ * comment was worked on takes its place once an agent got it, so an answer
+ * written without it comes first; one no agent got yet comes last.
+ */
+export function threadOrder<
+  M extends Pick<ReviewMessage, 'at' | 'during' | 'queued' | 'readAt'>,
+>(messages: readonly M[]): M[] {
+  const placed = (message: M) =>
+    message.during || message.queued
+      ? message.readAt
+        ? Date.parse(message.readAt)
+        : Number.POSITIVE_INFINITY
+      : Date.parse(message.at)
+  // Stable: messages placed at the same time keep the file's order.
+  return messages.toSorted((a, b) => placed(a) - placed(b))
+}
 
 /** Waiting for an agent, or worked on by one. */
 export function isActive(comment: Lifecycle) {
@@ -392,8 +472,8 @@ export type Status = (typeof STATUSES)[ReviewState]
 /** Where a comment stands, as its chip in the panel shows it. */
 export const statusOf = (comment: Lifecycle): Status => STATUSES[comment.state]
 
-const latestOwn = (comment: Pick<ReviewComment, 'messages'>) =>
-  comment.messages.findLast((message) => message.author === 'reader')
+// The message a re-send sends again: the one the comment was open for.
+const latestOwn = openingOf
 
 /** The reader's latest words: their comment, or what they wrote since. */
 export function latestText(comment: Pick<ReviewComment, 'messages'>): string {
@@ -436,4 +516,39 @@ export function modelOf(comment: Pick<ReviewComment, 'events'>) {
   return event?.model
     ? { id: event.model, name: modelName(event.model), complexity: event.complexity }
     : undefined
+}
+
+/** A place's name: its branch, or its commit on a detached HEAD. */
+export const placeName = (place: GitPlace) => place.branch ?? place.commit ?? ''
+
+/** A worktree's label: its folder's name; the full path goes in a title. */
+export const folderName = (worktree: string) =>
+  worktree.split(/[\\/]/).findLast(Boolean) ?? worktree
+
+// The rule of scripts/lib/git.mjs, which records the moves.
+const samePlace = (a: GitPlace, b: GitPlace) =>
+  a.branch === b.branch && a.commit === b.commit && a.worktree === b.worktree
+
+/**
+ * Where run `run` changed files, with where it started when that was
+ * elsewhere (`from`), and where a later write found the project (`switched`):
+ * either says the branch changed during the run. None when the run recorded
+ * no write.
+ */
+export function writtenOn(
+  comment: Pick<ReviewComment, 'events' | 'writes'>,
+  run: string | undefined,
+) {
+  // A hand-edited file may hold anything: none rather than a broken thread.
+  const writes = Array.isArray(comment.writes) ? comment.writes : []
+  const write = run ? writes.find((one) => one.run === run) : undefined
+  if (!write) return undefined
+  const started = comment.events.find(
+    (event) => event.state === 'working' && event.run === run,
+  )?.git
+  return {
+    place: write,
+    ...(started && !samePlace(started, write) && { from: started }),
+    ...(write.switched && { switched: write.switched }),
+  }
 }

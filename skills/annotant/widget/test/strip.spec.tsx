@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fitPlace, placeOf, viewport } from '../src/layout'
 import { fakeServer } from './server'
-import { renderWidget, resizes } from './widget'
+import { fromMenu, renderWidget, resizes } from './widget'
 
 const WIDTH = 130
 const HEIGHT = 36
@@ -238,6 +238,6 @@ test('the panel docked in another tab opens docked', () => {
   renderWidget()
 
   expect(screen.getByTestId('annotant-panel').classList).toContain('an-panel--docked')
-  fireEvent.click(screen.getByRole('button', { name: 'Narrow panel' }))
+  fromMenu('Narrow panel')
   expect(stored()).toMatchObject({ docked: false, width: 380 })
 })

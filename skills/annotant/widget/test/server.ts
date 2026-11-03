@@ -22,7 +22,12 @@ type Fields = Partial<Omit<ReviewComment, 'anchor' | 'messages'>> &
 
 /** The thread, its reader's latest message handed over at `at`. */
 function notified(messages: ReviewMessage[], at: string | undefined) {
-  const last = messages.findLastIndex((message) => message.author === 'reader')
+  // The message the comment is open for: not one added while it waited.
+  const last = messages.findLastIndex(
+    (message) =>
+      message.author === 'reader' &&
+      (!!message.sentAt || (!message.during && !message.queued)),
+  )
   return messages.map((message, index) =>
     at && index === last ? { ...message, notifiedAt: at } : message,
   )
@@ -86,7 +91,10 @@ export function comment({
  * Stands in for the Annotant server: serves `comments`, adds the ones POSTed
  * and records each PATCH. `reachable: false` fails the page's list, as when no session runs;
  * `theme` is the app's light and dark switch, as `.annotant.json` gives it;
- * `repository`, the project's, as its `origin` remote gives it.
+ * `repository`, the project's, as its `origin` remote gives it; `project`, its
+ * root, and `editor`, as `.annotant.json` names it; `git`, where the project
+ * is in git, as `/api/git` answers (none: an older server's 404); `diffs`, each
+ * run's diff of a file by `<comment>/<run>/<file>` (none: 404).
  */
 export function fakeServer(
   comments: ReviewComment[],
@@ -94,12 +102,53 @@ export function fakeServer(
     reachable = true,
     theme,
     repository,
-  }: { reachable?: boolean; theme?: unknown; repository?: unknown } = {},
+    project,
+    editor,
+    git,
+    diffs = {},
+    settings = { instructions: '', max: 4000 },
+  }: {
+    reachable?: boolean
+    theme?: unknown
+    repository?: unknown
+    project?: unknown
+    editor?: unknown
+    git?: unknown
+    diffs?: Record<string, unknown>
+    /** What /api/settings answers; a save changes it, as the server does. */
+    settings?: { instructions: string; max: number }
+  } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
+  const saved: string[] = []
   const fetch = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input)
-    if (url.pathname.endsWith('/api/health')) return Response.json({ theme, repository })
+    if (url.pathname.endsWith('/api/health'))
+      return Response.json({ theme, repository, project, editor })
+    const diffOf = /\/api\/comments\/([^/]+)\/runs\/([^/]+)\/diff$/.exec(url.pathname)
+    if (diffOf) {
+      const diff = diffs[`${diffOf[1]}/${diffOf[2]}/${url.searchParams.get('file')}`]
+      return diff === undefined
+        ? new Response(null, { status: 404 })
+        : Response.json(diff)
+    }
+    if (url.pathname.endsWith('/api/settings')) {
+      if (init?.method !== 'POST') return Response.json(settings)
+      const body = typeof init.body === 'string' ? init.body : ''
+      const { instructions }: { instructions: string } = JSON.parse(body)
+      saved.push(instructions)
+      if (instructions.includes('\u202e'))
+        return Response.json(
+          { error: 'The instructions hold control or invisible characters.' },
+          { status: 422 },
+        )
+      if (instructions.trim() !== settings.instructions.trim())
+        settings = { ...settings, instructions: instructions.trim() }
+      return Response.json(settings)
+    }
+    if (url.pathname.endsWith('/api/git')) {
+      return git === undefined ? new Response(null, { status: 404 }) : Response.json(git)
+    }
     if (init?.method === 'PATCH') {
       const id = url.pathname.split('/').at(-1) ?? ''
       const body = typeof init.body === 'string' ? init.body : ''
@@ -131,7 +180,7 @@ export function fakeServer(
     )
   })
   vi.stubGlobal('fetch', fetch)
-  return { patches, fetch }
+  return { patches, saved, fetch }
 }
 
 /** Opens the panel on a thread, as the reader left it. */
@@ -141,10 +190,7 @@ export function openThread(id: string, view: 'page' | 'all' = 'page') {
 
 /** Opens the panel on the list of `view`, or on a thread. */
 export function openPanel(view: 'page' | 'all' = 'page', threadId?: string) {
-  sessionStorage.setItem(
-    'annotant:ui',
-    JSON.stringify({ open: true, docked: false, width: 380, view, threadId }),
-  )
+  sessionStorage.setItem('annotant:ui', JSON.stringify({ open: true, view, threadId }))
 }
 
 /** Stands in for the server's event stream: the test sends its events. */

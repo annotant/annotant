@@ -151,6 +151,16 @@ export const MAX_PICKED = 1
  * @property {boolean} [question] Claude only: a question rather than an answer.
  * @property {Option[]} [options] A question only: the answers it offers.
  * @property {boolean} [multiple] With `options`: the reader may pick several.
+ * @property {string[]} [changed] Claude only: the files the run it closes
+ *   changed with its file tools or deleted with `rm`, relative to the project
+ *   (`../` out of it), a file outside the repository by its absolute path, a
+ *   deleted folder with a `/` at its end; absent when it changed none.
+ * @property {string[]} [added] With `changed`: those of them the run created.
+ * @property {string[]} [deleted] With `changed`: those of them it deleted.
+ * @property {Record<string, number>} [firstLines] With `changed`: the first line
+ *   the run changed in each file it kept the diff of (`diffs/<id>/<run>/`),
+ *   from 1, where the editor opens it; a file with no key (deleted, too
+ *   large, outside the repository, no line changed) opens at line 1.
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).
@@ -165,6 +175,14 @@ export const MAX_PICKED = 1
  *   `sentAt`.
  * @property {string} [notifiedAt] With `sentAt`: when the server first printed
  *   its line for the hooks, which a restart keeps.
+ * @property {string} [during] Reader only: sent while run `during` worked on
+ *   the comment, which goes on; the hooks give it to that run's agent once its
+ *   next tool ran.
+ * @property {true} [queued] Reader only: added to the thread with no agent to
+ *   read it (the comment was open, or the run ended before its agent read
+ *   it): the next agent reads it in the thread.
+ * @property {string} [readAt] With `during` or `queued`: when an agent got
+ *   it, from its hooks or in the thread its claim printed.
  */
 
 /**
@@ -180,13 +198,33 @@ export const MAX_PICKED = 1
  *   Claude Code resolved it (`claude-haiku-5-5`), when the hooks ran.
  * @property {Complexity} [complexity] `working` only: how the hooks'
  *   classifier sorted the comment, which picked `model`.
+ * @property {GitPlace} [git] `working` only: where the project was in git when
+ *   the agent claimed it; none outside a git repository.
+ */
+
+/**
+ * Where a project is in git: its branch, or `commit` (short) on a detached
+ * HEAD, and `worktree`, the folder of its checkout, when it is not the
+ * repository's main one.
+ * @typedef {object} GitPlace
+ * @property {string} [branch]
+ * @property {string} [commit]
+ * @property {string} [worktree]
+ */
+
+/**
+ * Where a run wrote: recorded by the hooks at its first file of the
+ * repository written or deleted, in a git repository only. `switched`: a later write of
+ * the run found the project elsewhere (the last other place: a write back
+ * where it first wrote records nothing).
+ * @typedef {GitPlace & { run: string, at: string, switched?: GitPlace }} Write
  */
 
 /**
  * What a stopped run had done.
  * @typedef {object} Cancellation
  * @property {string} at
- * @property {string[]} changed Files it had written, relative to the repository.
+ * @property {string[]} changed The files it had changed, as a message's `changed` names them.
  * @property {number} steps
  * @property {string} [run]
  */
@@ -202,6 +240,7 @@ export const MAX_PICKED = 1
  * @property {MessageV2[]} messages The whole thread, the reader's comment first.
  * @property {EventV2[]} events
  * @property {Cancellation} [cancellation] The last stopped run.
+ * @property {Write[]} [writes] Where each run that changed files wrote them.
  */
 
 /**
@@ -211,8 +250,16 @@ export const MAX_PICKED = 1
  * @typedef {object} Step
  * @property {number} at Milliseconds since the epoch.
  * @property {string} kind `start`, `read`, `edit`, `write`, `multiedit`,
- *   `bash`, `search`, `web`, `mcp`, `skill`, `tool`, `thinking` or `message`.
+ *   `delete`, `bash`, `search`, `web`, `mcp`, `skill`, `tool`, `thinking` or
+ *   `message`.
  * @property {string} label Empty for thinking the API redacted.
+ * @property {string} [external] A file tool's or a `delete`, on a file outside
+ *   the repository: its absolute path, `label` holding only its name.
+ * @property {true} [created] `write` only: the file did not exist before.
+ * @property {true} [folder] `delete` only: the path was a folder.
+ * @property {{ path: string, folder?: true }[]} [removing] `bash` only, as it
+ *   starts: what it names to delete that is there, absolute; those gone once
+ *   it ended are recorded as `delete` steps.
  * @property {string} [id] Tools only: Claude Code's tool_use_id.
  * @property {'running' | 'done' | 'failed'} [state] Tools only.
  * @property {string} [error] Why it failed.
@@ -277,12 +324,28 @@ export const nextMessageId = (comment) =>
   )
 
 /**
- * The reader's message the comment is open for: their latest, the one its
- * line hands over.
+ * The reader's message the comment is open for, the one its line hands over:
+ * their latest, unless added while it was open or worked on (`during`,
+ * `queued`) and not sent on since (`sentAt`).
  * @param {Pick<CommentV2, 'messages'>} comment
  */
 export const openingOf = (comment) =>
-  comment.messages.findLast((message) => message.author === 'reader')
+  comment.messages.findLast(
+    (message) =>
+      message.author === 'reader' &&
+      (!!message.sentAt || (!message.during && !message.queued)),
+  )
+
+/**
+ * The reader's messages added while run `run` worked that its agent has not
+ * read yet.
+ * @param {Pick<CommentV2, 'messages'>} comment
+ * @param {string} run
+ */
+export const unreadDuring = (comment, run) =>
+  comment.messages.filter(
+    (message) => message.author === 'reader' && message.during === run && !message.readAt,
+  )
 
 /**
  * What the hooks key a hand-over on: the message and when it was sent, its

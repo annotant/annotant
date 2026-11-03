@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/prom
 import path from 'node:path'
 import { errorCode } from './errors.mjs'
 import { withFileLock } from './filelock.mjs'
+import { firstLines, removeDiffs } from './diffs.mjs'
 import { removeImages, saveImages } from './images.mjs'
 import {
   COMPLEXITIES,
@@ -15,13 +16,16 @@ import {
   openingOf,
   parseFile,
   sentKey,
+  unreadDuring,
   wasResolved,
 } from './format.mjs'
+import { wroteAt } from './git.mjs'
 import { isDevWidget } from './project.mjs'
 
 /** @typedef {import('./format.mjs').Actor} Actor */
 /** @typedef {import('./format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./format.mjs').Complexity} Complexity */
+/** @typedef {import('./format.mjs').GitPlace} GitPlace */
 /** @typedef {import('./images.mjs').Image} Image */
 /** @typedef {import('./format.mjs').MessageV2} MessageV2 */
 /** @typedef {import('./format.mjs').PickedElement} PickedElement */
@@ -37,17 +41,47 @@ const WRITE_KINDS = new Set(['edit', 'write', 'multiedit'])
 const NARRATION_KINDS = new Set(['thinking', 'message'])
 
 /**
- * The files the steps wrote, or are writing: a failed write changed nothing;
- * one still running, or cut short by a stop, may have.
+ * The files the steps changed, or are changing, each with what the run did to
+ * it in the end: a failed write changed nothing; one still running, or cut
+ * short by a stop, may have. A file the run added then deleted is no change.
+ * A file outside the repository by its absolute path, its name alone telling
+ * nothing of where; a deleted folder with a `/` at its end, the files the run
+ * changed in it left out.
  * @param {import('./format.mjs').Step[]} steps
  */
-const writtenBy = (steps) => [
-  ...new Set(
-    steps
-      .filter((s) => WRITE_KINDS.has(s.kind) && s.state !== 'failed')
-      .map((s) => s.label),
-  ),
-]
+function changesOf(steps) {
+  /** @type {Map<string, 'added' | 'modified' | 'deleted'>} */
+  const files = new Map()
+  for (const step of steps) {
+    const file = step.external ?? step.label
+    if (!file || step.state === 'failed') continue
+    const before = files.get(file)
+    if (step.kind === 'delete' && step.folder) {
+      for (const inside of files.keys()) {
+        if (inside.startsWith(`${file}/`) || inside.startsWith(`${file}\\`))
+          files.delete(inside)
+      }
+      files.set(`${file}/`, 'deleted')
+    } else if (step.kind === 'delete') {
+      if (before === 'added') files.delete(file)
+      else files.set(file, 'deleted')
+    } else if (WRITE_KINDS.has(step.kind)) {
+      // Deleted then written again, it is still there: changed.
+      const created = step.created && before === undefined
+      files.set(file, created || before === 'added' ? 'added' : 'modified')
+    }
+  }
+  const having = (/** @type {string} */ status) =>
+    [...files].filter(([, is]) => is === status).map(([file]) => file)
+  return {
+    changed: [...files.keys()],
+    added: having('added'),
+    deleted: having('deleted'),
+  }
+}
+
+/** The files the steps changed, or are changing. @param {import('./format.mjs').Step[]} steps */
+const writtenBy = (steps) => changesOf(steps).changed
 
 /** Waiting for an agent, or worked on by one: what agents and the server act on. */
 export const isActive = (comment) =>
@@ -81,10 +115,10 @@ export const stateOf = (comment) => STATE_WORDS[comment.state] ?? String(comment
  * change goes through it.
  * @param {CommentV2} comment
  * @param {State} to
- * @param {{ by: Actor, run?: string, agent?: string, model?: string, complexity?: Complexity, message?: Omit<MessageV2, 'id' | 'at'> }} how
+ * @param {{ by: Actor, run?: string, agent?: string, model?: string, complexity?: Complexity, git?: GitPlace, message?: Omit<MessageV2, 'id' | 'at'> }} how
  * @returns {string} When it moved.
  */
-function move(comment, to, { by, run, agent, model, complexity, message }) {
+function move(comment, to, { by, run, agent, model, complexity, git, message }) {
   if (!canMove(comment.state, to)) {
     throw new StoreRefusal(`comment ${comment.id} is ${stateOf(comment)}`)
   }
@@ -97,6 +131,7 @@ function move(comment, to, { by, run, agent, model, complexity, message }) {
     ...(agent ? { agent } : {}),
     ...(model ? { model } : {}),
     ...(complexity ? { complexity } : {}),
+    ...(git ? { git } : {}),
   })
   comment.state = to
   if (message) comment.messages.push({ id: nextMessageId(comment), ...message, at })
@@ -118,8 +153,10 @@ export async function readProgress(project, id, { history = false } = {}) {
   try {
     const file = history ? historyPath(project, id) : progressPath(project, id)
     lines = (await readFile(file, 'utf8')).trim().split('\n')
-  } catch {
-    return []
+  } catch (error) {
+    // No step yet. Any other failure is said: an answer would list no file.
+    if (errorCode(error) === 'ENOENT') return []
+    throw error
   }
   const steps = []
   const byTool = new Map()
@@ -130,6 +167,8 @@ export async function readProgress(project, id, { history = false } = {}) {
     } catch {
       continue
     }
+    // A line cut short may still parse, as a number or null: not a step.
+    if (typeof step !== 'object' || step === null) continue
     const started = step.id ? byTool.get(step.id) : undefined
     if (started) {
       Object.assign(started, step, { at: started.at })
@@ -186,6 +225,37 @@ export async function readRoute(project, id) {
 // Every step of the runs that ended, for the widget's debug panel; kept with a
 // dev build of the widget only (createStore's `history`).
 const historyPath = (project, id) => path.join(project.progressDir, `${id}.history.jsonl`)
+
+/**
+ * The reader's messages run `run` ended before its agent read: those sent
+ * during it, and those queued before it, when it started with no claim to
+ * print them. Queued, for the next agent, which reads them in the thread.
+ * @param {CommentV2} comment
+ * @param {string | undefined} run
+ * @returns {MessageV2[]}
+ */
+function queueUnread(comment, run) {
+  const unread = comment.messages.filter(
+    (message) =>
+      message.author === 'reader' &&
+      !message.readAt &&
+      (message.queued || (!!run && message.during === run)),
+  )
+  for (const message of unread) message.queued = true
+  return unread
+}
+
+/**
+ * The thread a claim prints holds every message added while the comment was
+ * open or worked on: its agent has read them.
+ * @param {CommentV2} comment
+ * @param {string} at
+ */
+function markRead(comment, at) {
+  for (const message of comment.messages) {
+    if ((message.queued || message.during) && !message.readAt) message.readAt = at
+  }
+}
 
 /**
  * The reader's answer to Claude's question: the options they chose, from the
@@ -369,6 +439,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         if (!run || (claimed && claimed !== agent)) return undefined
         const at = move(comment, 'stopped', { by: 'agent', run })
         comment.cancellation = await cancellationOf(id, at, run)
+        queueUnread(comment, run)
         return comment
       })
     },
@@ -376,28 +447,86 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     /**
      * An agent starts working on the comment: a new run, which records the
      * agent's id, the model it runs on and the classifier's label when the
-     * hooks gave them. Claimed again while working, it stays in the run it is
-     * in.
+     * hooks gave them, and where the project is in git. Claimed again while
+     * working, it stays in the run it is in.
      * @param {string} id
-     * @param {{ agent?: string, model?: string, complexity?: string }} [options]
+     * @param {{ agent?: string, model?: string, complexity?: string, git?: GitPlace }} [options]
      * @returns {Promise<{ comment: CommentV2, run: string }>}
      */
-    claim(id, { agent, model, complexity } = {}) {
+    claim(id, { agent, model, complexity, git } = {}) {
       return changeOne(id, (comment) => {
         const working = currentRun(comment)
-        if (working) return { comment, run: working }
+        if (working) {
+          markRead(comment, new Date().toISOString())
+          return { comment, run: working }
+        }
         if (comment.state !== 'open') {
           throw new StoreRefusal(`comment ${id} is ${stateOf(comment)}`)
         }
         const run = nextRunId(comment)
-        move(comment, 'working', {
+        const at = move(comment, 'working', {
           by: 'agent',
           run,
           agent,
           model: model?.slice(0, MAX_MODEL),
           complexity: COMPLEXITIES.find((known) => known === complexity),
+          git,
         })
+        markRead(comment, at)
         return { comment, run }
+      })
+    },
+
+    /**
+     * Run `run` wrote a file with the project at `place` in git: the run's
+     * first write records it; a later one elsewhere sets `switched`. Nothing
+     * once the run ended, nor when it changes nothing.
+     * @param {string} id
+     * @param {string} run
+     * @param {GitPlace} place
+     * @returns {Promise<boolean>} Whether the comment changed.
+     */
+    wrote(id, run, place) {
+      return exclusive(async () => {
+        const comments = await readAll()
+        const comment = comments.find((entry) => entry.id === id)
+        if (!comment || currentRun(comment) !== run) return false
+        const writes = (comment.writes ??= [])
+        const first = writes.find((write) => write.run === run)
+        if (!first) {
+          writes.push({ run, at: new Date().toISOString(), ...place })
+        } else {
+          if (wroteAt(first, place)) return false
+          first.switched = place
+        }
+        await writeAll(comments)
+        return true
+      })
+    },
+
+    /**
+     * The reader's messages sent while run `run` works that its agent has
+     * not read, marked read: its hooks give them to it, once each. None once
+     * the run ended, nor to an agent other than the one that claimed it (one
+     * stopped, its last hook still running).
+     * @param {string} id
+     * @param {string} run
+     * @param {string} agent
+     * @returns {Promise<MessageV2[]>}
+     */
+    deliver(id, run, agent) {
+      return exclusive(async () => {
+        const comments = await readAll()
+        const comment = comments.find((entry) => entry.id === id)
+        if (!comment || currentRun(comment) !== run) return []
+        const claimed = comment.events.at(-1)?.agent
+        if (claimed && claimed !== agent) return []
+        const unread = unreadDuring(comment, run)
+        if (!unread.length) return []
+        const at = new Date().toISOString()
+        for (const message of unread) message.readAt = at
+        await writeAll(comments)
+        return unread
       })
     },
 
@@ -409,9 +538,14 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * manager's chat, it used to leave a thread open with no answer and no
      * agent, showing "Waiting for Claude" to a reader who was the one being
      * waited on. The run's steps are dropped: the comments file holds the
-     * discussion, not the agent's log.
+     * discussion, not the agent's log, and the message only the files the
+     * run changed (`changed`, with `added`, `deleted` and the first line it
+     * changed in each, `firstLines`, from the diffs the hooks kept).
      * A question may offer `options`, the reader picking one, or several when
      * `multiple`; they can always answer in their own words instead.
+     * The reader's messages sent during the run that its agent never read are
+     * queued for the next one; after an answer, the latest of them opens the
+     * comment again, as a follow-up would.
      * @param {string} id
      * @param {string} body
      * @param {{ question?: boolean, options?: { label: string, description?: string }[], multiple?: boolean }} [options]
@@ -428,6 +562,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           move(comment, 'working', { by: 'agent', run: nextRunId(comment) })
         }
         const run = currentRun(comment)
+        const { changed, added, deleted } = changesOf(await readProgress(project, id))
+        const firstLineOf =
+          run && changed.length ? await firstLines(project, id, run, changed) : {}
         move(
           comment,
           question ? 'asking' : wasResolved(comment) ? 'answered' : 'resolved',
@@ -441,10 +578,17 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               ...(question ? { question: true } : {}),
               ...(question && options?.length ? { options } : {}),
               ...(question && options?.length && multiple ? { multiple: true } : {}),
+              ...(changed.length ? { changed } : {}),
+              ...(added.length ? { added } : {}),
+              ...(deleted.length ? { deleted } : {}),
+              ...(Object.keys(firstLineOf).length ? { firstLines: firstLineOf } : {}),
             },
           },
         )
         await endRun(id, run)
+        const unread = queueUnread(comment, run)
+        const latest = unread.at(-1)
+        if (!question && latest) latest.sentAt = move(comment, 'open', { by: 'reader' })
         return comment
       })
     },
@@ -535,7 +679,9 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * answer or follow up (`followUp`, `choices`, with the `images` the
      * reader attached, and the `elements` they picked in the page or the
      * `area` they drew on it), or
-     * resolve it (`status`).
+     * resolve it (`status`). Written while it is open or worked on, the
+     * reader's message joins the thread, the comment where it was, for the
+     * agent at work or the next one.
      * A stop or a re-send the comment is past changes nothing: a double
      * click, or a click on a button a poll late, is not an error. Undefined
      * when there is no such comment.
@@ -557,6 +703,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         if (cancelled === true && isActive(comment)) {
           const at = move(comment, 'stopped', { by: 'reader', run })
           comment.cancellation = await cancellationOf(id, at, run)
+          queueUnread(comment, run)
         }
         if (cancelled === false && comment.state === 'stopped') {
           const sentAt = move(comment, 'open', { by: 'reader' })
@@ -591,7 +738,22 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           id,
           () => names,
           async () => {
-            if (reply) {
+            if (reply && isActive(comment)) {
+              // Added to the thread, the comment where it was: the agent at
+              // work gets it from its hooks, the next one in the thread.
+              comment.messages.push({
+                id: nextMessageId(comment),
+                author: 'reader',
+                ...reply,
+                ...(elements.length ? { elements } : {}),
+                ...(area ? { area } : {}),
+                at: new Date().toISOString(),
+                ...(run ? { during: run } : { queued: true }),
+              })
+              const message = comment.messages.at(-1)
+              if (message) names = await saveImages(project, id, message.id, images)
+              if (message && names.length) message.images = names
+            } else if (reply) {
               const sentAt = move(comment, 'open', {
                 by: 'reader',
                 message: {
@@ -649,6 +811,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         await rm(progressFile(id), { force: true })
         await rm(historyPath(project, id), { force: true })
         await removeImages(project, id)
+        await removeDiffs(project, id)
         return true
       })
     },

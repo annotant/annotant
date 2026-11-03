@@ -17,6 +17,12 @@ export function renderWidget() {
   }
 }
 
+/** Chooses `name` in the panel header's menu. */
+export function fromMenu(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+  fireEvent.click(screen.getByRole('menuitem', { name }))
+}
+
 /** A comment on the page: the strip's Comments, then New comment, needed when it showed threads that need the reader (disabled otherwise). */
 export async function startPageComment() {
   fireEvent.click(await screen.findByRole('button', { name: /^Comments/ }))

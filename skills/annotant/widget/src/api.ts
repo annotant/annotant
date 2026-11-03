@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
+import type {
+  GitPlace,
+  NewReviewComment,
+  ReviewComment,
+  ReviewCommentPatch,
+} from './domain'
+import { parseEditor, type Editor } from './editor'
 import { parseRepository, type Repository } from './links'
 import { parseTheme, type ThemeSetting } from './theme'
 
@@ -7,6 +13,8 @@ const API = new URL('api/comments', new URL('.', import.meta.url)).href
 const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
 const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
 const HEALTH = new URL('api/health', new URL('.', import.meta.url)).href
+const GIT = new URL('api/git', new URL('.', import.meta.url)).href
+const SETTINGS = new URL('api/settings', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -205,14 +213,18 @@ export function useCommentHistory(enabled: boolean) {
 
 /**
  * What the server tells the widget about the project: how the app switches
- * between light and dark, as it read it in `.annotant.json`, and the
- * repository of its `origin` remote. Each undefined until it answers, and
- * when it has none.
+ * between light and dark and the editor its files open in, as it read them
+ * in `.annotant.json`, the project's root, and the repository of its `origin`
+ * remote. Each undefined until it answers, and when it has none.
  */
 export function useServerSettings() {
   const [settings, setSettings] = useState<{
     theme?: ThemeSetting | undefined
     repository?: Repository | undefined
+    root?: string | undefined
+    editor?: Editor | undefined
+    /** `editor` in `.annotant.json` names nothing the widget can open. */
+    editorIgnored?: true | undefined
   }>({})
   useEffect(() => {
     let live = true
@@ -231,7 +243,21 @@ export function useServerSettings() {
       if (remote !== undefined && !repository) {
         console.warn("Annotant: ignoring the server's `repository`:", remote)
       }
-      setSettings({ theme: parsed, repository })
+      const project = 'project' in health ? health.project : undefined
+      const root = typeof project === 'string' && project ? project : undefined
+      const named = 'editor' in health ? health.editor : undefined
+      const editor = parseEditor(named)
+      const editorIgnored = named !== undefined && named !== false && !editor
+      if (editorIgnored) {
+        console.warn('Annotant: ignoring `editor` in .annotant.json:', named)
+      }
+      setSettings({
+        theme: parsed,
+        repository,
+        root,
+        editor,
+        ...(editorIgnored && { editorIgnored }),
+      })
     }
     // No server: the lists say so; the page's background picks the theme meanwhile.
     load().catch(() => undefined)
@@ -240,6 +266,87 @@ export function useServerSettings() {
     }
   }, [])
   return settings
+}
+
+/** The settings dialog's: the instructions `.annotant.json` holds for the agents. */
+export type ProjectSettings = { instructions: string; max: number }
+
+export const fetchSettings = () => request<ProjectSettings>(SETTINGS)
+
+export const saveSettings = (instructions: string) =>
+  request<ProjectSettings>(SETTINGS, {
+    method: 'POST',
+    body: JSON.stringify({ instructions }),
+  })
+
+/** Where the project is in git now, and whether that is its default branch. */
+export type GitNow = GitPlace & { default?: true }
+
+/** The server's answer, when it says a place; anything else says none. */
+function parseGitNow(value: unknown): GitNow | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const text = (key: string) => {
+    const field: unknown = Reflect.get(value, key)
+    return typeof field === 'string' && field ? field : undefined
+  }
+  const branch = text('branch')
+  const commit = text('commit')
+  const worktree = text('worktree')
+  const named = branch ? { branch } : commit ? { commit } : undefined
+  if (!named) return undefined
+  return {
+    ...named,
+    ...(worktree && { worktree }),
+    // Only a branch is a default one.
+    ...(branch && Reflect.get(value, 'default') === true && { default: true }),
+  }
+}
+
+/**
+ * Where the agents write: the project's branch and worktree, read again on
+ * each change the server pushes, when the reader comes back to the page (they
+ * may have switched branch in a terminal) and every POLL_MS, while `enabled`
+ * (the panel is open). Undefined outside a git repository, until the server
+ * answers, and when it fails: never a branch that may be stale.
+ */
+export function useGitPlace(enabled: boolean) {
+  const [place, setPlace] = useState<GitNow>()
+  useEffect(() => {
+    if (!enabled) return undefined
+    let live = true
+    // Each read numbered: an answer slower than a later one is dropped, never
+    // shown over it.
+    let asked = 0
+    let shown = 0
+    const show = (read: number, now: GitNow | undefined) => {
+      if (!live || read < shown) return
+      shown = read
+      setPlace((current) =>
+        JSON.stringify(current) === JSON.stringify(now) ? current : now,
+      )
+    }
+    // No server, or an older one: no branch, rather than one that may be stale.
+    const load = () => {
+      const read = ++asked
+      void request<unknown>(GIT).then(
+        (answer) => show(read, parseGitNow(answer)),
+        () => show(read, undefined),
+      )
+    }
+    load()
+    const timer = setInterval(load, POLL_MS)
+    window.addEventListener(CHANGED, load)
+    window.addEventListener('focus', load)
+    return () => {
+      live = false
+      clearInterval(timer)
+      window.removeEventListener(CHANGED, load)
+      window.removeEventListener('focus', load)
+      // Opened again, the panel waits for a fresh answer.
+      setPlace(undefined)
+    }
+  }, [enabled])
+  return place
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {
@@ -267,6 +374,47 @@ export async function updateComment(
 /** Where the server serves image `name` of comment `id`. */
 export const imageUrl = (id: string, name: string) =>
   `${IMAGES}${encodeURIComponent(id)}/${encodeURIComponent(name)}`
+
+/** One line of a run's diff of a file: kept, added or removed. */
+interface DiffLine {
+  kind: 'context' | 'added' | 'removed'
+  text: string
+}
+
+/**
+ * A run's diff of a file: its hunks, like `diff -u`'s, or why it is not shown;
+ * `diffs.mjs` in the scripts is the reference.
+ */
+export type FileDiff =
+  | {
+      hunks: {
+        oldStart: number
+        oldLines: number
+        newStart: number
+        newLines: number
+        lines: DiffLine[]
+      }[]
+    }
+  | { skipped: 'large' | 'binary' }
+  /** The run kept none: before this was recorded, or cut short. */
+  | { missing: true }
+
+/**
+ * What run `run` of comment `id` did to `file`, as its message's `changed`
+ * names it. A 404 is a server without the route: an error, not "none kept".
+ */
+export async function fetchDiff(
+  id: string,
+  run: string,
+  file: string,
+): Promise<FileDiff> {
+  const url = `${API}/${encodeURIComponent(id)}/runs/${encodeURIComponent(run)}/diff?file=${encodeURIComponent(file)}`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(await failure(response))
+  // The server is ours: its JSON has the shape asked for.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return (await response.json()) as FileDiff
+}
 
 export async function deleteComment(id: string): Promise<void> {
   await request<void>(`${API}/${id}`, { method: 'DELETE' })

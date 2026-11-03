@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { appendFile, chmod, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
+import { openingOf } from '../skills/annotant/scripts/lib/format.mjs'
 import { tempDir, tempProject } from './helpers.mjs'
 
 /** Writes steps as the hooks module does, one JSON line each. */
@@ -85,6 +86,205 @@ test('an answer resolves the comment, without the run log in comments.json', asy
   assert.equal(file.version, 2)
   assert.doesNotMatch(await readFile(project.commentsFile, 'utf8'), /secret plan/)
   assert.equal(existsSync(path.join(project.progressDir, `${comment.id}.jsonl`)), false)
+})
+
+test('each answer lists the files its own run wrote, and only those', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, id: 'a', kind: 'edit', label: 'src/data.ts', state: 'done' },
+    { at: 2, id: 'b', kind: 'write', label: 'src/pages/Home.tsx', state: 'done' },
+    { at: 3, id: 'c', kind: 'edit', label: 'src/data.ts', state: 'done' },
+    { at: 4, id: 'd', kind: 'edit', label: 'src/broken.ts', state: 'failed' },
+    { at: 5, id: 'e', kind: 'read', label: 'src/read.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  await update(comments, comment.id, { followUp: 'And the footer' })
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 6,
+    id: 'f',
+    kind: 'multiedit',
+    label: 'src/Footer.tsx',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'The footer too.')
+  await update(comments, comment.id, { followUp: 'Why blue?' })
+  await comments.answer(comment.id, 'It is the brand colour.')
+  const [saved] = await comments.readAll()
+  assert.deepEqual(
+    saved.messages.filter((m) => m.author === 'claude').map((m) => [m.run, m.changed]),
+    [
+      ['r1', ['src/data.ts', 'src/pages/Home.tsx']],
+      ['r2', ['src/Footer.tsx']],
+      // A run that wrote nothing has no field.
+      ['r3', undefined],
+    ],
+  )
+})
+
+test('an answer names a file outside the repository by its absolute path', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    {
+      at: 1,
+      id: 'a',
+      kind: 'write',
+      label: 'notes.md',
+      external: '/tmp/a/notes.md',
+      state: 'done',
+    },
+    {
+      at: 2,
+      id: 'b',
+      kind: 'write',
+      label: 'notes.md',
+      external: '/tmp/b/notes.md',
+      state: 'done',
+    },
+    { at: 3, id: 'c', kind: 'edit', label: 'src/a.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  // Two files of one name stay two.
+  assert.deepEqual(lastOf(saved.messages).changed, [
+    '/tmp/a/notes.md',
+    '/tmp/b/notes.md',
+    'src/a.ts',
+  ])
+})
+
+/** A tool step of the hooks, done. */
+const doneStep = (at, kind, label, more = {}) => ({
+  at,
+  id: `s${at}`,
+  kind,
+  label,
+  state: 'done',
+  ...more,
+})
+
+test('an answer tells the files its run added and deleted from those it modified', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    doneStep(1, 'write', 'src/new.ts', { created: true }),
+    doneStep(2, 'edit', 'src/new.ts'),
+    doneStep(3, 'edit', 'src/kept.ts'),
+    doneStep(4, 'delete', 'src/old.ts'),
+    // Added then deleted: no change at all.
+    doneStep(5, 'write', 'src/tmp.ts', { created: true }),
+    doneStep(6, 'delete', 'src/tmp.ts'),
+    // Deleted then written again: still there, changed.
+    doneStep(7, 'delete', 'src/back.ts'),
+    doneStep(8, 'write', 'src/back.ts', { created: true }),
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  const answer = lastOf(saved.messages)
+  assert.deepEqual(answer.changed, [
+    'src/new.ts',
+    'src/kept.ts',
+    'src/old.ts',
+    'src/back.ts',
+  ])
+  assert.deepEqual(answer.added, ['src/new.ts'])
+  assert.deepEqual(answer.deleted, ['src/old.ts'])
+})
+
+test('a deleted folder stands for the files the run changed in it', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    doneStep(1, 'write', 'src/tmp/a.ts', { created: true }),
+    doneStep(2, 'edit', 'src/tmp/b.ts'),
+    doneStep(3, 'edit', 'src/tmpl.ts'),
+    doneStep(4, 'delete', 'src/tmp', { folder: true }),
+  )
+  await comments.answer(comment.id, 'Done.')
+  const answer = lastOf((await comments.readAll())[0].messages)
+  assert.deepEqual(answer.changed, ['src/tmpl.ts', 'src/tmp/'])
+  assert.deepEqual(answer.deleted, ['src/tmp/'])
+})
+
+test('a Write keeps the file it created as it ends', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // The hooks' two lines: `created` only on the one written as it started.
+  await appendProgress(
+    project,
+    comment.id,
+    {
+      at: 1,
+      id: 'w',
+      kind: 'write',
+      label: 'src/new.ts',
+      created: true,
+      state: 'running',
+    },
+    { at: 2, id: 'w', kind: 'write', label: 'src/new.ts', state: 'done' },
+  )
+  await comments.answer(comment.id, 'Done.')
+  assert.deepEqual(lastOf((await comments.readAll())[0].messages).added, ['src/new.ts'])
+})
+
+test('an answer is refused when its step file cannot be read', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  // A folder where the file should be: it cannot be read.
+  await mkdir(path.join(project.progressDir, `${comment.id}.jsonl`), { recursive: true })
+  await assert.rejects(comments.answer(comment.id, 'Done.'), { code: 'EISDIR' })
+})
+
+test('a question lists the files written before it, the answer after only its own', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 1,
+    id: 'a',
+    kind: 'edit',
+    label: 'src/a.ts',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'Which blue?', { question: true })
+  await update(comments, comment.id, { followUp: 'Navy' })
+  await claim(comments, comment.id)
+  await appendProgress(project, comment.id, {
+    at: 2,
+    id: 'b',
+    kind: 'edit',
+    label: 'src/b.ts',
+    state: 'done',
+  })
+  await comments.answer(comment.id, 'Navy it is.')
+  const [saved] = await comments.readAll()
+  assert.deepEqual(
+    saved.messages.filter((m) => m.author === 'claude').map((m) => m.changed),
+    [['src/a.ts'], ['src/b.ts']],
+  )
+})
+
+test('an answer is filed whatever stray lines the step file holds', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await mkdir(project.progressDir, { recursive: true })
+  await appendFile(
+    path.join(project.progressDir, `${comment.id}.jsonl`),
+    'null\n12\n{"at":1,"id":"a","kind":"edit","label":"src/a.ts","state":"done"}\n{"at":2,"id":"b","kind":"write","state":"done"}\n',
+  )
+  await comments.answer(comment.id, 'Done.')
+  const [saved] = await comments.readAll()
+  assert.equal(saved.state, 'resolved')
+  assert.deepEqual(lastOf(saved.messages).changed, ['src/a.ts'])
 })
 
 test('a question leaves the comment open, waiting on the reader', async (t) => {
@@ -326,11 +526,6 @@ test('with a released widget, a run leaves no history', async (t) => {
 test('a move outside the graph is refused, and writes nothing', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)
-  // Working: no follow-up from the reader.
-  await assert.rejects(
-    comments.update(comment.id, { followUp: 'And red' }),
-    /is being worked on/,
-  )
   await comments.answer(comment.id, 'Done.')
   const resolved = await readFile(project.commentsFile, 'utf8')
   await assert.rejects(comments.claim(comment.id), /is resolved/)
@@ -590,17 +785,6 @@ test("the reader's images go beside the comments file, and with the comment", as
   assert.equal(existsSync(dir), false)
 })
 
-test('a reply the comment refuses leaves no image behind', async (t) => {
-  const { project, comments, comment } = await setUp(t)
-  await claim(comments, comment.id)
-  await assert.rejects(
-    comments.update(comment.id, { followUp: 'Now', images: [{ data: PNG, ext: 'png' }] }),
-    store.StoreRefusal,
-  )
-  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
-  assert.equal(existsSync(dir), false)
-})
-
 test('a comment left unsaved leaves no image behind', async (t) => {
   const project = projects.project(await tempProject(t))
   const comments = store.createStore(project)
@@ -755,4 +939,98 @@ test('a comment whose images cannot be removed is still deleted', async (t) => {
     await chmod(images, 0o755)
   }
   assert.deepEqual(await comments.list(), [])
+})
+
+test('a message sent while the comment waits joins the thread, for the agent that claims it', async (t) => {
+  const { comments, comment } = await setUp(t)
+  const added = await update(comments, comment.id, { followUp: 'Keep the icon' })
+  assert.equal(added.state, 'open')
+  assert.deepEqual(statesOf(added), ['open'])
+  const message = lastOf(added.messages)
+  assert.equal(message.queued, true)
+  assert.equal(message.sentAt, undefined)
+  // The comment still waits on the reader's comment, not on this message.
+  assert.equal(openingOf(added)?.id, 'm1')
+  const { comment: claimed } = await comments.claim(comment.id)
+  assert.ok(lastOf(claimed.messages).readAt)
+})
+
+test('a message sent while an agent works waits for its hooks, once', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  const added = await update(comments, comment.id, {
+    followUp: 'And on mobile',
+    images: [{ data: PNG, ext: 'png' }],
+  })
+  assert.equal(added.state, 'working')
+  assert.deepEqual(statesOf(added), ['open', 'working'])
+  const message = lastOf(added.messages)
+  assert.equal(message.during, 'r1')
+  assert.deepEqual(message.images, ['m2-1.png'])
+  assert.deepEqual(await comments.deliver(comment.id, 'r2', 'a1'), [])
+  const [given] = await comments.deliver(comment.id, 'r1', 'a1')
+  assert.equal(given?.body, 'And on mobile')
+  assert.ok(given?.readAt)
+  assert.deepEqual(await comments.deliver(comment.id, 'r1', 'a1'), [])
+  // Read: the answer closes the run, nothing opens it again.
+  const answered = await comments.answer(comment.id, 'Done, mobile too.')
+  assert.equal(answered.state, 'resolved')
+})
+
+test('a message the run ended before reading opens the comment again, for the next agent', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await update(comments, comment.id, { followUp: 'Also the footer' })
+  const answered = await comments.answer(comment.id, 'Done.')
+  assert.equal(answered.state, 'open')
+  assert.deepEqual(statesOf(answered), ['open', 'working', 'resolved', 'open'])
+  const waiting = answered.messages.find((one) => one.body === 'Also the footer')
+  assert.equal(waiting?.queued, true)
+  assert.ok(waiting?.sentAt)
+  // The comment now waits on it: its line hands it over as a follow-up.
+  assert.equal(openingOf(answered)?.id, waiting?.id)
+  const { comment: next, run } = await comments.claim(comment.id)
+  assert.equal(run, 'r2')
+  assert.ok(next.messages.find((one) => one.id === waiting?.id)?.readAt)
+})
+
+test('a message unread when the agent asks or stops waits for the next agent', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await update(comments, comment.id, { followUp: 'Keep it short' })
+  const asked = await comments.answer(comment.id, 'Which colour?', { question: true })
+  assert.equal(asked.state, 'asking')
+  assert.equal(asked.messages.at(-2)?.queued, true)
+
+  const other = await setUp(t)
+  await claim(other.comments, other.comment.id)
+  await update(other.comments, other.comment.id, { followUp: 'Wait' })
+  const stopped = await update(other.comments, other.comment.id, { cancelled: true })
+  assert.equal(stopped.state, 'stopped')
+  assert.equal(lastOf(stopped.messages).queued, true)
+  // Sent again, the comment goes with its own words; the message stays in the thread.
+  const resent = await update(other.comments, other.comment.id, { cancelled: false })
+  assert.equal(openingOf(resent)?.id, 'm1')
+})
+
+test('a message queued while open, answered with no claim, opens the comment again', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await update(comments, comment.id, { followUp: 'And the footer' })
+  const answered = await comments.answer(comment.id, 'Done.')
+  assert.equal(answered.state, 'open')
+  assert.equal(openingOf(answered)?.body, 'And the footer')
+})
+
+test('no message goes to a run that ended, nor to an agent that did not claim it', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await comments.claim(comment.id, { agent: 'a1' })
+  await update(comments, comment.id, { followUp: 'Keep the icon' })
+  assert.deepEqual(await comments.deliver(comment.id, 'r1', 'a2'), [])
+  await comments.answer(comment.id, 'Done.')
+  assert.deepEqual(await comments.deliver(comment.id, 'r1', 'a1'), [])
+  const [saved] = await comments.readAll()
+  assert.equal(
+    saved?.messages.find((one) => one.body === 'Keep the icon')?.readAt,
+    undefined,
+  )
 })

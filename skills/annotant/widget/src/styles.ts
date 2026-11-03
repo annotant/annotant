@@ -68,11 +68,21 @@ export const WIDGET_CSS = `
   /* What waits on the reader on the page: the pins' ?, bright, with dark text on it. */
   --cb-orange: #fd7e14;
   --cb-on-orange: #13294b;
+  /* Orange read on the panel: a file a run modified. */
+  --cb-orange-ink: #c2570c;
   --cb-amber-bg: #fdf3e1;
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
   --cb-amber-border: #f2d9a8;
   --cb-bubble: #eff3f8;
+  /* The syntax of code in diffs and answers: 4.5:1 on the surface, the diff's
+     green and red, the bubble, and a code block's tint on it. */
+  --cb-code-keyword: #8b2fb8;
+  --cb-code-string: #106634;
+  --cb-code-number: #9a4100;
+  --cb-code-comment: #526076;
+  --cb-code-tag: #1a5aab;
+  --cb-code-attr: #7a5000;
   /* The in-progress rainbow, dark enough for white text. */
   --cb-unicorn: linear-gradient(135deg, #d6336c, #7048e8 50%, #1c7ed6);
   --cb-radius: 8px;
@@ -103,11 +113,18 @@ export const WIDGET_CSS = `
   --cb-red-bg: #3a1b1e;
   --cb-orange: #fb923c;
   --cb-on-orange: #0b1828;
+  --cb-orange-ink: #fb923c;
   --cb-amber-bg: #33280f;
   --cb-amber-fg: #f2c46b;
   --cb-amber-ink: #f7e5bd;
   --cb-amber-border: #5e4919;
   --cb-bubble: #232c3a;
+  --cb-code-keyword: #d4a5ff;
+  --cb-code-string: #8fdca2;
+  --cb-code-number: #ffb27a;
+  --cb-code-comment: #9aa9bd;
+  --cb-code-tag: #7cc0ff;
+  --cb-code-attr: #f2cc60;
   --cb-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 .an-live { pointer-events: auto; }
@@ -173,6 +190,7 @@ code { font-family: var(--cb-mono); }
   padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
   background: var(--cb-surface); box-shadow: 0 4px 16px rgba(0,0,0,.15);
 }
+.an-dock[data-side="left"] { right: auto; left: 16px; }
 /* Its grip moves it: the tools keep their clicks. */
 .an-grip {
   display: inline-flex; align-items: center; justify-content: center;
@@ -213,27 +231,57 @@ code { font-family: var(--cb-mono); }
   position: fixed; top: 16px; right: 16px; bottom: 16px;
   display: flex; flex-direction: column; background: var(--cb-surface);
   border-radius: 12px; box-shadow: var(--cb-shadow);
+  /* Where it slides in from, and out to: off its side of the page. */
+  --an-panel-off: 100%;
   animation: an-panel-in ${PANEL_IN_MS}ms ease-out;
-  transition-property: width, top, right, bottom, border-radius;
+  transition-property: width, top, right, bottom, left, border-radius;
   transition-duration: ${PANEL_IN_MS}ms; transition-timing-function: ease-out;
 }
 .an-panel--docked { top: 0; right: 0; bottom: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--cb-border); }
+.an-panel[data-side="left"] { right: auto; left: 16px; --an-panel-off: -100%; }
+.an-panel--docked[data-side="left"] { left: 0; border-left: 0; border-right: 1px solid var(--cb-border); }
 /* Open again as the tab kept it: already in place, it does not slide in. */
 .an-panel[data-restored] { animation: none; }
 /* Kept on screen until it has left: the page underneath gets the pointer back at once. */
 .an-panel[data-closing] { animation: an-panel-out ${PANEL_OUT_MS}ms ease-in forwards; pointer-events: none; }
 /* Dragged, the edge follows the pointer. */
 .an-panel:has(.an-resize[data-dragging]) { transition: none; }
-@keyframes an-panel-in { from { transform: translateX(100%); opacity: 0; } }
-@keyframes an-panel-out { to { transform: translateX(100%); opacity: 0; } }
+@keyframes an-panel-in { from { transform: translateX(var(--an-panel-off)); opacity: 0; } }
+@keyframes an-panel-out { to { transform: translateX(var(--an-panel-off)); opacity: 0; } }
 @keyframes an-fade-in { from { opacity: 0; } }
 @keyframes an-fade-out { to { opacity: 0; } }
 .an-resize { position: absolute; top: 0; bottom: 0; left: -3px; width: 7px; cursor: col-resize; z-index: 1; }
+.an-panel[data-side="left"] .an-resize { left: auto; right: -3px; }
 .an-resize:hover, .an-resize[data-dragging] { background: var(--cb-accent); opacity: .6; }
+/* The settings dialog, over the panel's whole height, as a sheet of its own. */
+.an-settings { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--cb-surface); border-radius: inherit; animation: an-fade-in ${PANEL_OUT_MS}ms ease-out; }
+.an-settings-body { flex: 1; overflow-y: auto; padding: 20px; }
+.an-settings-body form { display: flex; flex-direction: column; gap: 8px; }
+.an-settings-label { font-weight: 700; font-size: 14px; }
+.an-settings-hint { margin: 0; color: var(--cb-muted); font-size: 13px; }
+.an-settings-count { align-self: flex-end; color: var(--cb-muted); font-size: 12px; }
+.an-settings-count[data-over] { color: var(--cb-red); font-weight: 600; }
+.an-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .an-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--cb-border); }
 .an-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .an-title h2 { margin: 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .an-header-actions { display: flex; align-items: center; gap: 2px; }
+/* What the header uses less often, in a menu under its last but one button. */
+.an-menu-wrap { position: relative; display: inline-flex; }
+.an-menu-btn svg { stroke-width: 3; }
+.an-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 4; min-width: 220px;
+  display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--cb-border);
+  border-radius: 8px; background: var(--cb-surface); box-shadow: 0 8px 24px rgba(0,0,0,.15);
+  animation: an-fade-in .12s ease-out;
+}
+.an-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0;
+  border-radius: 6px; background: none; color: var(--cb-text); font: inherit; font-size: 13px;
+  text-align: left; white-space: nowrap; cursor: pointer;
+}
+.an-menu-item:hover, .an-menu-item:focus-visible { background: var(--cb-surface-2); outline: none; }
+.an-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--cb-muted); }
 .an-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 0; }
 /* Closes the body: the message box right after the content, stuck to the bottom once the content
    overflows. It carries the body's bottom padding, so nothing scrolls visibly beneath it. */
@@ -275,10 +323,17 @@ code { font-family: var(--cb-mono); }
 .an-composer-cancel { margin-left: -10px; }
 /* The hint row, moved into the foot while the content overflows. */
 .an-panel-foot-hint { display: inline-flex; align-items: center; gap: 12px; }
+.an-git { display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-family: var(--cb-mono); font-size: 12px; }
+.an-git svg, .an-written svg { flex-shrink: 0; width: 14px; height: 14px; }
+.an-git-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-git--default { color: var(--cb-amber-fg); }
+.an-written { display: flex; align-items: flex-start; gap: 4px; margin-top: 4px; font-size: 12px; color: var(--cb-muted); }
+.an-written code { overflow-wrap: anywhere; }
+.an-written--moved { padding: 4px 6px; border-radius: var(--cb-radius); background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
 .an-panel-foot-hint .an-composer-cancel { margin-left: 0; }
 /* Away from its box, the hint would only be noise: shown while the box has the focus. */
 .an-panel:not(:has(.an-composer-box:focus-within)) .an-panel-foot-hint .an-send-hint { visibility: hidden; }
-.an-composer-brand { display: inline-flex; align-items: center; gap: 8px; }
+.an-composer-brand { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 /* The mascot's head: the images are cropped to it. */
 .an-composer-brand img { width: 24px; height: 22px; }
 .an-composer-brand a { color: inherit; text-decoration: none; }
@@ -296,6 +351,7 @@ code { font-family: var(--cb-mono); }
 .an-keys dd { color: var(--cb-muted); }
 .an-keys kbd { font: inherit; font-weight: 600; white-space: nowrap; }
 .an-idle { font-size: 13px; color: var(--cb-muted); }
+.an-msg--pending { opacity: 0.5; }
 
 .an-section, .an-author, .an-label, .an-model { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-muted); }
 .an-author { display: block; }
@@ -328,7 +384,7 @@ code { font-family: var(--cb-mono); }
 /* The thread as a chat: the reader's messages right, in the accent; Claude's left, in a tint. */
 .an-chat { display: flex; flex-direction: column; gap: 16px; }
 /* A message takes the focus, to show its date on Enter or Space: outlined for the keyboard only. */
-.an-msg { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; outline: none; }
+.an-msg { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; outline: none; transition: opacity 0.3s; }
 .an-msg:focus-visible { outline: 2px solid var(--cb-accent); outline-offset: 2px; border-radius: 14px; }
 .an-msg--reader { align-items: flex-end; padding-left: 40px; }
 .an-msg--claude { align-items: flex-start; }
@@ -342,6 +398,57 @@ code { font-family: var(--cb-mono); }
 .an-bubble { max-width: 100%; padding: 8px 14px; border-radius: 14px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .an-bubble--reader { background: var(--cb-accent); color: var(--cb-on-accent); border-bottom-right-radius: 4px; }
 .an-bubble--claude { width: 100%; background: var(--cb-bubble); color: var(--cb-text); }
+/* The files the run behind an answer wrote, under it: a quiet list, folded into a count when long. */
+.an-changed { display: flex; flex-direction: column; gap: 2px; align-self: stretch; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
+.an-changed ul { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
+.an-changed li { min-width: 0; border: 1px solid transparent; border-radius: 8px; }
+.an-file-head { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 4px 0 6px; border-radius: 7px; transition: background .15s; }
+/* The whole row unfolds or folds its diff, as its name does; its icon, actions and badge stay on top. */
+.an-file-head:has(.an-file-name):hover { background: var(--cb-surface-2); }
+.an-file-head .an-change, .an-file-head .an-file-action, .an-file-head .an-external { position: relative; z-index: 1; }
+.an-file-path { min-width: 0; font-size: 12px; line-height: 16px; color: var(--cb-text); overflow-wrap: anywhere; }
+.an-file-dir { color: var(--cb-muted); }
+.an-file-fill { flex: 1; }
+.an-file-counts { display: flex; gap: 6px; flex-shrink: 0; font: 500 11px var(--cb-mono); font-variant-numeric: tabular-nums; }
+.an-file-added { color: var(--cb-green); }
+.an-file-removed { color: var(--cb-red); }
+.an-external { flex-shrink: 0; padding: 0 6px; border: 1px solid var(--cb-border); border-radius: 999px; font-size: 11px; line-height: 16px; cursor: help; }
+.an-changed svg { width: 14px; height: 14px; flex-shrink: 0; }
+/* What the run did to the file, in the icon's colour: added, modified, deleted. */
+.an-change { display: inline-flex; flex-shrink: 0; }
+.an-changed--added .an-change { color: var(--cb-green); }
+.an-changed--modified .an-change { color: var(--cb-orange-ink); }
+.an-changed--deleted .an-change { color: var(--cb-red); }
+.an-changed--deleted code { text-decoration: line-through; }
+.an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
+.an-changed-toggle:hover { color: var(--cb-text); }
+/* Each file: its row unfolds its diff under it, in a frame with its head; Copy and Open beside it. */
+.an-file-name { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.an-file-name > svg { color: var(--cb-muted); transform: rotate(-90deg); transition: transform .15s; }
+.an-file-name[aria-expanded="true"] > svg { transform: none; }
+.an-file-name::after { content: ""; position: absolute; inset: 0; }
+.an-file-action { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; height: 24px; padding: 0 6px; border: none; border-radius: 6px; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
+.an-file-action:hover { color: var(--cb-text); background: var(--cb-border); }
+.an-file-action--off { opacity: .5; cursor: help; }
+.an-file-action--failed { color: var(--cb-red); }
+.an-file-action--off:hover { background: none; }
+.an-changed .an-file-action svg { width: 12px; height: 12px; }
+.an-changed li.an-file--open { margin: 4px 0; border-color: var(--cb-border); background: var(--cb-surface); overflow: hidden; }
+.an-file--open .an-file-head { min-height: 30px; border-radius: 0; background: var(--cb-surface-2); border-bottom: 1px solid var(--cb-border); }
+.an-diff { max-height: 320px; overflow: auto; font: 12px/18px var(--cb-mono); color: var(--cb-text); }
+.an-diff--note { padding: 6px 10px; font-family: var(--cb-font); color: var(--cb-muted); }
+.an-diff-hunk { min-width: 100%; width: max-content; }
+.an-diff-head { padding: 3px 10px; background: var(--cb-accent-weak); color: var(--cb-accent); }
+.an-diff-line { display: grid; grid-template-columns: 34px 34px 14px auto; }
+.an-diff-num { padding-right: 6px; text-align: right; color: var(--cb-muted); user-select: none; }
+.an-diff-sign { color: var(--cb-muted); user-select: none; }
+.an-diff-text { padding-right: 10px; white-space: pre; }
+.an-diff-line--added { background: var(--cb-green-bg); }
+.an-diff-line--added .an-diff-sign { color: var(--cb-green); }
+.an-diff-line--removed { background: var(--cb-red-bg); }
+.an-diff-line--removed .an-diff-sign { color: var(--cb-red); }
+.an-changed-toggle svg { transform: rotate(-90deg); transition: transform .15s; }
+.an-changed-toggle[aria-expanded="true"] svg { transform: none; }
 .an-ask { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--cb-amber-border); border-radius: 14px; background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A URL or an issue a message cites: in its bubble's colour, underlined. */
 .an-bubble a, .an-ask a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
@@ -353,6 +460,13 @@ code { font-family: var(--cb-mono); }
 .an-md code { padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, currentColor 10%, transparent); font-size: .92em; }
 .an-md pre { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); overflow-x: auto; white-space: pre; }
 .an-md pre code { padding: 0; background: none; }
+/* Highlighted code (syntax.tsx): colours only, over a diff line's background. */
+.an-tok--keyword { color: var(--cb-code-keyword); }
+.an-tok--string { color: var(--cb-code-string); }
+.an-tok--number { color: var(--cb-code-number); }
+.an-tok--comment { color: var(--cb-code-comment); font-style: italic; }
+.an-tok--tag, .an-tok--key { color: var(--cb-code-tag); }
+.an-tok--attr { color: var(--cb-code-attr); }
 .an-ask-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-amber-fg); }
 /* The answers Claude offers: one button each, ticked once chosen. */
 .an-options { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; white-space: normal; }
@@ -399,6 +513,7 @@ code { font-family: var(--cb-mono); }
 @media (prefers-reduced-motion: reduce) {
   .an-current-line--out { display: none; }
   .an-current-line--in, .an-dots i, .an-step-icon, .an-spinner { animation: none; }
+  .an-changed-toggle svg, .an-file-name > svg { transition: none; }
   /* The panel fades, and changes width at once. */
   .an-panel { animation-name: an-fade-in; transition: none; }
   .an-panel[data-closing] { animation-name: an-fade-out; }

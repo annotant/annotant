@@ -30,8 +30,9 @@ test('the hooks pass the agent its paths, not its steps', () => {
 const header = (/** @type {string} */ source) =>
   source.match(/`(Each line below starting with \$\{marker\} [^`]+)`/)?.[1]
 
-test("the hooks and claim.mjs fence the reader's text behind the same header", async () => {
-  const claim = await readFile(path.join(SCRIPTS, 'claim.mjs'), 'utf8')
+test("the hooks and the skill's scripts fence the reader's text behind the same header", async () => {
+  // claim.mjs and hook.mjs fence through lib/fence.mjs.
+  const claim = await readFile(path.join(SCRIPTS, 'lib', 'fence.mjs'), 'utf8')
   assert.ok(header(hooks))
   assert.equal(header(claim), header(hooks))
 })
