@@ -9,6 +9,12 @@ released to the `stable` branch.
 
 ### Added
 
+- **The widget on the left.** _Move to the left_, in the panel's header,
+  puts the panel (floating or docked) and the strip of tools on the left of
+  the page, out of the way of an app's own controls on the right; _Move to the
+  right_ brings them back. A strip moved by hand goes to the same place on the
+  other side. The side holds for every tab of the app and the next sessions.
+  (#290)
 - **Instructions for the agents, from the widget.** A gear in the panel's
   header opens the settings: the project's instructions for every comment's
   agent (`instructions` in `.annotant.json`), such as "we use Tailwind, never
