@@ -8,7 +8,8 @@
 // pre: refuses AskUserQuestion and Bash commands that write files, locks the
 //      file an edit writes (another comment's agent may hold it), and records
 //      the step for the widget.
-// post: records the step done or failed; after a file of the repository
+// post: records the step done or failed; gives the agent the reader's
+//      messages sent since its claim, once each, as additional context; after a file of the repository
 //      written by Edit, Write, MultiEdit or NotebookEdit, or deleted (rm, git
 //      rm, unlink),
 //      where the project is in git, on the comment (the run's first write,
@@ -29,8 +30,10 @@ import { appendFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promi
 import path from 'node:path'
 import { errorCode } from './lib/errors.mjs'
 import { withFileLock } from './lib/filelock.mjs'
-import { currentRun, parseFile } from './lib/format.mjs'
+import { fence } from './lib/fence.mjs'
+import { currentRun, parseFile, unreadDuring } from './lib/format.mjs'
 import { gitPlace, wroteAt } from './lib/git.mjs'
+import { imagesDir } from './lib/images.mjs'
 import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
 import { createStore, isActive, progressPath, readProgress } from './lib/store.mjs'
 
@@ -529,8 +532,18 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       return undefined
     },
 
-    /** @param {HookInput} event */
-    async post({ tool_name: tool = '', tool_input: input = {}, tool_use_id: id, error }) {
+    /**
+     * @param {HookInput} event
+     * @returns {Promise<string | undefined>} what to tell the agent: the
+     *   reader's messages sent while it works
+     */
+    async post({
+      hook_event_name: name,
+      tool_name: tool = '',
+      tool_input: input = {},
+      tool_use_id: id,
+      error,
+    }) {
       const failed = error !== undefined
       const command = (tool === 'Bash' && textOf(input, 'command')) || ''
       /** @type {Step} */
@@ -551,10 +564,12 @@ function hooksFor({ comment, root, lockRoot, agent }) {
           if (started.complexity) step.complexity = started.complexity
         }
       }
+      // Its run over: answered, asked, or open again for a message the
+      // reader sent meanwhile.
       const ended = RESOLVE.exec(command)?.[1]
-      if (ended && unquote(ended) === comment && !(found && isActive(found))) {
+      if (ended && unquote(ended) === comment && found?.state !== 'working') {
         await endRun(step)
-        return
+        return undefined
       }
       if (BUILD.test(command)) {
         await unlock('@build')
@@ -588,6 +603,14 @@ function hooksFor({ comment, root, lockRoot, agent }) {
           log(`could not record the git branch: ${String(why)}`),
         )
       }
+      // Only a tool that ran: the context of a failure may not reach it.
+      const run = found ? currentRun(found) : undefined
+      if (!found || !run || name === 'PostToolUseFailure') return undefined
+      if (!unreadDuring(found, run).length) return undefined
+      const added = await createStore(project).deliver(comment, run, agent)
+      if (!added.length) return undefined
+      await log(`gave the agent ${added.map((message) => message.id).join(', ')}`)
+      return addedContext(added)
     },
 
     async stop() {
@@ -608,6 +631,27 @@ function hooksFor({ comment, root, lockRoot, agent }) {
 
     /** @param {Step[]} steps */
     note: record,
+  }
+
+  /**
+   * The reader's messages sent during the run, for its agent: fenced as data,
+   * their images as files it opens with Read.
+   * @param {import('./lib/format.mjs').MessageV2[]} added
+   */
+  function addedContext(added) {
+    const dir = imagesDir(project, comment)
+    const messages = added.map(({ id: message, body, images, elements, area }) => ({
+      id: message,
+      body,
+      ...(images && { images: images.map((image) => path.join(dir, image)) }),
+      ...(elements && { elements }),
+      ...(area && { area }),
+    }))
+    return [
+      `The reader added to comment ${comment} while you work on it:`,
+      fence(JSON.stringify(messages, null, 2)),
+      'Take it into account in this run. If you do not, say why in your answer.',
+    ].join('\n')
   }
 
   /**
@@ -677,8 +721,18 @@ async function main() {
           },
         }),
       )
-  } else if (mode === 'post') await hooks.post(event)
-  else if (mode === 'stop') await hooks.stop()
+  } else if (mode === 'post') {
+    const context = await hooks.post(event)
+    if (context)
+      console.log(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'PostToolUse',
+            additionalContext: context,
+          },
+        }),
+      )
+  } else if (mode === 'stop') await hooks.stop()
   else if (mode === 'ended') {
     // The hooks module logs why it could not stop the comment.
     const stopped = await hooks.ended().catch((error) => {

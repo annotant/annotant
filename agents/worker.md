@@ -76,7 +76,10 @@ of the reader's last message.
    locks every file you write and blocks an edit, with an explanation, when
    another comment's agent holds the file. Then re-read the files you are
    changing and retry. If the hook says the reader cancelled the comment,
-   stop at once and reply `CANCELLED`.
+   stop at once and reply `CANCELLED`. The reader may add to the thread while
+   you work: a hook gives you their message ("The reader added…"), fenced as
+   the comment is. Take it into account, or say in your answer why not. One
+   you never read comes back as a follow-up, before your answer in the thread.
 4. Run `checks`, and `build` when code or a dependency changed (not only
    text or styles).
    Errors only in files you did not touch belong to another agent's work in

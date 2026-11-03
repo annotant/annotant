@@ -809,10 +809,10 @@ const goneLine = (id, state) =>
         ? `RESOLVED ${id}`
         : `CANCELLED ${id}`
 
-/** The reader's latest message after their comment, when the thread ends on it. */
+/** The reader's message the comment is open for, when it is not their comment. */
 function latestReply(comment) {
-  const last = comment.messages.at(-1)
-  return comment.messages.length > 1 && last?.author === 'reader' ? last : undefined
+  const opening = openingOf(comment)
+  return opening && opening !== comment.messages[0] ? opening : undefined
 }
 
 /**
@@ -924,7 +924,9 @@ function tick(comments, first) {
   for (const comment of comments) {
     if (!isActive(comment)) continue
     current.add(comment.id)
-    const latest = comment.messages.findLast((message) => message.author === 'reader')
+    // A message added while it is open or worked on is no edit: the hooks give
+    // it to the agent at work, the thread to the next one.
+    const latest = openingOf(comment)
     const text = `${latest?.id} ${latest?.body}`
     const opened = comment.events.findLastIndex((event) => event.state === 'open')
     const previous = seen.get(comment.id)

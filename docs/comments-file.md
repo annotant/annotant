@@ -118,6 +118,9 @@ copy.
 | `area` | PickedArea, reader only, a reply only | The area they drew, or the lines, with it, never with `elements`: as `anchor.area`, with `route`, the page it was on; `pictured` when the last image of this message is the lines' picture. |
 | `sentAt` | ISO date, reader only | On a message that opened the comment (its first, an answer, a follow-up): when the reader sent it, written again on a re-send. Absent from messages written before it existed, which key on `at`. |
 | `notifiedAt` | ISO date, with `sentAt` | When the server first printed the line handing it over (see [Hand-overs](#hand-overs)); a re-send drops it. |
+| `during` | `r1`, `r2`…, reader only | Sent while that run worked on the comment, which stayed `working`: see [Messages during a run](#messages-during-a-run). |
+| `queued` | `true`, reader only | Added with no agent to read it: sent while the comment was `open`, or its run ended (answered, asked, stopped) before its agent read it. The next agent reads it in the thread. |
+| `readAt` | ISO date, with `during` or `queued` | When an agent got it: from its hooks, or in the thread its claim printed. |
 
 ### An event
 
@@ -212,6 +215,8 @@ stateDiagram-v2
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
 | `working → stopped` | `hook.mjs ended`, run by the hooks once the comment's agent ended its turn without answering or asking, on a run it claimed or that names no agent | agent | The `cancellation`, with the `run`. |
 | `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` or `area` | reader | A `reader` message, with `sentAt`. |
+| none, `open` or `working` | the same PATCH | reader | A `reader` message with `queued` (`open`) or `during` (`working`), no `sentAt`: no line for the hooks. |
+| `resolved` or `answered → open` | `resolve.mjs`, with a message of its run unread | reader | The latest such message's `sentAt`: the comment waits on it, a follow-up. `resolve.mjs` says so to the agent. |
 | `stopped → open` | PATCH `cancelled: false`, or a `followUp` | reader | The last `reader` message's new `sentAt`, its `notifiedAt` dropped; with `text`, its new words, its `choices` dropped; empty, its images, elements or area alone when it has some. |
 | `open`, `asking`, `answered` or `stopped → resolved` | PATCH `status: "resolved"` | reader | Nothing else. |
 
@@ -230,6 +235,30 @@ was picked since the thread was last resolved (the comment itself, before any
 resolution). The page marks it only when it is on that page. A picked
 element's chip in the thread also outlines it while hovered, and scrolls to it
 and flashes it once clicked.
+
+### Messages during a run
+
+The message box is there whatever the thread's state. While the comment is
+`open` or `working`, the reader's message joins the thread and the comment
+stays where it was: the comment's line for the hooks still names the message
+it was open for (`openingOf` in `format.mjs` skips the ones added), and no
+`EDIT` line is printed.
+
+- `open`: the message is `queued`; the agent that claims the comment reads
+  it in the thread, and the claim sets its `readAt`.
+- `working`: the message has `during`, the run's id. After each tool of that
+  run's agent that ran (`PostToolUse`, not a failed tool), `hook.mjs post`
+  gives it the run's unread messages as additional context, fenced as data,
+  their images as files, and sets their `readAt`: once each. Its
+  instructions say to take them into account, or to say why not.
+- The run ends before its agent read one: `ask.mjs` and a stop leave it
+  `queued`, for the next agent; `resolve.mjs` files the answer, then opens
+  the comment again on the latest of them (`sentAt`), which the server hands
+  over as `FOLLOWUP`.
+
+The widget reads, under such a message: _Sent to the agent at work_, _Read_,
+or _Queued for the next agent_. A stopped thread keeps its own box, which
+sends the comment again.
 
 ### A message's target
 

@@ -2,6 +2,7 @@
 // event as JSON on stdin, a deny as JSON on stdout.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
@@ -58,7 +59,7 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
    * @param {string} mode
    * @param {Record<string, unknown> | string} [event] A string as is.
    */
-  const hook = async (index, mode, event = {}) => {
+  const output = async (index, mode, event = {}) => {
     const ran = await run(
       process.execPath,
       [
@@ -79,10 +80,10 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
       },
     )
     assert.equal(ran.code, 0, ran.stderr)
-    return ran.stdout
-      ? JSON.parse(ran.stdout).hookSpecificOutput.permissionDecisionReason
-      : undefined
+    return ran.stdout ? JSON.parse(ran.stdout).hookSpecificOutput : undefined
   }
+  /** The hook's deny, when it refuses the tool. @type {typeof output} */
+  const hook = async (...args) => (await output(...args))?.permissionDecisionReason
   /**
    * A tool's two hooks, `between` run between them; the deny when pre refuses it.
    * @param {number} index
@@ -120,7 +121,7 @@ async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
     file.comments.find((one) => one.id === id(index)).state = state
     await writeFile(project.commentsFile, JSON.stringify(file))
   }
-  return { root, project, comments, hook, tool, claim, progress, setState, id }
+  return { root, project, comments, hook, output, tool, claim, progress, setState, id }
 }
 
 const edit = (file) => ({ file_path: file, old_string: 'a', new_string: 'b' })
@@ -157,6 +158,76 @@ test("records a claimed run's steps, and ends the run on resolve", async (t) => 
   )
   assert.deepEqual(await w.progress(0), [])
   // Its locks went with the run.
+  await w.claim(1)
+  assert.equal(await w.tool(1, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
+})
+
+test("gives the agent the reader's message sent during its run, once", async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.comments.update(w.id(0), { followUp: 'Keep the icon' })
+  const read = { tool_name: 'Read', tool_input: { file_path: 'src/App.tsx' } }
+  // Before the tool runs, nothing: the message goes with its result.
+  assert.equal(await w.output(0, 'pre', { ...read, tool_use_id: 'p1' }), undefined)
+  const given = await w.output(0, 'post', { ...read, tool_use_id: 'p1' })
+  assert.equal(given?.hookEventName, 'PostToolUse')
+  assert.match(given?.additionalContext ?? '', /The reader added to comment/)
+  assert.match(
+    given?.additionalContext ?? '',
+    /reader-[0-9a-f]{8} .*"body": "Keep the icon"/,
+  )
+  const [saved] = await w.comments.readAll()
+  assert.ok(saved?.messages.at(-1)?.readAt)
+  // Once: the next tool says nothing more.
+  assert.equal(await w.output(0, 'post', { ...read, tool_use_id: 'p2' }), undefined)
+})
+
+test('gives the images of a message as files the agent opens', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.comments.update(w.id(0), {
+    followUp: 'Like this',
+    images: [{ data: Buffer.from('89504e470d0a1a0a', 'hex'), ext: 'png' }],
+  })
+  const read = { tool_name: 'Read', tool_input: { file_path: 'x' }, tool_use_id: 'i1' }
+  const given = (await w.output(0, 'post', read))?.additionalContext ?? ''
+  const file = /"(\/[^"]+m2-1\.png)"/.exec(given)?.[1]
+  assert.ok(file, given)
+  assert.ok(existsSync(file))
+})
+
+test('keeps a message for a failed tool, whose context may not reach the agent', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.comments.update(w.id(0), { followUp: 'And on mobile' })
+  const read = { tool_name: 'Read', tool_input: { file_path: 'x' }, tool_use_id: 'f1' }
+  const failed = { ...read, hook_event_name: 'PostToolUseFailure', error: 'ENOENT' }
+  assert.equal(await w.output(0, 'post', failed), undefined)
+  const given = await w.output(0, 'post', { ...read, hook_event_name: 'PostToolUse' })
+  assert.match(given?.additionalContext ?? '', /And on mobile/)
+})
+
+test('a message sent after the last tool goes to the next agent, the locks released', async (t) => {
+  const w = await world(t, 2)
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  const resolve = `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project . "Done."`
+  await w.tool(
+    0,
+    'Bash',
+    { command: resolve },
+    {
+      between: async () => {
+        await w.comments.update(w.id(0), { followUp: 'Also the footer' })
+        await w.comments.answer(w.id(0), 'Done.')
+      },
+    },
+  )
+  const [saved] = await w.comments.readAll()
+  assert.equal(saved?.state, 'open')
+  assert.equal(saved?.messages.at(-2)?.body, 'Also the footer')
+  assert.equal(saved?.messages.at(-2)?.readAt, undefined)
+  // Open again, its run ended: the other comment's agent may take its file.
   await w.claim(1)
   assert.equal(await w.tool(1, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
 })

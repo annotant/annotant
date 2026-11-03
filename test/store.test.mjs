@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { appendFile, chmod, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
+import { openingOf } from '../skills/annotant/scripts/lib/format.mjs'
 import { tempDir, tempProject } from './helpers.mjs'
 
 /** Writes steps as the hooks module does, one JSON line each. */
@@ -525,11 +526,6 @@ test('with a released widget, a run leaves no history', async (t) => {
 test('a move outside the graph is refused, and writes nothing', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)
-  // Working: no follow-up from the reader.
-  await assert.rejects(
-    comments.update(comment.id, { followUp: 'And red' }),
-    /is being worked on/,
-  )
   await comments.answer(comment.id, 'Done.')
   const resolved = await readFile(project.commentsFile, 'utf8')
   await assert.rejects(comments.claim(comment.id), /is resolved/)
@@ -789,17 +785,6 @@ test("the reader's images go beside the comments file, and with the comment", as
   assert.equal(existsSync(dir), false)
 })
 
-test('a reply the comment refuses leaves no image behind', async (t) => {
-  const { project, comments, comment } = await setUp(t)
-  await claim(comments, comment.id)
-  await assert.rejects(
-    comments.update(comment.id, { followUp: 'Now', images: [{ data: PNG, ext: 'png' }] }),
-    store.StoreRefusal,
-  )
-  const dir = path.join(path.dirname(project.commentsFile), 'images', comment.id)
-  assert.equal(existsSync(dir), false)
-})
-
 test('a comment left unsaved leaves no image behind', async (t) => {
   const project = projects.project(await tempProject(t))
   const comments = store.createStore(project)
@@ -954,4 +939,98 @@ test('a comment whose images cannot be removed is still deleted', async (t) => {
     await chmod(images, 0o755)
   }
   assert.deepEqual(await comments.list(), [])
+})
+
+test('a message sent while the comment waits joins the thread, for the agent that claims it', async (t) => {
+  const { comments, comment } = await setUp(t)
+  const added = await update(comments, comment.id, { followUp: 'Keep the icon' })
+  assert.equal(added.state, 'open')
+  assert.deepEqual(statesOf(added), ['open'])
+  const message = lastOf(added.messages)
+  assert.equal(message.queued, true)
+  assert.equal(message.sentAt, undefined)
+  // The comment still waits on the reader's comment, not on this message.
+  assert.equal(openingOf(added)?.id, 'm1')
+  const { comment: claimed } = await comments.claim(comment.id)
+  assert.ok(lastOf(claimed.messages).readAt)
+})
+
+test('a message sent while an agent works waits for its hooks, once', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  const added = await update(comments, comment.id, {
+    followUp: 'And on mobile',
+    images: [{ data: PNG, ext: 'png' }],
+  })
+  assert.equal(added.state, 'working')
+  assert.deepEqual(statesOf(added), ['open', 'working'])
+  const message = lastOf(added.messages)
+  assert.equal(message.during, 'r1')
+  assert.deepEqual(message.images, ['m2-1.png'])
+  assert.deepEqual(await comments.deliver(comment.id, 'r2', 'a1'), [])
+  const [given] = await comments.deliver(comment.id, 'r1', 'a1')
+  assert.equal(given?.body, 'And on mobile')
+  assert.ok(given?.readAt)
+  assert.deepEqual(await comments.deliver(comment.id, 'r1', 'a1'), [])
+  // Read: the answer closes the run, nothing opens it again.
+  const answered = await comments.answer(comment.id, 'Done, mobile too.')
+  assert.equal(answered.state, 'resolved')
+})
+
+test('a message the run ended before reading opens the comment again, for the next agent', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await update(comments, comment.id, { followUp: 'Also the footer' })
+  const answered = await comments.answer(comment.id, 'Done.')
+  assert.equal(answered.state, 'open')
+  assert.deepEqual(statesOf(answered), ['open', 'working', 'resolved', 'open'])
+  const waiting = answered.messages.find((one) => one.body === 'Also the footer')
+  assert.equal(waiting?.queued, true)
+  assert.ok(waiting?.sentAt)
+  // The comment now waits on it: its line hands it over as a follow-up.
+  assert.equal(openingOf(answered)?.id, waiting?.id)
+  const { comment: next, run } = await comments.claim(comment.id)
+  assert.equal(run, 'r2')
+  assert.ok(next.messages.find((one) => one.id === waiting?.id)?.readAt)
+})
+
+test('a message unread when the agent asks or stops waits for the next agent', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await update(comments, comment.id, { followUp: 'Keep it short' })
+  const asked = await comments.answer(comment.id, 'Which colour?', { question: true })
+  assert.equal(asked.state, 'asking')
+  assert.equal(asked.messages.at(-2)?.queued, true)
+
+  const other = await setUp(t)
+  await claim(other.comments, other.comment.id)
+  await update(other.comments, other.comment.id, { followUp: 'Wait' })
+  const stopped = await update(other.comments, other.comment.id, { cancelled: true })
+  assert.equal(stopped.state, 'stopped')
+  assert.equal(lastOf(stopped.messages).queued, true)
+  // Sent again, the comment goes with its own words; the message stays in the thread.
+  const resent = await update(other.comments, other.comment.id, { cancelled: false })
+  assert.equal(openingOf(resent)?.id, 'm1')
+})
+
+test('a message queued while open, answered with no claim, opens the comment again', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await update(comments, comment.id, { followUp: 'And the footer' })
+  const answered = await comments.answer(comment.id, 'Done.')
+  assert.equal(answered.state, 'open')
+  assert.equal(openingOf(answered)?.body, 'And the footer')
+})
+
+test('no message goes to a run that ended, nor to an agent that did not claim it', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await comments.claim(comment.id, { agent: 'a1' })
+  await update(comments, comment.id, { followUp: 'Keep the icon' })
+  assert.deepEqual(await comments.deliver(comment.id, 'r1', 'a2'), [])
+  await comments.answer(comment.id, 'Done.')
+  assert.deepEqual(await comments.deliver(comment.id, 'r1', 'a1'), [])
+  const [saved] = await comments.readAll()
+  assert.equal(
+    saved?.messages.find((one) => one.body === 'Keep the icon')?.readAt,
+    undefined,
+  )
 })

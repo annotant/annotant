@@ -306,6 +306,7 @@ code { font-family: var(--cb-mono); }
 .an-keys dd { color: var(--cb-muted); }
 .an-keys kbd { font: inherit; font-weight: 600; white-space: nowrap; }
 .an-idle { font-size: 13px; color: var(--cb-muted); }
+.an-delivery { margin-top: 2px; font-size: 11px; color: var(--cb-muted); text-align: right; }
 
 .an-section, .an-author, .an-label, .an-model { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--cb-muted); }
 .an-author { display: block; }

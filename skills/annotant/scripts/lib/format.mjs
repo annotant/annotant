@@ -171,6 +171,14 @@ export const MAX_PICKED = 1
  *   `sentAt`.
  * @property {string} [notifiedAt] With `sentAt`: when the server first printed
  *   its line for the hooks, which a restart keeps.
+ * @property {string} [during] Reader only: sent while run `during` worked on
+ *   the comment, which goes on; the hooks give it to that run's agent once its
+ *   next tool ran.
+ * @property {true} [queued] Reader only: added to the thread with no agent to
+ *   read it (the comment was open, or the run ended before its agent read
+ *   it): the next agent reads it in the thread.
+ * @property {string} [readAt] With `during` or `queued`: when an agent got
+ *   it, from its hooks or in the thread its claim printed.
  */
 
 /**
@@ -312,12 +320,28 @@ export const nextMessageId = (comment) =>
   )
 
 /**
- * The reader's message the comment is open for: their latest, the one its
- * line hands over.
+ * The reader's message the comment is open for, the one its line hands over:
+ * their latest, unless added while it was open or worked on (`during`,
+ * `queued`) and not sent on since (`sentAt`).
  * @param {Pick<CommentV2, 'messages'>} comment
  */
 export const openingOf = (comment) =>
-  comment.messages.findLast((message) => message.author === 'reader')
+  comment.messages.findLast(
+    (message) =>
+      message.author === 'reader' &&
+      (!!message.sentAt || (!message.during && !message.queued)),
+  )
+
+/**
+ * The reader's messages added while run `run` worked that its agent has not
+ * read yet.
+ * @param {Pick<CommentV2, 'messages'>} comment
+ * @param {string} run
+ */
+export const unreadDuring = (comment, run) =>
+  comment.messages.filter(
+    (message) => message.author === 'reader' && message.during === run && !message.readAt,
+  )
 
 /**
  * What the hooks key a hand-over on: the message and when it was sent, its

@@ -96,7 +96,18 @@ export async function reply(script, { question }) {
       options: parsed?.options,
       multiple: parsed?.multiple,
     })
-    console.log(`${question ? 'asked' : comment.state} ${id} (${comment.route})`)
+    // A message the reader sent meanwhile opened it again: it comes back to
+    // the agent as a follow-up.
+    const reopened = comment.state === 'open'
+    const state = question
+      ? 'asked'
+      : reopened
+        ? comment.events.at(-2)?.state
+        : comment.state
+    const meanwhile = reopened
+      ? '; the reader sent a message you had not read, which comes to you as a follow-up'
+      : ''
+    console.log(`${state} ${id} (${comment.route})${meanwhile}`)
   } catch (error) {
     if (!(error instanceof StoreRefusal)) throw error
     console.error(`${error.message}; not ${question ? 'asking' : 'resolving'}`)
