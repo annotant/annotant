@@ -107,6 +107,7 @@ import {
   type IconName,
   Icon,
   IconButton,
+  MenuButton,
   Spinner,
   Textarea,
   Toasts,
@@ -1263,6 +1264,7 @@ export default function App({ root }: { root: Element }) {
   // The list of the keyboard shortcuts, in the panel.
   const [showKeys, setShowKeys] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // The menu's button, which opened the settings: the focus goes back to it once they close.
   const settingsButton = useRef<HTMLButtonElement>(null)
 
   // The cards' relative dates move on while the panel is open: one timer for
@@ -3012,22 +3014,27 @@ export default function App({ root }: { root: Element }) {
                 disabled={drafting}
                 onClick={() => startDraft(PAGE_LEVEL)}
               />
-              <IconButton
+              {/* What is set once and left: in the menu, out of the way. */}
+              <MenuButton
                 ref={settingsButton}
-                icon="gear"
-                label="Settings"
-                aria-haspopup="dialog"
-                onClick={() => setSettingsOpen(true)}
-              />
-              <IconButton
-                icon={side === 'left' ? 'panel-right' : 'panel-left'}
-                label={side === 'left' ? 'Move to the right' : 'Move to the left'}
-                onClick={toggleSide}
-              />
-              <IconButton
-                icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
-                label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
-                onClick={toggleDocked}
+                label="More actions"
+                items={[
+                  {
+                    icon: docked ? 'collapse-horizontal' : 'expand-horizontal',
+                    label: docked ? 'Narrow panel' : 'Widen panel to half the page',
+                    onSelect: toggleDocked,
+                  },
+                  {
+                    icon: side === 'left' ? 'panel-right' : 'panel-left',
+                    label: side === 'left' ? 'Move to the right' : 'Move to the left',
+                    onSelect: toggleSide,
+                  },
+                  {
+                    icon: 'gear',
+                    label: 'Settings',
+                    onSelect: () => setSettingsOpen(true),
+                  },
+                ]}
               />
               <IconButton
                 icon="x"

@@ -252,6 +252,22 @@ code { font-family: var(--cb-mono); }
 .an-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .an-title h2 { margin: 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .an-header-actions { display: flex; align-items: center; gap: 2px; }
+/* What the header uses less often, in a menu under its last but one button. */
+.an-menu-wrap { position: relative; display: inline-flex; }
+.an-menu-btn svg { stroke-width: 3; }
+.an-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 4; min-width: 220px;
+  display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--cb-border);
+  border-radius: 8px; background: var(--cb-surface); box-shadow: 0 8px 24px rgba(0,0,0,.15);
+  animation: an-fade-in .12s ease-out;
+}
+.an-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0;
+  border-radius: 6px; background: none; color: var(--cb-text); font: inherit; font-size: 13px;
+  text-align: left; white-space: nowrap; cursor: pointer;
+}
+.an-menu-item:hover, .an-menu-item:focus-visible { background: var(--cb-surface-2); outline: none; }
+.an-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--cb-muted); }
 .an-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 0; }
 /* Closes the body: the message box right after the content, stuck to the bottom once the content
    overflows. It carries the body's bottom padding, so nothing scrolls visibly beneath it. */

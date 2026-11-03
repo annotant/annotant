@@ -334,7 +334,7 @@ which it cannot override (`editable`, no writes from Bash, the fences):
 At most 4000 characters, since every agent reads them. `.annotant.json` is
 usually committed: the instructions are the team's.
 
-The widget's settings dialog (the gear in the panel's header) shows them and
+The widget's settings dialog (_Settings_, in the menu of the panel's header) shows them and
 edits them. Saving there (`POST /api/settings`) writes them to
 `.annotant.json` at once, its other keys kept (none removes the key), and the
 server prints `SETTINGS changed` for the hooks, which tell the reader in

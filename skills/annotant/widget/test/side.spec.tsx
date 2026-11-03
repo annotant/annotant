@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { fakeServer, openPanel } from './server'
-import { renderWidget } from './widget'
+import { fromMenu, renderWidget } from './widget'
 
 const LAYOUT_KEY = 'annotant:layout'
 
@@ -24,14 +24,14 @@ test('the panel moves to the left and back, kept for the next tabs', () => {
   const first = renderOpen()
   expect(first.panel().dataset['side']).toBe('right')
 
-  fireEvent.click(screen.getByRole('button', { name: 'Move to the left' }))
+  fromMenu('Move to the left')
   expect(first.panel().dataset['side']).toBe('left')
   expect(stored()).toMatchObject({ side: 'left' })
   first.unmount()
 
   const again = renderOpen({ side: 'left' })
   expect(again.panel().dataset['side']).toBe('left')
-  fireEvent.click(screen.getByRole('button', { name: 'Move to the right' }))
+  fromMenu('Move to the right')
   expect(again.panel().dataset['side']).toBe('right')
   expect(stored()).not.toHaveProperty('side')
 })
@@ -50,7 +50,7 @@ test('the docked panel squeezes the page on its own side, and gives it back as i
 
   // Moved to the other side, the page is squeezed there at once.
   animate.mockClear()
-  fireEvent.click(screen.getByRole('button', { name: 'Move to the right' }))
+  fromMenu('Move to the right')
   expect(animate).not.toHaveBeenCalled()
   expect(html.style.paddingLeft).toBe('')
   expect(html.style.paddingRight).toBe('500px')
@@ -77,13 +77,13 @@ test('the strip goes along, to the same place on the other side', () => {
   fakeServer([])
   renderWidget()
   fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Move to the left' }))
+  fromMenu('Move to the left')
   expect(stored()).toMatchObject({
     side: 'left',
     strip: { corner: 'top-left', x: 40, y: 80 },
   })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Move to the right' }))
+  fromMenu('Move to the right')
   expect(stored()).toMatchObject({ strip: { corner: 'top-right', x: 40, y: 80 } })
 })
 
