@@ -5,9 +5,11 @@
 // for an agent a plugin starts, so the plugin's hooks module registers each
 // comment's agent with these, the comment and the project written in.
 //
-// pre: refuses AskUserQuestion and Bash commands that write files, locks the
-//      file an edit writes (another comment's agent may hold it), and records
-//      the step for the widget.
+// pre: refuses AskUserQuestion, Bash commands that write files, and an Edit,
+//      Write, MultiEdit or NotebookEdit outside the project's `editable`
+//      paths (when it lists them); locks the file an edit writes
+//      (another comment's agent may hold it), and records the step for the
+//      widget.
 // post: records the step done or failed; gives the agent the reader's
 //      messages sent since its claim, once each, as additional context; after a file of the repository
 //      written by Edit, Write, MultiEdit or NotebookEdit, or deleted (rm, git
@@ -24,9 +26,19 @@
 //
 // `--lock-root`: the git repository the project is in, which the hooks module
 // found; agents may edit outside the project (`editable` such as `../api`).
-// A hook never fails the agent: on any error, it lets the tool run.
+// A hook never fails the agent: on any error, it lets the tool run, except a
+// write it cannot tell is under `editable`, which it refuses.
 import { createHash } from 'node:crypto'
-import { appendFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  lstat,
+  mkdir,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import { errorCode } from './lib/errors.mjs'
 import { withFileLock } from './lib/filelock.mjs'
@@ -34,7 +46,7 @@ import { fence } from './lib/fence.mjs'
 import { currentRun, parseFile, unreadDuring } from './lib/format.mjs'
 import { gitPlace, wroteAt } from './lib/git.mjs'
 import { imagesDir } from './lib/images.mjs'
-import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
+import { CONFIG_FILE, STATE_ROOT, project as projectAt } from './lib/project.mjs'
 import { createStore, isActive, progressPath, readProgress } from './lib/store.mjs'
 
 /** @typedef {import('./lib/format.mjs').CommentV2} CommentV2 */
@@ -53,6 +65,7 @@ import { createStore, isActive, progressPath, readProgress } from './lib/store.m
  * @property {string} [tool_use_id]
  * @property {string} [error]
  * @property {string} [agent_id]
+ * @property {string} [cwd] the agent's folder
  */
 
 // A hook's time is bounded: past this, the edit is refused and retried.
@@ -79,6 +92,16 @@ const IN_PLACE = /\b(?:sed|perl)\s+(?:-\S+\s+)*-[\w-]*i/
 const CAT_INTO = /\bcat\s*>>?\s*(\S+)/
 const TEE = /\btee\b((?:\s+[^\s|;&<>]+)*)/
 const MAX_LABEL = 80
+// Dangling links followed by hand to resolve one path (realpath follows the
+// others), past which it is taken as a loop.
+const MAX_LINKS = 40
+// realpath's failures that leave a name to walk by hand (missing, a dangling
+// link or a loop of links), and readlink's on a name that is no link.
+/** @type {Set<unknown>} */
+const RESOLVABLE = new Set(['ENOENT', 'ENOTDIR', 'ELOOP'])
+/** @type {Set<unknown>} */
+const NOT_A_LINK = new Set(['ENOENT', 'EINVAL', 'ENOTDIR'])
+const SCRIPTS = path.dirname(new URL(import.meta.url).pathname)
 // A command's words: quoted, or up to a space.
 const WORDS = /"([^"]*)"|'([^']*)'|(\S+)/g
 // What the shell expands, unquoted or between double quotes: not a path as written.
@@ -98,6 +121,137 @@ async function presence(file) {
     return (await lstat(file)).isDirectory() ? 'folder' : 'file'
   } catch (error) {
     return errorCode(error) === 'ENOENT' ? 'missing' : 'unknown'
+  }
+}
+
+/**
+ * `file` as the system writes it, one name after the other as the system
+ * walks it: each link followed where it stands (a `..` after a link leaves the
+ * link's target, not the link's folder), a dangling one too, where a write
+ * would create its target. From the first name that does not exist, the rest
+ * is kept as written. Undefined when it cannot be told: more than MAX_LINKS
+ * dangling links (a loop), or a folder it may not read.
+ * @param {string} file absolute, as the tool received it
+ * @param {number} [links] dangling links followed so far
+ * @returns {Promise<string | undefined>}
+ */
+async function resolved(file, links = 0) {
+  const names = file.split(path.sep).filter(Boolean)
+  let at = path.parse(file).root
+  for (const [index, name] of names.entries()) {
+    if (name === '.') continue
+    if (name === '..') {
+      at = path.dirname(at)
+      continue
+    }
+    const next = path.join(at, name)
+    try {
+      // The name as the folder holds it (its case on macOS), links followed.
+      at = await realpath(next)
+      continue
+    } catch (error) {
+      if (!RESOLVABLE.has(errorCode(error))) return undefined
+    }
+    const rest = names.slice(index + 1)
+    /** @type {string | undefined} */
+    let link
+    try {
+      link = await readlink(next)
+    } catch (error) {
+      if (!NOT_A_LINK.has(errorCode(error))) return undefined
+    }
+    if (link !== undefined) {
+      if (links >= MAX_LINKS) return undefined
+      const target = path.isAbsolute(link) ? link : `${at}${path.sep}${link}`
+      return resolved([target, ...rest].join(path.sep), links + 1)
+    }
+    // Missing: what follows does not exist either, a `..` in it only goes back.
+    return rest.includes('..')
+      ? resolved(path.join(next, ...rest), links)
+      : path.join(next, ...rest)
+  }
+  return at
+}
+
+/**
+ * `file` from `base` as the tool would take it: never normalized before its
+ * links are followed.
+ * @param {string} file
+ * @param {string} base
+ */
+const from = (file, base) => (path.isAbsolute(file) ? file : `${base}${path.sep}${file}`)
+
+/**
+ * The deny message for a file a comment's agent writes, `target`: one of
+ * Annotant's own files (`.annotant.json`, the comments file), or one outside
+ * the project's `editable` paths (a folder above it such as `../api` included);
+ * undefined under one of them, or when the project declares no `editable`
+ * (the worker's instructions alone keep the agent there). An empty list
+ * refuses every write. Fails closed: a `.annotant.json` that cannot be read, an
+ * `editable` that is not a list of paths, or a path that cannot be resolved,
+ * refuse the write.
+ * @param {{ root: string, cwd?: string, target: string, comment: string, scripts: string }} options
+ *   `cwd`: the agent's folder, where a relative `target` starts
+ * @returns {Promise<{ deny: string, why: string } | undefined>}
+ */
+async function outsideEditable({ root, cwd = root, target, comment, scripts }) {
+  const ask =
+    "If it needs another, do not change it: ask the reader in the comment's thread " +
+    `with node ${JSON.stringify(path.join(scripts, 'ask.mjs'))} ${comment} ` +
+    `--project ${JSON.stringify(root)} "<question>", then reply "QUESTION: <your question>".`
+  /** @type {{ editable?: unknown, commentsFile?: unknown }} */
+  let config
+  try {
+    config = JSON.parse(await readFile(path.join(root, CONFIG_FILE), 'utf8'))
+  } catch (error) {
+    return {
+      deny: `Annotant could not read ${CONFIG_FILE}, which says where agents may edit: retry this step.`,
+      why: `cannot read ${CONFIG_FILE}: ${String(error)}`,
+    }
+  }
+  const { editable } = config
+  // A relative path starts from the agent's folder.
+  const file = await resolved(from(target, cwd))
+  // Annotant's own files, whatever `editable` covers: changing the config
+  // would lift this check, and the comments file holds every other thread.
+  const own = [
+    CONFIG_FILE,
+    typeof config.commentsFile === 'string'
+      ? config.commentsFile
+      : '.annotant/comments.json',
+  ]
+  for (const name of own) {
+    const protectedFile = await resolved(path.resolve(root, name))
+    if (file && file === protectedFile) {
+      return {
+        deny: `${target} is Annotant's own file: agents never change it. ${ask}`,
+        why: `Annotant's own file (${file})`,
+      }
+    }
+  }
+  if (editable === undefined) return undefined
+  if (!Array.isArray(editable) || !editable.every((entry) => typeof entry === 'string')) {
+    return {
+      deny: `\`editable\` in ${CONFIG_FILE} is not a list of paths, so no write is allowed. ${ask}`,
+      why: '`editable` is not a list of paths',
+    }
+  }
+  if (!file) {
+    return {
+      deny: `Annotant could not tell where ${target} leads (a loop of links, or a folder it may not read), so it refuses the write. ${ask}`,
+      why: 'cannot resolve the path',
+    }
+  }
+  for (const entry of editable) {
+    const allowed = await resolved(from(entry, root))
+    if (allowed && within(allowed, file) !== undefined) return undefined
+  }
+  const listed = editable.length ? editable.join(', ') : 'none'
+  return {
+    deny:
+      `${target} is outside the paths this project lets agents edit ` +
+      `(\`editable\` in ${CONFIG_FILE}: ${listed}). Make the change under one of them. ${ask}`,
+    why: `outside \`editable\` (${file})`,
   }
 }
 
@@ -127,7 +281,11 @@ const unquote = (/** @type {string} */ value) => value.replace(/^["']|["']$/g, '
 /** `file` under `root`, relative; undefined outside it. */
 function within(root, file) {
   const relative = path.relative(root, file)
-  return relative.startsWith('..') || path.isAbsolute(relative) ? undefined : relative
+  return relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+    ? undefined
+    : relative
 }
 
 /**
@@ -171,7 +329,7 @@ async function debug(agent, comment, message) {
 function hooksFor({ comment, root, lockRoot, agent }) {
   const project = projectAt(root)
   const log = (/** @type {string} */ message) => debug(agent, comment, message)
-  const scripts = path.dirname(new URL(import.meta.url).pathname)
+  const scripts = SCRIPTS
   const table = path.join(
     STATE_ROOT,
     'locks',
@@ -613,6 +771,28 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       return addedContext(added)
     },
 
+    /**
+     * Records the step main() refused out of `editable`: best effort, the
+     * refusal is printed already.
+     * @param {HookInput} event
+     * @param {string} why
+     */
+    async refused(
+      { tool_name: tool = '', tool_input: input = {}, tool_use_id: id },
+      why,
+    ) {
+      await log(`refused ${writeTarget(tool, input)}: ${why}`)
+      await record([
+        {
+          at: Date.now(),
+          ...(id && { id }),
+          ...describe(tool, input),
+          state: 'failed',
+          error: 'outside `editable`',
+        },
+      ])
+    },
+
     async stop() {
       const released = await releaseAll()
       await log(`agent stopped: released ${released.length} lock(s)`)
@@ -688,6 +868,19 @@ function hooksFor({ comment, root, lockRoot, agent }) {
   }
 }
 
+/**
+ * What a PreToolUse hook prints to refuse the tool.
+ * @param {string} reason
+ */
+const denial = (reason) =>
+  JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  })
+
 async function main() {
   const [mode] = process.argv.slice(2)
   const comment = flag('--comment')
@@ -703,6 +896,26 @@ async function main() {
   /** @type {HookInput} */
   const event =
     mode === 'note' || mode === 'ended' || !text.trim() ? {} : JSON.parse(text)
+  // Before anything that may fail and let the tool run: a write out of
+  // `editable` is refused even when the rest of the hook cannot work.
+  const target =
+    mode === 'pre'
+      ? writeTarget(event.tool_name ?? '', event.tool_input ?? {})
+      : undefined
+  const outside =
+    target && target !== '@build'
+      ? await outsideEditable({ root, cwd: event.cwd, target, comment, scripts: SCRIPTS })
+      : undefined
+  if (outside) {
+    console.log(denial(outside.deny))
+    await hooksFor({
+      comment,
+      root,
+      lockRoot: flag('--lock-root') ?? root,
+      agent: event.agent_id ?? flag('--agent') ?? '-',
+    }).refused(event, outside.why)
+    return
+  }
   const hooks = hooksFor({
     comment,
     root,
@@ -711,16 +924,7 @@ async function main() {
   })
   if (mode === 'pre') {
     const deny = await hooks.pre(event)
-    if (deny)
-      console.log(
-        JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'deny',
-            permissionDecisionReason: deny,
-          },
-        }),
-      )
+    if (deny) console.log(denial(deny))
   } else if (mode === 'post') {
     const context = await hooks.post(event)
     if (context)

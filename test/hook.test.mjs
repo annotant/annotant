@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
@@ -30,15 +30,16 @@ let ids = 0
  * `folder` the project's folder there.
  * @param {import('node:test').TestContext} t
  * @param {number} [count]
- * @param {{ lockRoot?: string, folder?: string }} [options]
+ * `config`: more of its .annotant.json.
+ * @param {{ lockRoot?: string, folder?: string, config?: Record<string, unknown> }} [options]
  */
-async function world(t, count = 1, { lockRoot, folder = 'web' } = {}) {
-  const root = lockRoot ? path.join(lockRoot, folder) : await tempProject(t)
+async function world(t, count = 1, { lockRoot, folder = 'web', config = {} } = {}) {
+  const root = lockRoot ? path.join(lockRoot, folder) : await tempProject(t, config)
   if (lockRoot) {
     await mkdir(root, { recursive: true })
     await writeFile(
       path.join(root, '.annotant.json'),
-      JSON.stringify({ version: 1, commentsFile: '.annotant/comments.json' }),
+      JSON.stringify({ version: 1, commentsFile: '.annotant/comments.json', ...config }),
     )
   }
   const project = projects.project(root)
@@ -474,6 +475,181 @@ test('refuses a Bash command that writes files, which no lock covers', async (t)
     await w.hook(0, 'pre', { tool_name: 'Bash', tool_input: { command: answer } }),
     undefined,
   )
+})
+
+test('refuses an edit outside `editable`, telling the agent to ask in the thread', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  assert.equal(await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
+  /** @type {[string, Record<string, unknown>][]} */
+  const writes = [
+    ['Edit', edit(path.join(w.root, 'package.json'))],
+    ['Write', { file_path: path.join(w.root, 'srcs/a.ts'), content: 'x' }],
+    ['MultiEdit', { file_path: path.join(w.root, 'tsconfig.json'), edits: [] }],
+    ['NotebookEdit', { notebook_path: path.join(w.root, 'a.ipynb'), new_source: 'x' }],
+  ]
+  for (const [name, input] of writes) {
+    const deny = (await w.tool(0, name, input)) ?? ''
+    assert.match(deny, /is outside the paths this project lets agents edit/, name)
+    assert.match(deny, /\(`editable` in \.annotant\.json: src\)/, name)
+    assert.match(deny, new RegExp(`ask\\.mjs" ${w.id(0)} --project`), name)
+  }
+  const step = (await w.progress(0)).at(-1)
+  assert.equal(step.state, 'failed')
+  assert.equal(step.error, 'outside `editable`')
+})
+
+test('`editable` reaches a folder above the project, and nothing else there', async (t) => {
+  const repo = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo, config: { editable: ['src', '../api'] } })
+  await w.claim(0)
+  for (const file of ['web/src/a.ts', 'api/routes.ts', 'api/deep/er.ts']) {
+    assert.equal(await w.tool(0, 'Edit', edit(path.join(repo, file))), undefined, file)
+  }
+  for (const file of ['web/a.ts', 'apis/routes.ts', 'other/x.ts', '../outside.ts']) {
+    assert.match(
+      (await w.tool(0, 'Edit', edit(path.join(repo, file)))) ?? '',
+      /outside the paths .*: src, \.\.\/api\)/,
+      file,
+    )
+  }
+})
+
+test('refuses a path that leaves `editable` through `..` or a link', async (t) => {
+  const w = await world(t)
+  const outside = await tempDir(t)
+  await w.claim(0)
+  await symlink(outside, path.join(w.root, 'src/out'))
+  await symlink(path.join(outside, 'new.ts'), path.join(w.root, 'src/dangling.ts'))
+  await symlink(path.join(w.root, 'src/App.tsx'), path.join(w.root, 'src/inside.ts'))
+  for (const file of [
+    path.join(w.root, 'src/../package.json'),
+    `${w.root}/src/../../x.ts`,
+    path.join(w.root, 'src/out/a.ts'),
+    path.join(w.root, 'src/dangling.ts'),
+  ]) {
+    assert.match(
+      (await w.tool(0, 'Write', { file_path: file, content: 'x' })) ?? '',
+      /is outside the paths/,
+      file,
+    )
+  }
+  // A link that stays under `editable` is followed there.
+  assert.equal(
+    await w.tool(0, 'Edit', edit(path.join(w.root, 'src/inside.ts'))),
+    undefined,
+  )
+})
+
+test('follows a link before the `..` after it, as the system does', async (t) => {
+  const w = await world(t)
+  const outside = await tempDir(t)
+  await mkdir(path.join(outside, 'dir'))
+  await w.claim(0)
+  await symlink(path.join(outside, 'dir'), path.join(w.root, 'src/ext'))
+  // Written as `<outside>/secret.js`, not `src/secret.js`.
+  assert.match(
+    (await w.tool(0, 'Write', {
+      file_path: `${w.root}/src/ext/../secret.js`,
+      content: 'x',
+    })) ?? '',
+    /is outside the paths/,
+  )
+  // A name that only starts with `..` stays in its folder; a relative path is
+  // the project's.
+  for (const file of [path.join(w.root, 'src/..config.ts'), 'src/App.tsx']) {
+    assert.equal(
+      await w.tool(0, 'Write', { file_path: file, content: 'x' }),
+      undefined,
+      file,
+    )
+  }
+  assert.match(
+    (await w.tool(0, 'Write', { file_path: 'package.json', content: 'x' })) ?? '',
+    /is outside the paths/,
+  )
+})
+
+test('refuses a loop of links, and follows an `editable` path that is a link', async (t) => {
+  const w = await world(t, 1, { config: { editable: ['src', 'shared'] } })
+  const shared = await tempDir(t)
+  await w.claim(0)
+  await symlink(path.join(w.root, 'src/b'), path.join(w.root, 'src/a'))
+  await symlink(path.join(w.root, 'src/a'), path.join(w.root, 'src/b'))
+  assert.match(
+    (await w.tool(0, 'Write', { file_path: path.join(w.root, 'src/a'), content: 'x' })) ??
+      '',
+    /could not tell where .* leads/,
+  )
+  await symlink(shared, path.join(w.root, 'shared'))
+  assert.equal(await w.tool(0, 'Edit', edit(path.join(shared, 'Button.tsx'))), undefined)
+})
+
+test('refuses every write when `editable` is empty, malformed or unreadable', async (t) => {
+  /** @type {[unknown, RegExp][]} */
+  const configs = [
+    [[], /: none\)/],
+    ['src', /is not a list of paths/],
+    [['src', 42], /is not a list of paths/],
+  ]
+  for (const [editable, message] of configs) {
+    const w = await world(t, 1, { config: { editable } })
+    await w.claim(0)
+    assert.match(
+      (await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))) ?? '',
+      message,
+      JSON.stringify(editable),
+    )
+  }
+  const w = await world(t)
+  await w.claim(0)
+  await rm(path.join(w.root, '.annotant.json'))
+  assert.match(
+    (await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))) ?? '',
+    /could not read \.annotant\.json/,
+  )
+})
+
+test("refuses Annotant's own files, whatever `editable` covers", async (t) => {
+  const w = await world(t, 1, { config: { editable: ['.'] } })
+  await w.claim(0)
+  assert.equal(
+    await w.tool(0, 'Edit', edit(path.join(w.root, 'package.json'))),
+    undefined,
+  )
+  for (const file of ['.annotant.json', '.annotant/comments.json']) {
+    assert.match(
+      (await w.tool(0, 'Edit', edit(path.join(w.root, file)))) ?? '',
+      /is Annotant's own file/,
+      file,
+    )
+  }
+})
+
+/** A Write of `src/x.ts` from `cwd`. @param {string} cwd */
+const relativeWrite = (cwd) => ({
+  tool_name: 'Write',
+  tool_input: { file_path: 'src/x.ts', content: 'x' },
+  cwd,
+})
+
+test("starts a relative path from the agent's folder", async (t) => {
+  const repo = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo, config: { editable: ['src'] } })
+  await w.claim(0)
+  // The session's folder is the repository: `src/x.ts` is not the project's.
+  assert.match(
+    (await w.hook(0, 'pre', relativeWrite(repo))) ?? '',
+    /is outside the paths/,
+  )
+  assert.equal(await w.hook(0, 'pre', relativeWrite(w.root)), undefined)
+})
+
+test('a project that declares no `editable` leaves the paths to the instructions', async (t) => {
+  const repo = await tempDir(t)
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  assert.equal(await w.tool(0, 'Edit', edit(path.join(repo, 'anywhere/x.ts'))), undefined)
 })
 
 test("sends AskUserQuestion to the comment's thread", async (t) => {

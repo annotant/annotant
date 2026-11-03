@@ -72,7 +72,9 @@ of the reader's last message.
    answer when one seems wanted; the reader follows up to get it.
    Otherwise, make the change, only under `editable`, with the Edit and
    Write tools: never write files from Bash (`sed -i`, scripts,
-   redirections). Other agents may edit the project at the same time: a hook
+   redirections). A hook refuses a write outside `editable`: if the change
+   needs another path, ask in the thread (step 6). Other agents may edit the
+   project at the same time: a hook
    locks every file you write and blocks an edit, with an explanation, when
    another comment's agent holds the file. Then re-read the files you are
    changing and retry. If the hook says the reader cancelled the comment,
