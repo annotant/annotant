@@ -18,12 +18,13 @@ released to the `stable` branch.
   text: the next comments' agents follow them; those already working, and a
   follow-up to their comment, keep the ones they had. (#224)
 - **See what each run did to a file.** Each file an answer lists says how
-  many lines the run added (green) and removed (red); a click on it shows
+  many lines the run added (green) and removed (red), unless no diff was kept
+  for it; a click on it shows
   that run's own diff of it, with line numbers: the file before the run's
   first write and after its last, not
   what you or another agent changed in it before or after the run. A file
   over 256 KB, not text, or outside the repository, shows none. Beside it, a
-  button copies its path in the project, and _Open_ opens it in your editor
+  button copies its path (in the project, or whole out of the repository), and _Open_ opens it in your editor
   at the first line the run changed. (#221)
 - **Write to Claude while it works.** The message box stays while a comment
   waits for an agent or one works on it: a detail you add reaches the agent

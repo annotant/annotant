@@ -444,10 +444,12 @@ const CHANGES = {
 
 /**
  * The files the run behind Claude's message changed, under it: by name when
- * it changed one, else folded into a count that opens on a click. Each but a
- * deleted one opens in the project's editor, once the server said where the
- * project is and unless `editor` is `false`; one out of the project is marked
- * external.
+ * it changed one, else folded into a count that opens on a click. Once the
+ * list shows, each file's diff loads, for the lines it added and removed on
+ * its row; a click on the row unfolds the diff. Each file's path copies, and
+ * each but a deleted one opens in the project's editor, once the server said
+ * where the project is and unless `editor` is `false`; one out of the project
+ * is marked external.
  */
 function ChangedFiles({
   files,
@@ -471,31 +473,39 @@ function ChangedFiles({
   root: string | undefined
 }) {
   const [open, setOpen] = useState(false)
+  const folds = files.length > 1
+  // Loaded once the list shows, for the counts on each file's row.
+  const { diffs, retry } = useDiffs(files, diffOf, !folds || open)
   // The files whose diff is open.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set())
   const toggleDiff = (file: string) => {
     const next = new Set(shown)
-    if (!next.delete(file)) next.add(file)
+    // Opening a diff that failed asks for it again.
+    if (!next.delete(file)) {
+      next.add(file)
+      retry(file)
+    }
     setShown(next)
   }
-  // The file whose path was just copied, ticked for a moment.
-  const [copied, setCopied] = useState<string>()
+  // The file whose path was just copied, or could not be, for a moment.
+  const [copied, setCopied] = useState<{ file: string; error?: string }>()
   const copyPath = async (file: string) => {
+    let error: string | undefined
     try {
+      // Undefined out of a secure context (http on a LAN address, `*.test`…).
+      if (!(navigator.clipboard as Clipboard | undefined))
+        throw new Error('the browser allows it only on https or localhost')
       await navigator.clipboard.writeText(file)
-    } catch (error) {
-      console.warn('annotant: the path could not be copied', error)
-      return
+    } catch (failure) {
+      console.warn('annotant: the path could not be copied', failure)
+      error = failure instanceof Error ? failure.message : String(failure)
     }
-    setCopied(file)
+    setCopied({ file, ...(error === undefined ? {} : { error }) })
     setTimeout(
-      () => setCopied((current) => (current === file ? undefined : current)),
-      1500,
+      () => setCopied((current) => (current?.file === file ? undefined : current)),
+      error === undefined ? 1500 : 4000,
     )
   }
-  const folds = files.length > 1
-  // Loaded once the list shows, for the counts on each file's row.
-  const diffs = useDiffs(files, diffOf, !folds || open)
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
   return (
     <div className="an-changed" data-testid="an-changed">
@@ -535,7 +545,8 @@ function ChangedFiles({
                   >
                     <Icon name={change.icon} />
                   </span>
-                  {/* The name unfolds the run's diff; a deleted folder has no lines. */}
+                  {/* The name, and through its ::after the whole row, unfolds the run's
+                      diff; a deleted folder has no lines. */}
                   {diffOf && !file.endsWith('/') ? (
                     <button
                       type="button"
@@ -560,15 +571,11 @@ function ChangedFiles({
                   )}
                   <span className="an-file-fill" />
                   {counts && <LineCountsView counts={counts} />}
-                  <button
-                    type="button"
-                    className="an-file-action"
-                    aria-label={`Copy the path of ${name}`}
-                    title={copied === file ? 'Copied' : 'Copy the path'}
-                    onClick={() => void copyPath(file)}
-                  >
-                    <Icon name={copied === file ? 'check' : 'copy'} />
-                  </button>
+                  <CopyPath
+                    name={name}
+                    copied={copied?.file === file ? copied : undefined}
+                    onCopy={() => void copyPath(file)}
+                  />
                   {/* A deleted file has nothing left to open. */}
                   {editor && path && status !== 'deleted' ? (
                     <a
@@ -606,6 +613,33 @@ function ChangedFiles({
         </ul>
       )}
     </div>
+  )
+}
+
+/** Copies a file's path: ticked once copied, a cross with the reason when not. */
+function CopyPath({
+  name,
+  copied,
+  onCopy,
+}: {
+  name: string
+  /** The last copy of this path, for a moment: failed when it has an error. */
+  copied: { error?: string } | undefined
+  onCopy: () => void
+}) {
+  const failed = copied?.error !== undefined
+  return (
+    <button
+      type="button"
+      className={`an-file-action${failed ? ' an-file-action--failed' : ''}`}
+      aria-label={`Copy the path of ${name}`}
+      title={
+        !copied ? 'Copy the path' : failed ? `Could not copy: ${copied.error}` : 'Copied'
+      }
+      onClick={onCopy}
+    >
+      <Icon name={!copied ? 'copy' : failed ? 'x' : 'check'} />
+    </button>
   )
 }
 

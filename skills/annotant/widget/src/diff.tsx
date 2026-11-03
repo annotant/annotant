@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileDiff } from './api'
 
 /** How many lines a run added to a file and removed from it. */
@@ -14,53 +14,56 @@ export type Loaded =
  * The run's diff of each of `files` (a folder has none), each loaded once,
  * from the first render where `active` holds: the list shows each file's
  * counts before the reader opens it, and opening it again loads nothing.
+ * `retry` loads again a file whose diff failed.
  */
 export function useDiffs(
   files: string[],
   load: ((file: string) => Promise<FileDiff>) | undefined,
   active: boolean,
-): Readonly<Record<string, Loaded>> {
+): { diffs: Readonly<Record<string, Loaded>>; retry: (file: string) => void } {
   const [diffs, setDiffs] = useState<Readonly<Record<string, Loaded>>>({})
+  // The files asked for, so that each loads once, unless `retry` asks again.
   const asked = useRef(new Set<string>())
-  const mounted = useRef(true)
-  useEffect(
-    () => () => {
-      mounted.current = false
+  const request = useCallback(
+    (file: string, ask: (file: string) => Promise<FileDiff>) => {
+      if (file.endsWith('/') || asked.current.has(file)) return
+      asked.current.add(file)
+      const set = (loaded: Loaded) =>
+        setDiffs((current) => ({ ...current, [file]: loaded }))
+      set({ state: 'loading' })
+      void (async () => {
+        try {
+          set({ state: 'done', diff: await ask(file) })
+        } catch (error) {
+          set({
+            state: 'failed',
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      })()
     },
     [],
   )
   useEffect(() => {
     // `load` is a new function each render: `asked` keeps each file to one call.
     if (!active || !load) return
-    const set = (file: string, loaded: Loaded) => {
-      if (mounted.current) setDiffs((current) => ({ ...current, [file]: loaded }))
-    }
-    for (const file of files) {
-      if (file.endsWith('/') || asked.current.has(file)) continue
-      asked.current.add(file)
-      set(file, { state: 'loading' })
-      void (async () => {
-        try {
-          set(file, { state: 'done', diff: await load(file) })
-        } catch (error) {
-          set(file, {
-            state: 'failed',
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
-      })()
-    }
-  }, [active, files, load])
-  return diffs
+    for (const file of files) request(file, load)
+  }, [active, files, load, request])
+  const retry = (file: string) => {
+    if (!load || diffs[file]?.state !== 'failed') return
+    asked.current.delete(file)
+    request(file, load)
+  }
+  return { diffs, retry }
 }
 
-/** The lines `loaded` added and removed, once it has hunks. */
+/** The lines `loaded` added and removed, once it has hunks that change any. */
 export function countsOf(loaded: Loaded | undefined): LineCounts | undefined {
   if (loaded?.state !== 'done' || !('hunks' in loaded.diff)) return undefined
   const counts = { added: 0, removed: 0 }
   for (const { lines } of loaded.diff.hunks)
     for (const { kind } of lines) if (kind !== 'context') counts[kind]++
-  return counts
+  return counts.added || counts.removed ? counts : undefined
 }
 
 const LOADING: Loaded = { state: 'loading' }

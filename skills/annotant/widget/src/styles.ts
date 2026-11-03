@@ -367,9 +367,9 @@ code { font-family: var(--cb-mono); }
 .an-changed ul { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
 .an-changed li { min-width: 0; border: 1px solid transparent; border-radius: 8px; }
 .an-file-head { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 4px 0 6px; border-radius: 7px; transition: background .15s; }
-/* The whole row of a closed file unfolds its diff, as its name does; its actions stay on top. */
+/* The whole row unfolds or folds its diff, as its name does; its icon, actions and badge stay on top. */
 .an-file-head:has(.an-file-name):hover { background: var(--cb-surface-2); }
-.an-file-head .an-file-action, .an-file-head .an-external { position: relative; z-index: 1; }
+.an-file-head .an-change, .an-file-head .an-file-action, .an-file-head .an-external { position: relative; z-index: 1; }
 .an-file-path { min-width: 0; font-size: 12px; line-height: 16px; color: var(--cb-text); overflow-wrap: anywhere; }
 .an-file-dir { color: var(--cb-muted); }
 .an-file-fill { flex: 1; }
@@ -386,7 +386,7 @@ code { font-family: var(--cb-mono); }
 .an-changed--deleted code { text-decoration: line-through; }
 .an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
 .an-changed-toggle:hover { color: var(--cb-text); }
-/* Each file: its name opens its diff under it, in a frame with its head; Copy and Open beside it. */
+/* Each file: its row unfolds its diff under it, in a frame with its head; Copy and Open beside it. */
 .an-file-name { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .an-file-name > svg { color: var(--cb-muted); transform: rotate(-90deg); transition: transform .15s; }
 .an-file-name[aria-expanded="true"] > svg { transform: none; }
@@ -394,6 +394,7 @@ code { font-family: var(--cb-mono); }
 .an-file-action { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; height: 24px; padding: 0 6px; border: none; border-radius: 6px; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
 .an-file-action:hover { color: var(--cb-text); background: var(--cb-border); }
 .an-file-action--off { opacity: .5; cursor: help; }
+.an-file-action--failed { color: var(--cb-red); }
 .an-file-action--off:hover { background: none; }
 .an-changed .an-file-action svg { width: 12px; height: 12px; }
 .an-changed li.an-file--open { margin: 4px 0; border-color: var(--cb-border); background: var(--cb-surface); overflow: hidden; }

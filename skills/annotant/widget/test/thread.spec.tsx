@@ -754,7 +754,7 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
 
   const [first, second] = await screen.findAllByTestId('an-changed')
   if (!first || !second) throw new Error('two lists expected')
-  // A folded list loads no diff.
+  // The first list, folded, loads none; the second, one file shown, its own.
   const diffsAsked = () =>
     fetch.mock.calls.filter(([url]) => url.includes('/diff')).length
   expect(diffsAsked()).toBe(1)
@@ -798,6 +798,8 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
   ])
   // Opening it loads nothing more.
   expect(diffsAsked()).toBe(4)
+  // No count where no diff was kept, or none could be loaded.
+  expect(within(first).getAllByLabelText(/ added, /)).toHaveLength(1)
 
   fireEvent.click(within(first).getByRole('button', { name: 'src/big.json' }))
   expect(await within(first).findByText('Too large to show.')).toBeTruthy()
@@ -820,6 +822,14 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
   expect(show.getAttribute('title')).toBe('Hide the diff')
   fireEvent.click(show)
   expect(within(first).queryByTestId('an-diff')).toBeNull()
+
+  // One more call in all, for src/gone.ts, opened after its diff failed;
+  // folding the list and unfolding it again loads nothing.
+  expect(diffsAsked()).toBe(5)
+  const toggle = within(first).getByRole('button', { name: '3 files changed' })
+  fireEvent.click(toggle)
+  fireEvent.click(toggle)
+  expect(diffsAsked()).toBe(5)
 })
 
 test("each changed file opens in the project's editor", async () => {
@@ -1022,6 +1032,122 @@ test('each changed file copies its path in the project', async () => {
   // Out of the project: the path it has, whole.
   fireEvent.click(screen.getByRole('button', { name: 'Copy the path of notes.md' }))
   expect(writeText).toHaveBeenLastCalledWith('/tmp/plan/notes.md')
+})
+
+test('a path that cannot be copied says why on its button', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  // Out of a secure context, the browser has no clipboard.
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  onTestFinished(() => {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const copy = await screen.findByRole('button', { name: 'Copy the path of src/App.tsx' })
+  fireEvent.click(copy)
+  await waitFor(() =>
+    expect(copy.getAttribute('title')).toBe(
+      'Could not copy: the browser allows it only on https or localhost',
+    ),
+  )
+})
+
+test('each file counts the lines it changed, none for a folder or a file with none', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const { fetch } = fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/new.ts', 'src/crlf.ts', 'src/old/'],
+            added: ['src/new.ts'],
+            deleted: ['src/old/'],
+          },
+        ],
+      }),
+    ],
+    {
+      project: '/work/shop',
+      diffs: {
+        'c1/r1/src/new.ts': {
+          hunks: [
+            {
+              oldStart: 0,
+              oldLines: 0,
+              newStart: 1,
+              newLines: 2,
+              lines: [
+                { kind: 'added', text: 'a' },
+                { kind: 'added', text: 'b' },
+              ],
+            },
+          ],
+        },
+        // Line endings aside, no line changed.
+        'c1/r1/src/crlf.ts': { hunks: [] },
+      },
+    },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '3 files changed' }))
+  // Added lines only: no "−0".
+  expect((await screen.findByLabelText('2 added, 0 removed')).textContent).toBe('+2')
+  await waitFor(() =>
+    expect(fetch.mock.calls.filter(([url]) => url.includes('/diff'))).toHaveLength(2),
+  )
+  expect(screen.getAllByLabelText(/ added, /)).toHaveLength(1)
+  // A deleted folder: no diff asked for, no button to show one.
+  expect(fetch.mock.calls.some(([url]) => url.includes('src%2Fold'))).toBe(false)
+  expect(screen.queryByRole('button', { name: 'src/old/' })).toBeNull()
+})
+
+test('opening a diff that failed loads it again', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const diffs: Record<string, unknown> = {}
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/a.ts'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', diffs },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const show = await screen.findByRole('button', { name: 'src/a.ts' })
+  fireEvent.click(show)
+  expect(
+    await screen.findByText('The diff could not be loaded: Request failed (404)'),
+  ).toBeTruthy()
+  // The server has it now: closing and opening again asks once more.
+  diffs['c1/r1/src/a.ts'] = { missing: true }
+  fireEvent.click(show)
+  fireEvent.click(show)
+  expect(await screen.findByText('No diff was kept for this file.')).toBeTruthy()
 })
 
 const AT = '2026-01-01T10:00:00.000Z'
