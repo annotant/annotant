@@ -17,12 +17,15 @@ released to the `stable` branch.
   `.annotant.json` at once, and Claude Code says so with the start of the new
   text: the next comments' agents follow them; those already working, and a
   follow-up to their comment, keep the ones they had. (#224)
-- **See what each run did to a file.** Beside each file an answer lists, a
-  `+-` button shows that run's own diff of it, added lines green and removed
-  ones red: the file before the run's first write and after its last, not
+- **See what each run did to a file.** Each file an answer lists says how
+  many lines the run added (green) and removed (red), unless no diff was kept
+  for it; a click on it shows
+  that run's own diff of it, with line numbers: the file before the run's
+  first write and after its last, not
   what you or another agent changed in it before or after the run. A file
-  over 256 KB, not text, or outside the repository, shows none. Its link opens the file at the
-  first line the run changed. (#221)
+  over 256 KB, not text, or outside the repository, shows none. Beside it, a
+  button copies its path (in the project, or whole out of the repository), and _Open_ opens it in your editor
+  at the first line the run changed. (#221)
 - **Write to Claude while it works.** The message box stays while a comment
   waits for an agent or one works on it: a detail you add reaches the agent
   at work after its next step, and the thread marks it _Sent to the agent at
@@ -31,9 +34,9 @@ released to the `stable` branch.
 - **Each answer lists the files its run changed.** Under Claude's answer or
   question, the thread names the files that run edited, wrote or deleted
   (with `rm`), those out of your project marked _external_; several, a count
-  that opens on a click. A run that changed nothing shows nothing. A click on
-  a file, unless it was deleted, opens it in VS Code, or the editor `editor`
-  names in `.annotant.json`. (#220)
+  that opens on a click. A run that changed nothing shows nothing. Each file,
+  unless it was deleted, opens in VS Code, or the editor `editor` names in
+  `.annotant.json`. (#220)
 - **The widget shows where the agents write.** The panel's foot names the git
   branch your project is on (its short commit on a detached HEAD), and its
   worktree's folder when it is not the main checkout (the full path on

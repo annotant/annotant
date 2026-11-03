@@ -1,34 +1,79 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileDiff } from './api'
 
-type Loaded =
+/** How many lines a run added to a file and removed from it. */
+export type LineCounts = { added: number; removed: number }
+
+/** A file's diff, as far as it has loaded. */
+export type Loaded =
   | { state: 'loading' }
   | { state: 'failed'; error: string }
   | { state: 'done'; diff: FileDiff }
 
 /**
- * What one run did to one file: its unified diff, loaded once it opens, added
- * lines green and removed ones red, in a box that scrolls when long.
+ * The run's diff of each of `files` (a folder has none), each loaded once,
+ * from the first render where `active` holds: the list shows each file's
+ * counts before the reader opens it, and opening it again loads nothing.
+ * `retry` loads again a file whose diff failed.
  */
-export function FileDiffView({ load }: { load: () => Promise<FileDiff> }) {
-  const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' })
+export function useDiffs(
+  files: string[],
+  load: ((file: string) => Promise<FileDiff>) | undefined,
+  active: boolean,
+): { diffs: Readonly<Record<string, Loaded>>; retry: (file: string) => void } {
+  const [diffs, setDiffs] = useState<Readonly<Record<string, Loaded>>>({})
+  // The files asked for, so that each loads once, unless `retry` asks again.
+  const asked = useRef(new Set<string>())
+  const request = useCallback(
+    (file: string, ask: (file: string) => Promise<FileDiff>) => {
+      if (file.endsWith('/') || asked.current.has(file)) return
+      asked.current.add(file)
+      const set = (loaded: Loaded) =>
+        setDiffs((current) => ({ ...current, [file]: loaded }))
+      set({ state: 'loading' })
+      void (async () => {
+        try {
+          set({ state: 'done', diff: await ask(file) })
+        } catch (error) {
+          set({
+            state: 'failed',
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      })()
+    },
+    [],
+  )
   useEffect(() => {
-    let current = true
-    load().then(
-      (diff) => current && setLoaded({ state: 'done', diff }),
-      (error: unknown) =>
-        current &&
-        setLoaded({
-          state: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        }),
-    )
-    return () => {
-      current = false
-    }
-    // Loaded once per opening: the run's diff never changes.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- `load` is a new function each render
-  }, [])
+    // `load` is a new function each render: `asked` keeps each file to one call.
+    if (!active || !load) return
+    for (const file of files) request(file, load)
+  }, [active, files, load, request])
+  const retry = (file: string) => {
+    if (!load || diffs[file]?.state !== 'failed') return
+    asked.current.delete(file)
+    request(file, load)
+  }
+  return { diffs, retry }
+}
+
+/** The lines `loaded` added and removed, once it has hunks that change any. */
+export function countsOf(loaded: Loaded | undefined): LineCounts | undefined {
+  if (loaded?.state !== 'done' || !('hunks' in loaded.diff)) return undefined
+  const counts = { added: 0, removed: 0 }
+  for (const { lines } of loaded.diff.hunks)
+    for (const { kind } of lines) if (kind !== 'context') counts[kind]++
+  return counts.added || counts.removed ? counts : undefined
+}
+
+const LOADING: Loaded = { state: 'loading' }
+
+/**
+ * What one run did to one file: its unified diff, added lines green and
+ * removed ones red, each with its old and new line numbers, in a box that
+ * scrolls when long.
+ */
+export function FileDiffView({ loaded = LOADING }: { loaded?: Loaded | undefined }) {
   if (loaded.state === 'loading')
     return (
       <div className="an-diff an-diff--note" role="status">
@@ -67,13 +112,15 @@ export function FileDiffView({ load }: { load: () => Promise<FileDiff> }) {
           <div className="an-diff-head">
             @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
           </div>
-          {hunk.lines.map((line, index) => (
+          {numbered(hunk).map(({ line, old, now }, index) => (
             <div
               // Lines have no id: their place in the hunk is theirs.
               // oxlint-disable-next-line react/no-array-index-key -- the hunk never changes
               key={index}
               className={`an-diff-line an-diff-line--${line.kind}`}
             >
+              <span className="an-diff-num">{old}</span>
+              <span className="an-diff-num">{now}</span>
               <span
                 className="an-diff-sign"
                 aria-label={
@@ -84,7 +131,7 @@ export function FileDiffView({ load }: { load: () => Promise<FileDiff> }) {
                       : undefined
                 }
               >
-                {line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}
+                {line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '}
               </span>
               <span className="an-diff-text">{line.text}</span>
             </div>
@@ -93,4 +140,17 @@ export function FileDiffView({ load }: { load: () => Promise<FileDiff> }) {
       ))}
     </div>
   )
+}
+
+type Hunk = Extract<FileDiff, { hunks: unknown }>['hunks'][number]
+
+/** Each line of `hunk` with its number before the run (`old`) and after (`now`). */
+function numbered(hunk: Hunk) {
+  let old = hunk.oldStart
+  let now = hunk.newStart
+  return hunk.lines.map((line) => ({
+    line,
+    old: line.kind === 'added' ? undefined : old++,
+    now: line.kind === 'removed' ? undefined : now++,
+  }))
 }

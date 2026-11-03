@@ -135,7 +135,7 @@ import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
 import { editorLink, locate, type Editor } from './editor'
-import { FileDiffView } from './diff'
+import { FileDiffView, countsOf, useDiffs, type LineCounts } from './diff'
 import { SettingsDialog } from './settings'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
@@ -444,10 +444,12 @@ const CHANGES = {
 
 /**
  * The files the run behind Claude's message changed, under it: by name when
- * it changed one, else folded into a count that opens on a click. Each but a
- * deleted one opens in the project's editor, once the server said where the
- * project is and unless `editor` is `false`; one out of the project is marked
- * external.
+ * it changed one, else folded into a count that opens on a click. Once the
+ * list shows, each file's diff loads, for the lines it added and removed on
+ * its row; a click on the row unfolds the diff. Each file's path copies, and
+ * each but a deleted one opens in the project's editor, once the server said
+ * where the project is and unless `editor` is `false`; one out of the project
+ * is marked external.
  */
 function ChangedFiles({
   files,
@@ -471,14 +473,39 @@ function ChangedFiles({
   root: string | undefined
 }) {
   const [open, setOpen] = useState(false)
+  const folds = files.length > 1
+  // Loaded once the list shows, for the counts on each file's row.
+  const { diffs, retry } = useDiffs(files, diffOf, !folds || open)
   // The files whose diff is open.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set())
   const toggleDiff = (file: string) => {
     const next = new Set(shown)
-    if (!next.delete(file)) next.add(file)
+    // Opening a diff that failed asks for it again.
+    if (!next.delete(file)) {
+      next.add(file)
+      retry(file)
+    }
     setShown(next)
   }
-  const folds = files.length > 1
+  // The file whose path was just copied, or could not be, for a moment.
+  const [copied, setCopied] = useState<{ file: string; error?: string }>()
+  const copyPath = async (file: string) => {
+    let error: string | undefined
+    try {
+      // Undefined out of a secure context (http on a LAN address, `*.test`…).
+      if (!(navigator.clipboard as Clipboard | undefined))
+        throw new Error('the browser allows it only on https or localhost')
+      await navigator.clipboard.writeText(file)
+    } catch (failure) {
+      console.warn('annotant: the path could not be copied', failure)
+      error = failure instanceof Error ? failure.message : String(failure)
+    }
+    setCopied({ file, ...(error === undefined ? {} : { error }) })
+    setTimeout(
+      () => setCopied((current) => (current?.file === file ? undefined : current)),
+      error === undefined ? 1500 : 4000,
+    )
+  }
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
   return (
     <div className="an-changed" data-testid="an-changed">
@@ -503,65 +530,140 @@ function ChangedFiles({
                 ? 'added'
                 : 'modified'
             const change = CHANGES[status]
+            const counts = countsOf(diffs[file])
             return (
-              <li key={file} className={`an-changed--${status}`}>
-                <span
-                  className="an-change"
-                  role="img"
-                  aria-label={change.label}
-                  title={change.label}
-                >
-                  <Icon name={change.icon} />
-                </span>
-                {/* A deleted file has nothing left to open. */}
-                {editor && path && status !== 'deleted' ? (
-                  <a
-                    href={editorLink(editor, path, firstLines?.[file])}
-                    title={
-                      editor.assumed
-                        ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
-                        : `Open in ${editor.name}`
-                    }
+              <li
+                key={file}
+                className={`an-changed--${status}${shown.has(file) ? ' an-file--open' : ''}`}
+              >
+                <div className="an-file-head">
+                  <span
+                    className="an-change"
+                    role="img"
+                    aria-label={change.label}
+                    title={change.label}
                   >
-                    <code>{name}</code>
-                  </a>
-                ) : (
-                  <code
-                    title={
-                      editorIgnored && status !== 'deleted'
-                        ? '"editor" in .annotant.json names no editor Annotant can open'
-                        : undefined
-                    }
-                  >
-                    {name}
-                  </code>
-                )}
-                {external && (
-                  // Out of the project: the badge tells where, on hover.
-                  <span className="an-external" title={path ?? file}>
-                    external
+                    <Icon name={change.icon} />
                   </span>
-                )}
-                {/* A deleted folder has no lines to show. */}
-                {diffOf && !file.endsWith('/') && (
-                  <button
-                    type="button"
-                    className="an-diff-toggle"
-                    aria-expanded={shown.has(file)}
-                    aria-label={`${shown.has(file) ? 'Hide' : 'Show'} the diff of ${name}`}
-                    title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
-                    onClick={() => toggleDiff(file)}
-                  >
-                    <Icon name="diff" />
-                  </button>
-                )}
-                {diffOf && shown.has(file) && <FileDiffView load={() => diffOf(file)} />}
+                  {/* The name, and through its ::after the whole row, unfolds the run's
+                      diff; a deleted folder has no lines. */}
+                  {diffOf && !file.endsWith('/') ? (
+                    <button
+                      type="button"
+                      className="an-file-name"
+                      // The visible path, whole: its folders are a span of their own.
+                      aria-label={name}
+                      aria-expanded={shown.has(file)}
+                      title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
+                      onClick={() => toggleDiff(file)}
+                    >
+                      <Icon name="chevron-down" />
+                      <FilePath name={name} />
+                    </button>
+                  ) : (
+                    <FilePath name={name} />
+                  )}
+                  {external && (
+                    // Out of the project: the badge tells where, on hover.
+                    <span className="an-external" title={path ?? file}>
+                      external
+                    </span>
+                  )}
+                  <span className="an-file-fill" />
+                  {counts && <LineCountsView counts={counts} />}
+                  <CopyPath
+                    name={name}
+                    copied={copied?.file === file ? copied : undefined}
+                    onCopy={() => void copyPath(file)}
+                  />
+                  {/* A deleted file has nothing left to open. */}
+                  {editor && path && status !== 'deleted' ? (
+                    <a
+                      className="an-file-action"
+                      href={editorLink(editor, path, firstLines?.[file])}
+                      aria-label={`Open ${name} in ${editor.name}`}
+                      title={
+                        editor.assumed
+                          ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
+                          : `Open in ${editor.name}`
+                      }
+                    >
+                      <Icon name="external" />
+                      Open
+                    </a>
+                  ) : (
+                    editorIgnored &&
+                    status !== 'deleted' && (
+                      <span
+                        className="an-file-action an-file-action--off"
+                        title={
+                          '"editor" in .annotant.json names no editor Annotant can open'
+                        }
+                      >
+                        <Icon name="external" />
+                        Open
+                      </span>
+                    )
+                  )}
+                </div>
+                {diffOf && shown.has(file) && <FileDiffView loaded={diffs[file]} />}
               </li>
             )
           })}
         </ul>
       )}
     </div>
+  )
+}
+
+/** Copies a file's path: ticked once copied, a cross with the reason when not. */
+function CopyPath({
+  name,
+  copied,
+  onCopy,
+}: {
+  name: string
+  /** The last copy of this path, for a moment: failed when it has an error. */
+  copied: { error?: string } | undefined
+  onCopy: () => void
+}) {
+  const failed = copied?.error !== undefined
+  return (
+    <button
+      type="button"
+      className={`an-file-action${failed ? ' an-file-action--failed' : ''}`}
+      aria-label={`Copy the path of ${name}`}
+      title={
+        !copied ? 'Copy the path' : failed ? `Could not copy: ${copied.error}` : 'Copied'
+      }
+      onClick={onCopy}
+    >
+      <Icon name={!copied ? 'copy' : failed ? 'x' : 'check'} />
+    </button>
+  )
+}
+
+/** A file's path, its folders dimmed so its name stands out. */
+function FilePath({ name }: { name: string }) {
+  const cut = name.lastIndexOf('/') + 1
+  return (
+    <code className="an-file-path">
+      {cut > 0 && <span className="an-file-dir">{name.slice(0, cut)}</span>}
+      {name.slice(cut)}
+    </code>
+  )
+}
+
+/** The lines a run added to a file (green) and removed from it (red), when any. */
+function LineCountsView({ counts }: { counts: LineCounts }) {
+  return (
+    <span
+      className="an-file-counts"
+      aria-label={`${counts.added} added, ${counts.removed} removed`}
+    >
+      {counts.added > 0 && <span className="an-file-added">+{counts.added}</span>}
+      {counts.removed > 0 && <span className="an-file-removed">−{counts.removed}</span>}
+    </span>
   )
 }
 

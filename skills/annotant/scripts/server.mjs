@@ -643,7 +643,8 @@ async function handle(req, res) {
 
   // What run `run` did to one of the files it changed (`file`, as the message's
   // `changed` names it): its line diff, from the sides the hooks kept
-  // (lib/diffs.mjs). Loaded only when the reader opens the file's diff.
+  // (lib/diffs.mjs). Loaded once the widget lists the file, for its counts and
+  // its diff.
   const [, diffOf, diffRun] =
     /^\/api\/comments\/([\w-]+)\/runs\/([^/]+)\/diff$/.exec(url.pathname) ?? []
   if (req.method === 'GET' && diffOf && diffRun) {

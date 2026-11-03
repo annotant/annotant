@@ -363,13 +363,20 @@ code { font-family: var(--cb-mono); }
 .an-bubble--reader { background: var(--cb-accent); color: var(--cb-on-accent); border-bottom-right-radius: 4px; }
 .an-bubble--claude { width: 100%; background: var(--cb-bubble); color: var(--cb-text); }
 /* The files the run behind an answer wrote, under it: a quiet list, folded into a count when long. */
-.an-changed { display: flex; flex-direction: column; gap: 2px; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
-.an-changed ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.an-changed li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.an-changed li code { overflow-wrap: anywhere; }
+.an-changed { display: flex; flex-direction: column; gap: 2px; align-self: stretch; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
+.an-changed ul { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
+.an-changed li { min-width: 0; border: 1px solid transparent; border-radius: 8px; }
+.an-file-head { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 4px 0 6px; border-radius: 7px; transition: background .15s; }
+/* The whole row unfolds or folds its diff, as its name does; its icon, actions and badge stay on top. */
+.an-file-head:has(.an-file-name):hover { background: var(--cb-surface-2); }
+.an-file-head .an-change, .an-file-head .an-file-action, .an-file-head .an-external { position: relative; z-index: 1; }
+.an-file-path { min-width: 0; font-size: 12px; line-height: 16px; color: var(--cb-text); overflow-wrap: anywhere; }
+.an-file-dir { color: var(--cb-muted); }
+.an-file-fill { flex: 1; }
+.an-file-counts { display: flex; gap: 6px; flex-shrink: 0; font: 500 11px var(--cb-mono); font-variant-numeric: tabular-nums; }
+.an-file-added { color: var(--cb-green); }
+.an-file-removed { color: var(--cb-red); }
 .an-external { flex-shrink: 0; padding: 0 6px; border: 1px solid var(--cb-border); border-radius: 999px; font-size: 11px; line-height: 16px; cursor: help; }
-.an-changed li a { min-width: 0; color: inherit; text-decoration: none; }
-.an-changed li a:hover { color: var(--cb-accent); text-decoration: underline; text-underline-offset: 2px; }
 .an-changed svg { width: 14px; height: 14px; flex-shrink: 0; }
 /* What the run did to the file, in the icon's colour: added, modified, deleted. */
 .an-change { display: inline-flex; flex-shrink: 0; }
@@ -379,16 +386,27 @@ code { font-family: var(--cb-mono); }
 .an-changed--deleted code { text-decoration: line-through; }
 .an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
 .an-changed-toggle:hover { color: var(--cb-text); }
-/* A file's diff, as that run changed it: under the file, scrolling when long. */
-.an-diff-toggle { display: inline-flex; padding: 2px; border: none; border-radius: 4px; background: none; color: inherit; cursor: pointer; }
-.an-diff-toggle:hover, .an-diff-toggle[aria-expanded="true"] { color: var(--cb-text); background: var(--cb-bubble); }
-.an-diff { flex-basis: 100%; max-height: 320px; overflow: auto; border: 1px solid var(--cb-border); border-radius: 6px; font: 12px/1.5 var(--cb-mono); color: var(--cb-text); }
-.an-diff--note { padding: 4px 8px; font-family: inherit; color: var(--cb-muted); }
-.an-diff-hunk { min-width: max-content; }
-.an-diff-head { padding: 0 8px; background: var(--cb-bubble); color: var(--cb-muted); }
-.an-diff-line { display: flex; white-space: pre; }
-.an-diff-sign { flex-shrink: 0; width: 2ch; text-align: center; user-select: none; }
-.an-diff-text { padding-right: 8px; }
+/* Each file: its row unfolds its diff under it, in a frame with its head; Copy and Open beside it. */
+.an-file-name { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.an-file-name > svg { color: var(--cb-muted); transform: rotate(-90deg); transition: transform .15s; }
+.an-file-name[aria-expanded="true"] > svg { transform: none; }
+.an-file-name::after { content: ""; position: absolute; inset: 0; }
+.an-file-action { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; height: 24px; padding: 0 6px; border: none; border-radius: 6px; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
+.an-file-action:hover { color: var(--cb-text); background: var(--cb-border); }
+.an-file-action--off { opacity: .5; cursor: help; }
+.an-file-action--failed { color: var(--cb-red); }
+.an-file-action--off:hover { background: none; }
+.an-changed .an-file-action svg { width: 12px; height: 12px; }
+.an-changed li.an-file--open { margin: 4px 0; border-color: var(--cb-border); background: var(--cb-surface); overflow: hidden; }
+.an-file--open .an-file-head { min-height: 30px; border-radius: 0; background: var(--cb-surface-2); border-bottom: 1px solid var(--cb-border); }
+.an-diff { max-height: 320px; overflow: auto; font: 12px/18px var(--cb-mono); color: var(--cb-text); }
+.an-diff--note { padding: 6px 10px; font-family: var(--cb-font); color: var(--cb-muted); }
+.an-diff-hunk { min-width: 100%; width: max-content; }
+.an-diff-head { padding: 3px 10px; background: var(--cb-accent-weak); color: var(--cb-accent); }
+.an-diff-line { display: grid; grid-template-columns: 34px 34px 14px auto; }
+.an-diff-num { padding-right: 6px; text-align: right; color: var(--cb-muted); user-select: none; }
+.an-diff-sign { color: var(--cb-muted); user-select: none; }
+.an-diff-text { padding-right: 10px; white-space: pre; }
 .an-diff-line--added { background: var(--cb-green-bg); }
 .an-diff-line--added .an-diff-sign { color: var(--cb-green); }
 .an-diff-line--removed { background: var(--cb-red-bg); }
@@ -452,7 +470,7 @@ code { font-family: var(--cb-mono); }
 @media (prefers-reduced-motion: reduce) {
   .an-current-line--out { display: none; }
   .an-current-line--in, .an-dots i, .an-step-icon, .an-spinner { animation: none; }
-  .an-changed-toggle svg { transition: none; }
+  .an-changed-toggle svg, .an-file-name > svg { transition: none; }
   /* The panel fades, and changes width at once. */
   .an-panel { animation-name: an-fade-in; transition: none; }
   .an-panel[data-closing] { animation-name: an-fade-out; }
