@@ -305,6 +305,7 @@ next sessions.
   whose diff was kept says how many lines the run added and removed; a click
   on its row shows that run's own diff of it, with line numbers, from before its first write
   to after its last: not what you or other agents changed before or after it.
+  A TypeScript, JavaScript (JSX included) or JSON file's diff is highlighted.
   Beside it, a button copies its path (in the project, or whole out of the
   repository), and _Open_ opens it in
   VS Code at the first line the run changed; `editor` in `.annotant.json` names another
@@ -319,7 +320,8 @@ next sessions.
   remote is on GitHub or GitLab, open in a new tab.
 - **Formatted answers**: Claude's answers and questions show a small subset
   of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
-  code blocks); anything else, HTML included, shows as its text. Your own
+  code blocks, highlighted when their fence says `ts`, `tsx`, `js`, `jsx` or
+  `json`); anything else, HTML included, shows as its text. Your own
   messages stay as you typed them.
 - **Settings**, in the menu of the panel's header (`⋯`): the project's instructions
   for the agents (`instructions` in `.annotant.json`), what every comment's
