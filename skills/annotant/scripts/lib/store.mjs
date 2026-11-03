@@ -17,11 +17,13 @@ import {
   sentKey,
   wasResolved,
 } from './format.mjs'
+import { wroteAt } from './git.mjs'
 import { isDevWidget } from './project.mjs'
 
 /** @typedef {import('./format.mjs').Actor} Actor */
 /** @typedef {import('./format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./format.mjs').Complexity} Complexity */
+/** @typedef {import('./format.mjs').GitPlace} GitPlace */
 /** @typedef {import('./images.mjs').Image} Image */
 /** @typedef {import('./format.mjs').MessageV2} MessageV2 */
 /** @typedef {import('./format.mjs').PickedElement} PickedElement */
@@ -81,10 +83,10 @@ export const stateOf = (comment) => STATE_WORDS[comment.state] ?? String(comment
  * change goes through it.
  * @param {CommentV2} comment
  * @param {State} to
- * @param {{ by: Actor, run?: string, agent?: string, model?: string, complexity?: Complexity, message?: Omit<MessageV2, 'id' | 'at'> }} how
+ * @param {{ by: Actor, run?: string, agent?: string, model?: string, complexity?: Complexity, git?: GitPlace, message?: Omit<MessageV2, 'id' | 'at'> }} how
  * @returns {string} When it moved.
  */
-function move(comment, to, { by, run, agent, model, complexity, message }) {
+function move(comment, to, { by, run, agent, model, complexity, git, message }) {
   if (!canMove(comment.state, to)) {
     throw new StoreRefusal(`comment ${comment.id} is ${stateOf(comment)}`)
   }
@@ -97,6 +99,7 @@ function move(comment, to, { by, run, agent, model, complexity, message }) {
     ...(agent ? { agent } : {}),
     ...(model ? { model } : {}),
     ...(complexity ? { complexity } : {}),
+    ...(git ? { git } : {}),
   })
   comment.state = to
   if (message) comment.messages.push({ id: nextMessageId(comment), ...message, at })
@@ -376,13 +379,13 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
     /**
      * An agent starts working on the comment: a new run, which records the
      * agent's id, the model it runs on and the classifier's label when the
-     * hooks gave them. Claimed again while working, it stays in the run it is
-     * in.
+     * hooks gave them, and where the project is in git. Claimed again while
+     * working, it stays in the run it is in.
      * @param {string} id
-     * @param {{ agent?: string, model?: string, complexity?: string }} [options]
+     * @param {{ agent?: string, model?: string, complexity?: string, git?: GitPlace }} [options]
      * @returns {Promise<{ comment: CommentV2, run: string }>}
      */
-    claim(id, { agent, model, complexity } = {}) {
+    claim(id, { agent, model, complexity, git } = {}) {
       return changeOne(id, (comment) => {
         const working = currentRun(comment)
         if (working) return { comment, run: working }
@@ -396,8 +399,36 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
           agent,
           model: model?.slice(0, MAX_MODEL),
           complexity: COMPLEXITIES.find((known) => known === complexity),
+          git,
         })
         return { comment, run }
+      })
+    },
+
+    /**
+     * Run `run` wrote a file with the project at `place` in git: the run's
+     * first write records it; a later one elsewhere sets `switched`. Nothing
+     * once the run ended, nor when it changes nothing.
+     * @param {string} id
+     * @param {string} run
+     * @param {GitPlace} place
+     * @returns {Promise<boolean>} Whether the comment changed.
+     */
+    wrote(id, run, place) {
+      return exclusive(async () => {
+        const comments = await readAll()
+        const comment = comments.find((entry) => entry.id === id)
+        if (!comment || currentRun(comment) !== run) return false
+        const writes = (comment.writes ??= [])
+        const first = writes.find((write) => write.run === run)
+        if (!first) {
+          writes.push({ run, at: new Date().toISOString(), ...place })
+        } else {
+          if (wroteAt(first, place)) return false
+          first.switched = place
+        }
+        await writeAll(comments)
+        return true
       })
     },
 

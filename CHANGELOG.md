@@ -7,6 +7,17 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **The widget shows where the agents write.** The panel's foot names the git
+  branch your project is on (its short commit on a detached HEAD), and its
+  worktree's folder when it is not the main checkout (the full path on
+  hover), in amber on the default branch. Each of Claude's answers names the
+  branch its run changed files on, recorded at its first write, so a later
+  branch switch or a reload keeps it; a run that started on one branch (or
+  commit) and wrote on another, or switched between two writes, is flagged. Nothing shows
+  outside a git repository. (#238)
+
 ## 0.4.0 - 2026-10-30
 
 https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1

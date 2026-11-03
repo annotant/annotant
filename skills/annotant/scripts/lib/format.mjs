@@ -180,6 +180,26 @@ export const MAX_PICKED = 1
  *   Claude Code resolved it (`claude-haiku-5-5`), when the hooks ran.
  * @property {Complexity} [complexity] `working` only: how the hooks'
  *   classifier sorted the comment, which picked `model`.
+ * @property {GitPlace} [git] `working` only: where the project was in git when
+ *   the agent claimed it; none outside a git repository.
+ */
+
+/**
+ * Where a project is in git: its branch, or `commit` (short) on a detached
+ * HEAD, and `worktree`, the folder of its checkout, when it is not the
+ * repository's main one.
+ * @typedef {object} GitPlace
+ * @property {string} [branch]
+ * @property {string} [commit]
+ * @property {string} [worktree]
+ */
+
+/**
+ * Where a run wrote: recorded by the hooks at its first file of the
+ * repository written, in a git repository only. `switched`: a later write of
+ * the run found the project elsewhere (the last other place: a write back
+ * where it first wrote records nothing).
+ * @typedef {GitPlace & { run: string, at: string, switched?: GitPlace }} Write
  */
 
 /**
@@ -202,6 +222,7 @@ export const MAX_PICKED = 1
  * @property {MessageV2[]} messages The whole thread, the reader's comment first.
  * @property {EventV2[]} events
  * @property {Cancellation} [cancellation] The last stopped run.
+ * @property {Write[]} [writes] Where each run that changed files wrote them.
  */
 
 /**

@@ -8,8 +8,10 @@
 // pre: refuses AskUserQuestion and Bash commands that write files, locks the
 //      file an edit writes (another comment's agent may hold it), and records
 //      the step for the widget.
-// post: records the step done or failed; after resolve.mjs or ask.mjs, ends
-//      the run: the agent's locks are released.
+// post: records the step done or failed; after a file of the repository
+//      written by Edit, Write, MultiEdit or NotebookEdit, where the project is
+//      in git, on the comment (the run's first write, and a move); after
+//      resolve.mjs or ask.mjs, ends the run: the agent's locks are released.
 // stop: the agent stopped; it holds nothing.
 // note: the hooks module's steps (what the agent thinks and says), as JSON
 //      lines on stdin.
@@ -25,6 +27,7 @@ import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from './lib/filelock.mjs'
 import { currentRun, parseFile } from './lib/format.mjs'
+import { gitPlace, wroteAt } from './lib/git.mjs'
 import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
 import { createStore, isActive, progressPath } from './lib/store.mjs'
 
@@ -438,6 +441,13 @@ function hooksFor({ comment, root, lockRoot, agent }) {
         await log('build ended: released the build lock')
       }
       await record([step])
+      // After the step: a comments file it cannot lock never leaves it running.
+      const target = writeTarget(tool, input)
+      if (!failed && found && target && target !== '@build') {
+        await noteWrite(found, target).catch((why) =>
+          log(`could not record the git branch: ${String(why)}`),
+        )
+      }
     },
 
     async stop() {
@@ -458,6 +468,25 @@ function hooksFor({ comment, root, lockRoot, agent }) {
 
     /** @param {Step[]} steps */
     note: record,
+  }
+
+  /**
+   * A file written in the repository: where the project is in git, on the
+   * comment, at the run's first write and when a later one finds it
+   * elsewhere. A file outside it (a scratch file) is not the project's change.
+   * @param {CommentV2} found
+   * @param {string} target
+   */
+  async function noteWrite(found, target) {
+    const run = currentRun(found)
+    if (!run || within(lockRoot, path.resolve(root, target)) === undefined) return
+    const place = await gitPlace(root, (why) => void log(why))
+    if (!place) return
+    const first = found.writes?.find((write) => write.run === run)
+    if (first && wroteAt(first, place)) return
+    if (await createStore(project).wrote(comment, run, place)) {
+      await log(`wrote on ${place.branch ?? place.commit}${first ? ' (switched)' : ''}`)
+    }
   }
 
   /**

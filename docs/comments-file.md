@@ -55,7 +55,8 @@ the same message.
   "createdAt": "2026-10-10T15:44:37.597Z",   // equals messages[0].at
   "messages": [ /* Message */ ],
   "events": [ /* Event */ ],
-  "cancellation": { /* the last stopped run, when there is one */ }
+  "cancellation": { /* the last stopped run, when there is one */ },
+  "writes": [ /* Write: where each run changed files, in git */ ]
 }
 ```
 
@@ -76,6 +77,7 @@ the same message.
 | `messages` | Message[] | The whole thread, the reader's comment first. |
 | `events` | Event[] | Every move, oldest first, never overwritten. |
 | `cancellation` | Cancellation, optional | Kept after a re-send, so the next agent sees it. |
+| `writes` | Write[], optional | Where each run that changed files wrote them (see [A write](#a-write)). |
 
 The widget finds a quote on the only copy the page still reads around as
 `prefix` and `suffix` say (both sides, in full or by their part in the quote's
@@ -130,6 +132,29 @@ copy.
 | `agent` | string, optional, `working` only | The Claude Code agent that claimed it (`main` for a session's main loop), which the hooks pass to `claim.mjs`. |
 | `model` | string, optional, `working` only | The model its agent runs on, as Claude Code resolved it when the hooks started it (`claude-haiku-5-5`); the widget names its family (`haiku`). |
 | `complexity` | `trivial`, `standard` or `hard`, optional, `working` only | How the hooks' classifier sorted the comment, which picked `model` through `.annotant.json`'s `models` (see [Models](#models)). Absent when the classifier did not run or failed. |
+| `git` | GitPlace, optional, `working` only | Where the project was in git when the agent claimed it: `branch`, or `commit` (short) on a detached HEAD, and `worktree`, the folder of its checkout, when it is not the repository's main one. Absent outside a git repository. |
+
+### A write
+
+```jsonc
+{ "run": "r1", "at": "2026-10-10T15:45:12.004Z", "branch": "feature/new-title",
+  "worktree": "/home/me/work/shop-new-title" }
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `run` | `r1`, `r2`… | The run that wrote; one write per run. |
+| `at` | ISO date | Its first file written. |
+| `branch` or `commit` | string | Where the project was then: its branch, or its short commit on a detached HEAD. |
+| `worktree` | string, optional | The folder of its checkout, when not the repository's main one. |
+| `switched` | GitPlace, optional | A later write of the run found the project elsewhere: the last such place other than the first. A write back where it first wrote records nothing. |
+
+The hooks record one per run, after its first file of the repository written
+by Edit, Write, MultiEdit or NotebookEdit, where the project then was in git,
+so the thread keeps where its changes went after a branch switch or a reload.
+The widget flags a run that wrote elsewhere (another branch, commit or
+worktree) than where its `working` event's `git` says it started, or that
+`switched`. Nothing is recorded outside a git repository, nor when git fails.
 
 ### A cancellation
 
@@ -351,6 +376,11 @@ picked up your reply. Check the Claude Code session watching." Each return to `o
 starts again.
 
 ## What the server adds
+
+`GET /api/git` answers where the project is in git now, a GitPlace, with
+`default: true` when it is on the repository's default branch (`origin`'s,
+else `main` or `master`); `{}` outside a git repository. Read at most every
+few seconds, whatever the number of widgets asking.
 
 With `history=1` (the debug panel), every comment the server printed a line
 about since it started also has `lines`: `{ at, line }` objects, oldest first,

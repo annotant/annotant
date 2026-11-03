@@ -21,6 +21,7 @@ import {
   servedProject,
 } from './lib/project.mjs'
 import { errorCode } from './lib/errors.mjs'
+import { defaultBranch, gitPlace } from './lib/git.mjs'
 import { originOf } from './lib/remote.mjs'
 import {
   CONTENT_TYPES,
@@ -66,6 +67,40 @@ const store = createStore(project)
 // The `origin` remote, read once (a change needs a restart): the widget
 // links the issues a message cites to its repository.
 const repository = originOf(project.root)
+// Where the agents write: read on demand, at most every GIT_MS, however many
+// widgets ask.
+const GIT_MS = 3000
+/** @type {{ at: number, place: Promise<import('./lib/format.mjs').GitPlace & { default?: true }> } | undefined} */
+let gitRead
+/** Why git failed, said once until it changes: the widget then shows no branch. */
+let gitFailure = ''
+/** @param {string} why */
+function reportGit(why) {
+  if (why === gitFailure) return
+  gitFailure = why
+  console.error(
+    `annotant server: cannot read the git branch, the widget shows none: ${why}`,
+  )
+}
+function gitNow() {
+  if (!gitRead || Date.now() - gitRead.at > GIT_MS) {
+    gitRead = {
+      at: Date.now(),
+      place: Promise.all([
+        gitPlace(project.root, reportGit),
+        defaultBranch(project.root),
+      ]).then(([place, main]) =>
+        place
+          ? {
+              ...place,
+              ...(place.branch && place.branch === main && { default: true }),
+            }
+          : {},
+      ),
+    }
+  }
+  return gitRead.place
+}
 const WIDGET = path.join(SKILL_DIR, 'widget', 'dist', 'widget.js')
 // Releases ship the built widget; a clone of the repository builds it first.
 if (!existsSync(WIDGET)) {
@@ -611,6 +646,11 @@ async function handle(req, res) {
       },
       cors,
     )
+  }
+
+  // The branch (or commit) and worktree the agents write to (lib/git.mjs).
+  if (req.method === 'GET' && url.pathname === '/api/git') {
+    return send(res, 200, await gitNow(), cors)
   }
 
   // The dev widget's debug panel, from Claude Code's transcripts: a tool call
