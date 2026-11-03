@@ -7,6 +7,70 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **Highlighted code.** The diff of a TypeScript, JavaScript (JSX included)
+  or JSON file, and a code block of Claude's whose fence says `ts`, `tsx`,
+  `js`, `jsx` or `json`, colour their keywords, strings, numbers, comments,
+  JSX tags and attributes, and JSON keys, in the light and dark themes. Other
+  languages stay plain text. (#291)
+- **The widget on the left.** _Move to the left_, in the panel's menu,
+  puts the panel (floating or docked) and the strip of tools on the left of
+  the page, out of the way of an app's own controls on the right; _Move to the
+  right_ brings them back. A strip moved by hand goes to the same place on the
+  other side. The side holds for every tab of the app and the next sessions.
+  The panel's header keeps the buttons used most; a menu (`⋯`) holds the
+  others: _Settings_, the side, and widening the panel. (#290)
+- **Instructions for the agents, from the widget.** _Settings_, in the
+  panel's menu, opens the project's instructions for every comment's
+  agent (`instructions` in `.annotant.json`), such as "we use Tailwind, never
+  inline styles" or "copy is in Canadian French". Agents follow them after
+  their own rules, which they cannot override. Saving writes them to
+  `.annotant.json` at once, and Claude Code says so with the start of the new
+  text: the next comments' agents follow them; those already working, and a
+  follow-up to their comment, keep the ones they had. (#224)
+- **See what each run did to a file.** Each file an answer lists says how
+  many lines the run added (green) and removed (red), unless no diff was kept
+  for it; a click on it shows
+  that run's own diff of it, with line numbers: the file before the run's
+  first write and after its last, not
+  what you or another agent changed in it before or after the run. A file
+  over 256 KB, not text, or outside the repository, shows none. Beside it, a
+  button copies its path (in the project, or whole out of the repository), and _Open_ opens it in your editor
+  at the first line the run changed. (#221)
+- **Write to Claude while it works.** The message box stays while a comment
+  waits for an agent or one works on it: a detail you add reaches the agent
+  at work after its next step, and shows faded until then. One it never got,
+  as it was already answering, comes after the answer and opens the comment
+  again as a follow-up. (#250)
+- **Each answer lists the files its run changed.** Under Claude's answer or
+  question, the thread names the files that run edited, wrote or deleted
+  (with `rm`), those out of your project marked _external_; several, a count
+  that opens on a click. A run that changed nothing shows nothing. Each file,
+  unless it was deleted, opens in VS Code, or the editor `editor` names in
+  `.annotant.json`. (#220)
+- **The widget shows where the agents write.** The panel's foot names the git
+  branch your project is on (its short commit on a detached HEAD), and its
+  worktree's folder when it is not the main checkout (the full path on
+  hover), in amber on the default branch. Under each answer (and under a run
+  at work, or stopped), the thread names the branch its run changed files on,
+  recorded at its first file written or deleted, so a later branch switch or
+  a reload keeps it; a run that started on one branch (or
+  commit) and wrote on another, or switched between two writes, is flagged. Nothing shows
+  outside a git repository. (#238)
+
+### Security
+
+- **Agents edit only under `editable`.** When `.annotant.json` lists
+  `editable`, a hook now refuses an Edit, Write, MultiEdit or NotebookEdit of
+  a comment's agent outside those paths (a folder above the project such as
+  `../api` included), links followed as the system follows them, and tells
+  the agent to ask in the thread when the change needs another one. An
+  `editable` that is not a list of paths refuses every write, and
+  `.annotant.json` and the comments file are never written. Before, only
+  the agent's instructions kept it there. Writes from Bash are refused
+  separately, as before. (#201)
+
 ## 0.4.0 - 2026-10-30
 
 https://github.com/user-attachments/assets/1e8ce2cd-3a6f-44b2-8a7c-18818ec846c1

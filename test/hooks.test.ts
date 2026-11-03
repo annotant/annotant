@@ -1308,3 +1308,22 @@ test('/annotant status tells an agent starting, an edit waiting, and a server th
     /\/repo\/web: server stopped: PORT_BUSY 4599 is used by another program\./,
   )
 })
+
+test("tells the person the widget changed the agents' instructions", async ($, on) => {
+  const w = world(on, [])
+  await watch($, w)
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ instructions: 'Copy is in Canadian French.\nUse Tailwind.' }),
+  )
+  await w.print('SETTINGS changed')
+  // Its start, so a change the person did not make shows.
+  expect(w.toasts.at(-1)).toMatch(
+    /instructions for the agents of web changed through its server .*: "Copy is in Canadian French\.…"\. The next comments' agents/,
+  )
+
+  w.write(`${ROOT}/.annotant.json`, JSON.stringify({}))
+  await w.print('SETTINGS changed')
+  expect(w.toasts.at(-1)).toMatch(/: none now\./)
+  await w.exit(0)
+})

@@ -15,9 +15,6 @@ test('a claimed comment shows what Claude is doing, and can be cancelled', async
 
   await screen.findByTestId('an-progress')
   expect(shownStep()).toContain('Reading src/App.tsx')
-  // No reply while it works: the next move is Claude's.
-  expect(screen.queryByRole('textbox')).toBeNull()
-
   fireEvent.click(screen.getByTestId('an-cancel'))
   await waitFor(() =>
     expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
@@ -615,4 +612,672 @@ test('the list keeps each thread its date', async () => {
   renderWidget()
 
   expect((await screen.findByTestId('an-summary')).querySelector('time')).not.toBeNull()
+})
+
+test('each answer lists the files its own run changed, folded into a count past one', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      state: 'answered',
+      messages: [
+        {
+          author: 'claude',
+          body: 'The title is bigger.',
+          at,
+          run: 'r1',
+          changed: ['src/data.ts', 'src/pages/Home.tsx'],
+        },
+        { author: 'reader', body: 'And the footer, everywhere', at },
+        {
+          author: 'claude',
+          body: 'Done.',
+          at,
+          run: 'r2',
+          changed: ['a.ts', 'b.ts', 'c.ts', 'd.ts'],
+        },
+        { author: 'reader', body: 'Why?', at },
+        { author: 'claude', body: 'It reads better.', at, run: 'r3' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const lists = await screen.findAllByTestId('an-changed')
+  // The answer that changed nothing shows nothing.
+  expect(lists).toHaveLength(2)
+  const [first, second] = lists
+  if (!first || !second) throw new Error('two lists expected')
+  fireEvent.click(within(first).getByRole('button', { name: '2 files changed' }))
+  expect(
+    within(first)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['src/data.ts', 'src/pages/Home.tsx'])
+  const toggle = within(second).getByRole('button', { name: '4 files changed' })
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(within(second).queryByRole('listitem')).toBeNull()
+  fireEvent.click(toggle)
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  expect(
+    within(second)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
+})
+
+test('a question lists the file its run changed by name', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      state: 'asking',
+      messages: [
+        {
+          author: 'claude',
+          body: 'Which blue?',
+          at,
+          run: 'r1',
+          question: true,
+          changed: ['a.ts'],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const list = await screen.findByRole('list', { name: '1 file changed' })
+  expect(
+    within(list)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['a.ts'])
+  expect(
+    within(screen.getByTestId('an-changed')).queryByRole('button', {
+      name: /files? changed/,
+    }),
+  ).toBeNull()
+})
+
+test("a changed file's name shows its run's own diff; Open opens it at the first line it changed", async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const { fetch } = fakeServer(
+    [
+      comment({
+        state: 'answered',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/data.ts', 'src/gone.ts', 'src/big.json'],
+            deleted: ['src/gone.ts'],
+            firstLines: { 'src/data.ts': 12 },
+          },
+          { author: 'reader', body: 'Again', at },
+          {
+            author: 'claude',
+            body: 'Done again.',
+            at,
+            run: 'r2',
+            changed: ['src/data.ts'],
+          },
+        ],
+      }),
+    ],
+    {
+      project: '/work/shop',
+      diffs: {
+        'c1/r1/src/data.ts': {
+          hunks: [
+            {
+              oldStart: 11,
+              oldLines: 2,
+              newStart: 11,
+              newLines: 2,
+              lines: [
+                { kind: 'context', text: 'const a = 1' },
+                { kind: 'removed', text: 'const b = 2' },
+                { kind: 'added', text: 'const b = 3' },
+              ],
+            },
+          ],
+        },
+        'c1/r1/src/big.json': { skipped: 'large' },
+        'c1/r2/src/data.ts': { missing: true },
+      },
+    },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const [first, second] = await screen.findAllByTestId('an-changed')
+  if (!first || !second) throw new Error('two lists expected')
+  // The first list, folded, loads none; the second, one file shown, its own.
+  const diffsAsked = () =>
+    fetch.mock.calls.filter(([url]) => url.includes('/diff')).length
+  expect(diffsAsked()).toBe(1)
+  fireEvent.click(within(first).getByRole('button', { name: '3 files changed' }))
+  expect(
+    (
+      await within(first).findByRole('link', { name: 'Open src/data.ts in VS Code' })
+    ).getAttribute('href'),
+  ).toBe('vscode://file/work/shop/src/data.ts:12')
+  // Unfolded, each file's row counts the lines the run added and removed,
+  // before the reader opens its diff.
+  expect((await within(first).findByLabelText('1 added, 1 removed')).textContent).toBe(
+    '+1−1',
+  )
+  const show = within(first).getByRole('button', { name: 'src/data.ts' })
+  expect(show.getAttribute('aria-expanded')).toBe('false')
+  expect(diffsAsked()).toBe(4)
+
+  fireEvent.click(show)
+  expect(show.getAttribute('aria-expanded')).toBe('true')
+  const diff = await within(first).findByTestId('an-diff')
+  expect(diff.textContent).toContain('@@ -11,2 +11,2 @@')
+  const kinds = [...diff.querySelectorAll('.an-diff-line')].map(
+    (line) =>
+      `${line.className.split('--')[1]}:${line.querySelector('.an-diff-text')?.textContent}`,
+  )
+  expect(kinds).toEqual([
+    'context:const a = 1',
+    'removed:const b = 2',
+    'added:const b = 3',
+  ])
+  // A TypeScript file's code is highlighted, under each line's colour.
+  expect(
+    [...diff.querySelectorAll('.an-tok')].map(
+      (token) => `${token.className.split('--')[1]}:${token.textContent}`,
+    ),
+  ).toEqual([
+    'keyword:const',
+    'number:1',
+    'keyword:const',
+    'number:2',
+    'keyword:const',
+    'number:3',
+  ])
+  // Each line's number before and after the run.
+  expect(
+    [...diff.querySelectorAll('.an-diff-line')].map((line) =>
+      [...line.querySelectorAll('.an-diff-num')].map((cell) => cell.textContent),
+    ),
+  ).toEqual([
+    ['11', '11'],
+    ['12', ''],
+    ['', '12'],
+  ])
+  // Opening it loads nothing more.
+  expect(diffsAsked()).toBe(4)
+  // No count where no diff was kept, or none could be loaded.
+  expect(within(first).getAllByLabelText(/ added, /)).toHaveLength(1)
+
+  fireEvent.click(within(first).getByRole('button', { name: 'src/big.json' }))
+  expect(await within(first).findByText('Too large to show.')).toBeTruthy()
+  // A deleted file: no link. A server without the route: said, not "none kept".
+  expect(within(first).queryByRole('link', { name: /src\/gone\.ts/ })).toBeNull()
+  fireEvent.click(within(first).getByRole('button', { name: 'src/gone.ts' }))
+  expect((await within(first).findByRole('alert')).textContent).toBe(
+    'The diff could not be loaded: Request failed (404)',
+  )
+
+  // The second run kept none: it says so, and its link opens at line 1.
+  fireEvent.click(within(second).getByRole('button', { name: 'src/data.ts' }))
+  expect(await within(second).findByText('No diff was kept for this file.')).toBeTruthy()
+  expect(
+    within(second)
+      .getByRole('link', { name: 'Open src/data.ts in VS Code' })
+      .getAttribute('href'),
+  ).toBe('vscode://file/work/shop/src/data.ts:1')
+
+  expect(show.getAttribute('title')).toBe('Hide the diff')
+  fireEvent.click(show)
+  expect(within(first).queryByTestId('an-diff')).toBeNull()
+
+  // One more call in all, for src/gone.ts, opened after its diff failed;
+  // folding the list and unfolding it again loads nothing.
+  expect(diffsAsked()).toBe(5)
+  const toggle = within(first).getByRole('button', { name: '3 files changed' })
+  fireEvent.click(toggle)
+  fireEvent.click(toggle)
+  expect(diffsAsked()).toBe(5)
+})
+
+test("each changed file opens in the project's editor", async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: 'cursor' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const link = await screen.findByRole('link', { name: 'Open src/App.tsx in Cursor' })
+  expect(link.textContent).toBe('Open')
+  expect(link.getAttribute('href')).toBe('cursor://file/work/shop/src/App.tsx:1')
+  expect(link.getAttribute('title')).toBe('Open in Cursor')
+})
+
+test('a changed file is no link when the project turned the editor off', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: false },
+  )
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByRole('button', { name: 'src/App.tsx' })
+  expect(screen.queryByRole('link', { name: /^Open / })).toBeNull()
+  expect(screen.queryByText('Open')).toBeNull()
+})
+
+test('a changed file says how to name another editor than the assumed VS Code', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const link = await screen.findByRole('link', { name: 'Open src/App.tsx in VS Code' })
+  expect(link.getAttribute('title')).toBe(
+    'Open in VS Code (another editor: "editor" in .annotant.json)',
+  )
+})
+
+test('a changed file says the editor setting names nothing it can open', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: 'webstorm' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  expect(
+    await screen.findByTitle(
+      '"editor" in .annotant.json names no editor Annotant can open',
+    ),
+  ).toBeTruthy()
+  expect(screen.queryByRole('link', { name: /^Open / })).toBeNull()
+})
+
+test('a file out of the project is marked external, its path shown on hover', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/App.tsx', '/tmp/plan/notes.md'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '2 files changed' }))
+  const notes = screen.getByRole('link', { name: 'Open notes.md in VS Code' })
+  expect(notes.getAttribute('href')).toBe('vscode://file/tmp/plan/notes.md:1')
+  const items = screen.getAllByRole('listitem')
+  expect(within(items[0]!).queryByText('external')).toBeNull()
+  expect(within(items[1]!).getByText('external').getAttribute('title')).toBe(
+    '/tmp/plan/notes.md',
+  )
+})
+
+test('each changed file says whether the run added, modified or deleted it', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/new.ts', 'src/App.tsx', 'src/old.ts'],
+            added: ['src/new.ts'],
+            deleted: ['src/old.ts'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '3 files changed' }))
+  const list = within(screen.getByTestId('an-changed')).getByRole('list')
+  expect(
+    within(list)
+      .getAllByRole('img')
+      .map((icon) => icon.getAttribute('aria-label')),
+  ).toEqual(['Added', 'Modified', 'Deleted'])
+  // A deleted file has nothing left to open.
+  expect(
+    within(list)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('aria-label')),
+  ).toEqual(['Open src/new.ts in VS Code', 'Open src/App.tsx in VS Code'])
+})
+
+test('each changed file copies its path in the project', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const writeText = vi.fn(() => Promise.resolve())
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText },
+    configurable: true,
+  })
+  onTestFinished(() => {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/App.tsx', '/tmp/plan/notes.md'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '2 files changed' }))
+  const copy = screen.getByRole('button', { name: 'Copy the path of src/App.tsx' })
+  fireEvent.click(copy)
+  expect(writeText).toHaveBeenCalledWith('src/App.tsx')
+  await waitFor(() => expect(copy.getAttribute('title')).toBe('Copied'))
+  // Out of the project: the path it has, whole.
+  fireEvent.click(screen.getByRole('button', { name: 'Copy the path of notes.md' }))
+  expect(writeText).toHaveBeenLastCalledWith('/tmp/plan/notes.md')
+})
+
+test('a path that cannot be copied says why on its button', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  // Out of a secure context, the browser has no clipboard.
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  onTestFinished(() => {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const copy = await screen.findByRole('button', { name: 'Copy the path of src/App.tsx' })
+  fireEvent.click(copy)
+  await waitFor(() =>
+    expect(copy.getAttribute('title')).toBe(
+      'Could not copy: the browser allows it only on https or localhost',
+    ),
+  )
+})
+
+test('each file counts the lines it changed, none for a folder or a file with none', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const { fetch } = fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/new.ts', 'src/crlf.ts', 'src/old/'],
+            added: ['src/new.ts'],
+            deleted: ['src/old/'],
+          },
+        ],
+      }),
+    ],
+    {
+      project: '/work/shop',
+      diffs: {
+        'c1/r1/src/new.ts': {
+          hunks: [
+            {
+              oldStart: 0,
+              oldLines: 0,
+              newStart: 1,
+              newLines: 2,
+              lines: [
+                { kind: 'added', text: 'a' },
+                { kind: 'added', text: 'b' },
+              ],
+            },
+          ],
+        },
+        // Line endings aside, no line changed.
+        'c1/r1/src/crlf.ts': { hunks: [] },
+      },
+    },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '3 files changed' }))
+  // Added lines only: no "−0".
+  expect((await screen.findByLabelText('2 added, 0 removed')).textContent).toBe('+2')
+  await waitFor(() =>
+    expect(fetch.mock.calls.filter(([url]) => url.includes('/diff'))).toHaveLength(2),
+  )
+  expect(screen.getAllByLabelText(/ added, /)).toHaveLength(1)
+  // A deleted folder: no diff asked for, no button to show one.
+  expect(fetch.mock.calls.some(([url]) => url.includes('src%2Fold'))).toBe(false)
+  expect(screen.queryByRole('button', { name: 'src/old/' })).toBeNull()
+})
+
+test('opening a diff that failed loads it again', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const diffs: Record<string, unknown> = {}
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/a.ts'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', diffs },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const show = await screen.findByRole('button', { name: 'src/a.ts' })
+  fireEvent.click(show)
+  expect(
+    await screen.findByText('The diff could not be loaded: Request failed (404)'),
+  ).toBeTruthy()
+  // The server has it now: closing and opening again asks once more.
+  diffs['c1/r1/src/a.ts'] = { missing: true }
+  fireEvent.click(show)
+  fireEvent.click(show)
+  expect(await screen.findByText('No diff was kept for this file.')).toBeTruthy()
+})
+
+const AT = '2026-01-01T10:00:00.000Z'
+/** Run r1 at work on the comment. */
+const WORKING = [
+  { at: AT, state: 'open', by: 'reader' },
+  { at: AT, state: 'working', by: 'agent', run: 'r1' },
+] as const
+
+test.each(['open', 'working'] as const)(
+  'the reader writes to Claude while the comment is %s',
+  async (state) => {
+    const server = fakeServer([
+      comment(state === 'working' ? { state, events: [...WORKING] } : { state }),
+    ])
+    openThread('c1')
+    renderWidget()
+
+    const box = await screen.findByPlaceholderText('Add a detail for Claude…')
+    // Still cancellable: the message does not end the run.
+    expect(screen.getByTestId('an-cancel')).toBeTruthy()
+    fireEvent.change(box, { target: { value: 'Keep the icon' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() =>
+      expect(server.patches).toEqual([
+        { id: 'c1', patch: { followUp: 'Keep the icon' } },
+      ]),
+    )
+  },
+)
+
+/** The bodies of the thread's messages, in the order the reader sees them, those no agent got yet marked. */
+const thread = () =>
+  screen
+    .getAllByTestId('an-msg')
+    .map(
+      (message) =>
+        `${message.dataset['pending'] ? '…' : ''}${message.querySelector('.an-bubble')?.textContent?.trim()}`,
+    )
+
+test('a message sent during a run is faded until its agent gets it', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      events: [...WORKING],
+      messages: [
+        { author: 'reader', body: 'Keep the icon', at: AT, during: 'r1', readAt: AT },
+        { author: 'reader', body: 'And on mobile', at: AT, during: 'r1' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByText('And on mobile')
+  expect(thread()).toEqual(['Make the title bigger', 'Keep the icon', '…And on mobile'])
+  expect(screen.queryByText(/Sent to the agent|Queued for the next|^Read$/)).toBeNull()
+})
+
+const later = (minutes: number) =>
+  new Date(Date.parse(AT) + minutes * 60_000).toISOString()
+
+test.each([
+  ['no agent got it yet', undefined, ['Keep the icon', 'Done', '…And on mobile']],
+  ['the next agent got it', later(4), ['Keep the icon', 'Done', 'And on mobile']],
+  [
+    'its agent got it before answering',
+    later(2),
+    ['Keep the icon', 'And on mobile', 'Done'],
+  ],
+] as const)(
+  'a message sent during a run, %s, takes its place in the thread',
+  async (_, readAt, order) => {
+    fakeServer([
+      comment({
+        state: 'resolved',
+        events: [...WORKING, { at: later(3), state: 'resolved', by: 'agent', run: 'r1' }],
+        messages: [
+          {
+            author: 'reader',
+            body: 'Keep the icon',
+            at: later(1),
+            during: 'r1',
+            readAt: later(1),
+          },
+          {
+            author: 'reader',
+            body: 'And on mobile',
+            at: later(2),
+            during: 'r1',
+            queued: true,
+            ...(readAt ? { readAt } : {}),
+          },
+          { author: 'claude', body: 'Done', at: later(3), run: 'r1' },
+        ],
+      }),
+    ])
+    openThread('c1')
+    renderWidget()
+
+    await screen.findByText('Done')
+    expect(thread()).toEqual(['Make the title bigger', ...order])
+  },
+)
+
+test('a message added while no agent had the comment waits for the next one', async () => {
+  fakeServer([
+    comment({
+      messages: [{ author: 'reader', body: 'Keep the icon', at: AT, queued: true }],
+      notifiedAt: AT,
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByText('Keep the icon')
+  expect(thread()).toEqual(['Make the title bigger', '…Keep the icon'])
+  // Still about the comment: no reply waits on the hooks.
+  expect(screen.getByTestId('an-working').textContent).not.toBe('Sent…')
 })

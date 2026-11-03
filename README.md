@@ -70,6 +70,13 @@ follow up; cancel to stop it.
   ("haiku · trivial"). A comment of images alone is not classified: it
   starts on the session's model at a medium effort. See
   [Models](docs/comments-file.md#models).
+- **You see where the agents write.** The panel's foot names the branch your
+  project is on (its commit on a detached HEAD), and its worktree when it is
+  not the main checkout, in amber on the default branch. Each answer of
+  Claude's names the branch its run changed files on, kept after a branch
+  switch; a run that started on one branch (or commit) and wrote on another is
+  flagged.
+  Outside a git repository, nothing shows.
 - **The widget follows your app's theme.** `init` finds how your app switches
   between light and dark (Tailwind's `darkMode`, `next-themes`, a `.dark`
   class or a `data-theme` attribute, the OS setting) and writes it as `theme`
@@ -213,11 +220,16 @@ or from `/plugin`.
 ## In the widget
 
 While the panel is closed, the tools sit in a small strip of icons in the
-bottom right corner, their names and shortcuts in the tooltips; a tool in
-progress shows its _Cancel_ after its icon. Drag the strip by its grip, or move it with
-the arrow keys once the grip has the focus, wherever it covers nothing; a
-double-click on the grip puts it back. Where it is, and whether the panel
-floats or is docked, hold for every tab of the app and the next sessions.
+bottom right corner (or left, see below), their names and shortcuts in the
+tooltips; a tool in progress shows its _Cancel_ after its icon. Drag the strip
+by its grip, or move it with the arrow keys once the grip has the focus,
+wherever it covers nothing; a double-click on the grip puts it back. **Move to
+the left**, in the menu of the panel's header (`⋯`), puts the panel and the
+strip on the left of the page, for an app whose own controls sit on the right;
+**Move to the right** brings them back. A strip moved by hand goes to the same
+place on the other side. Where the strip is, which side the widget is on, and
+whether the panel floats or is docked, hold for every tab of the app and the
+next sessions.
 
 - **Comments**, at the strip's end, opens the panel. Its **New comment**
   (`+`) starts a comment for the page, or the whole app; so does the comment
@@ -283,15 +295,45 @@ floats or is docked, hold for every tab of the app and the next sessions.
   Claude Code settings.
   Cancelling stops the agent and lists the files it had already changed; edit
   the comment and send it again to hand it to a new agent.
-- Once answered: reply in the thread to follow up, reusing the same agent and
-  its context when it is still around.
+  The message box stays: a detail you add ("and on mobile too") shows faded
+  until the agent gets it, at its next step. One it never got, as it was
+  already answering, moves under the answer and opens the comment again for
+  the next agent.
+- Once answered: the files the run changed, under its answer (a count when
+  there are several, which opens on a click), and reply in the thread to follow up,
+  reusing the same agent and its context when it is still around. Each file
+  whose diff was kept says how many lines the run added and removed; a click
+  on its row shows that run's own diff of it, with line numbers, from before its first write
+  to after its last: not what you or other agents changed before or after it.
+  A TypeScript, JavaScript (JSX included) or JSON file's diff is highlighted.
+  Beside it, a button copies its path (in the project, or whole out of the
+  repository), and _Open_ opens it in
+  VS Code at the first line the run changed; `editor` in `.annotant.json` names another
+  (`cursor`, `windsurf`, `zed`, `vscode-insiders`), a URL of your editor's
+  own with `{path}` and `{line}` (`"idea://open?file={path}&line={line}"`),
+  or `false` for no link. The browser may ask before handing it over. A
+  file out of the project shows an _external_ badge, its full path on hover.
+  Its icon says what the run did: green when it added the file, orange when
+  it modified it, red when it deleted it.
 - **Links in the thread**: the URLs a message cites, and its issues (`#12`,
   `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
   remote is on GitHub or GitLab, open in a new tab.
 - **Formatted answers**: Claude's answers and questions show a small subset
   of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
-  code blocks); anything else, HTML included, shows as its text. Your own
+  code blocks, highlighted when their fence says `ts`, `tsx`, `js`, `jsx` or
+  `json`); anything else, HTML included, shows as its text. Your own
   messages stay as you typed them.
+- **Settings**, in the menu of the panel's header (`⋯`): the project's instructions
+  for the agents (`instructions` in `.annotant.json`), what every comment's
+  agent should know: "we use Tailwind, never inline styles", "copy is in
+  Canadian French", "don't touch `src/legacy/`". Agents follow them after
+  their own rules, which they cannot override (`editable`, no writes from
+  Bash). Saving writes them to `.annotant.json` at once, and Claude Code
+  tells you: each agent reads them when it starts, so the next comments get
+  them; the agents already working, and a follow-up to their comment, keep
+  the ones they had. 4000 characters
+  at most; `.annotant.json` is usually committed, so the instructions are
+  your team's.
 - **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the
   focus is but in a field of your app: `,` comments on the selected text (or
   on the page), `.` points at an element (while you write a comment or a
@@ -414,6 +456,11 @@ each agent, with no restart:
 - The server listens on `127.0.0.1` only and accepts cross-origin requests
   from `localhost` origins only (and `devOrigins`); it refuses any change
   from another origin (403).
+- A comment reaches its agent fenced as data. The instructions saved in the
+  widget's settings go to `.annotant.json` at once, and Claude Code tells you
+  each time: the app's own scripts could save them too, so a change you did
+  not make shows there, and in `git diff`. Agents follow them after their own
+  rules, which they cannot override.
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
