@@ -75,9 +75,11 @@ import { DebugPanel, DebugToggle } from './debug'
 import { readSession, writeSession } from './session'
 import {
   type Box,
+  type Side,
   type Size,
   fitBox,
   fitPlace,
+  mirrorPlace,
   placeOf,
   placeStyle,
   readLayout,
@@ -106,6 +108,7 @@ import {
   type IconName,
   Icon,
   IconButton,
+  MenuButton,
   Spinner,
   Textarea,
   Toasts,
@@ -601,7 +604,9 @@ function ChangedFiles({
                     )
                   )}
                 </div>
-                {diffOf && shown.has(file) && <FileDiffView loaded={diffs[file]} />}
+                {diffOf && shown.has(file) && (
+                  <FileDiffView file={file} loaded={diffs[file]} />
+                )}
               </li>
             )
           })}
@@ -1155,6 +1160,8 @@ export default function App({ root }: { root: Element }) {
   // Closed, but still on screen while it leaves.
   const [leaving, setLeaving] = useState(false)
   const [savedLayout] = useState(readLayout)
+  // The side of the page the panel and the strip's own place are on.
+  const [side, setSide] = useState<Side>(savedLayout.side ?? 'right')
   const [docked, setDocked] = useState(savedLayout.docked ?? false)
   // The width chosen, kept as is: the window, maybe narrower, only caps the one shown.
   const [chosenWidth, setWidth] = useState(savedLayout.width ?? PANEL_WIDTH)
@@ -1242,7 +1249,7 @@ export default function App({ root }: { root: Element }) {
   const paddingAnimation = useRef<Animation>(undefined)
   // Puts back the page's own inline padding, while the docked panel squeezes it.
   const restorePadding = useRef<() => void>(undefined)
-  const layout = useRef({ open, docked })
+  const layout = useRef({ open, docked, side })
   // Where the focus was when the panel opened: it goes back there once the panel closes.
   const opener = useRef<HTMLElement>(undefined)
   const refocus = useRef(false)
@@ -1254,6 +1261,7 @@ export default function App({ root }: { root: Element }) {
   // The list of the keyboard shortcuts, in the panel.
   const [showKeys, setShowKeys] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // The menu's button, which opened the settings: the focus goes back to it once they close.
   const settingsButton = useRef<HTMLButtonElement>(null)
 
   // The cards' relative dates move on while the panel is open: one timer for
@@ -1302,6 +1310,7 @@ export default function App({ root }: { root: Element }) {
   }, [open, view, threadId, statusFilter])
 
   // Each on its own, so that a tab writes only what was changed in it.
+  useEffect(() => writeLayout('side', side === 'left' ? side : undefined), [side])
   useEffect(() => writeLayout('docked', docked), [docked])
   useEffect(() => writeLayout('width', chosenWidth), [chosenWidth])
   useEffect(() => writeLayout('strip', strip), [strip])
@@ -1433,22 +1442,26 @@ export default function App({ root }: { root: Element }) {
   // Floating: the panel floats over the page, which is left untouched. Docked: the page is squeezed,
   // in step with the panel as it opens, closes, widens or narrows; at once while it is dragged.
   // Through `html`'s padding, which hosts leave alone: libraries pad `body` for a modal's scrollbar.
+  // On the panel's side: moved to the other, the page is squeezed there at once.
   useEffect(() => {
     const html = document.documentElement
-    const from = getComputedStyle(html).paddingRight
+    const padding = side === 'left' ? 'paddingLeft' : 'paddingRight'
+    const from = getComputedStyle(html)[padding]
     paddingAnimation.current?.cancel()
     restorePadding.current?.()
     restorePadding.current =
-      open && docked ? setInlineStyle(html, 'padding-right', `${width}px`) : undefined
-    const moved = open !== layout.current.open || docked !== layout.current.docked
-    layout.current = { open, docked }
+      open && docked ? setInlineStyle(html, `padding-${side}`, `${width}px`) : undefined
+    const moved =
+      side === layout.current.side &&
+      (open !== layout.current.open || docked !== layout.current.docked)
+    layout.current = { open, docked, side }
     if (!moved || matchMedia(REDUCED_MOTION).matches) return
-    if (getComputedStyle(html).paddingRight === from) return
-    paddingAnimation.current = html.animate([{ paddingRight: from, offset: 0 }], {
+    if (getComputedStyle(html)[padding] === from) return
+    paddingAnimation.current = html.animate([{ [padding]: from, offset: 0 }], {
       duration: open ? PANEL_IN_MS : PANEL_OUT_MS,
       easing: open ? 'ease-out' : 'ease-in',
     })
-  }, [open, docked, width])
+  }, [open, docked, width, side])
 
   useEffect(
     () => () => {
@@ -1488,6 +1501,12 @@ export default function App({ root }: { root: Element }) {
   useEffect(() => {
     if (toTitle) title.current?.focus()
   }, [toTitle])
+
+  // The strip goes along, to the same place on the other side: moved back, it is where it was.
+  const toggleSide = () => {
+    setSide(side === 'left' ? 'right' : 'left')
+    setStrip((place) => place && mirrorPlace(place))
+  }
 
   const toggleDocked = () => {
     setDocked(!docked)
@@ -1578,7 +1597,9 @@ export default function App({ root }: { root: Element }) {
   }
 
   const resizeTo = (move: MouseEvent) => {
-    setWidth(clampWidth(window.innerWidth - move.clientX))
+    setWidth(
+      clampWidth(side === 'left' ? move.clientX : window.innerWidth - move.clientX),
+    )
   }
 
   const startResize = (event: ReactMouseEvent) => {
@@ -2843,6 +2864,7 @@ export default function App({ root }: { root: Element }) {
           role="group"
           aria-label="Annotant tools"
           className="an-dock an-live"
+          data-side={side}
           data-moving={moving ? true : undefined}
           style={
             moving
@@ -2912,6 +2934,7 @@ export default function App({ root }: { root: Element }) {
           ref={panel}
           className={`an-panel an-live ${docked ? 'an-panel--docked' : ''}`}
           style={{ width }}
+          data-side={side}
           data-closing={!open || undefined}
           data-restored={restored || undefined}
           data-drawing={drawing || undefined}
@@ -2988,17 +3011,27 @@ export default function App({ root }: { root: Element }) {
                 disabled={drafting}
                 onClick={() => startDraft(PAGE_LEVEL)}
               />
-              <IconButton
+              {/* What is set once and left: in the menu, out of the way. */}
+              <MenuButton
                 ref={settingsButton}
-                icon="gear"
-                label="Settings"
-                aria-haspopup="dialog"
-                onClick={() => setSettingsOpen(true)}
-              />
-              <IconButton
-                icon={docked ? 'collapse-horizontal' : 'expand-horizontal'}
-                label={docked ? 'Narrow panel' : 'Widen panel to half the page'}
-                onClick={toggleDocked}
+                label="More actions"
+                items={[
+                  {
+                    icon: docked ? 'collapse-horizontal' : 'expand-horizontal',
+                    label: docked ? 'Narrow panel' : 'Widen panel to half the page',
+                    onSelect: toggleDocked,
+                  },
+                  {
+                    icon: side === 'left' ? 'panel-right' : 'panel-left',
+                    label: side === 'left' ? 'Move to the right' : 'Move to the left',
+                    onSelect: toggleSide,
+                  },
+                  {
+                    icon: 'gear',
+                    label: 'Settings',
+                    onSelect: () => setSettingsOpen(true),
+                  },
+                ]}
               />
               <IconButton
                 icon="x"

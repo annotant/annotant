@@ -220,11 +220,16 @@ or from `/plugin`.
 ## In the widget
 
 While the panel is closed, the tools sit in a small strip of icons in the
-bottom right corner, their names and shortcuts in the tooltips; a tool in
-progress shows its _Cancel_ after its icon. Drag the strip by its grip, or move it with
-the arrow keys once the grip has the focus, wherever it covers nothing; a
-double-click on the grip puts it back. Where it is, and whether the panel
-floats or is docked, hold for every tab of the app and the next sessions.
+bottom right corner (or left, see below), their names and shortcuts in the
+tooltips; a tool in progress shows its _Cancel_ after its icon. Drag the strip
+by its grip, or move it with the arrow keys once the grip has the focus,
+wherever it covers nothing; a double-click on the grip puts it back. **Move to
+the left**, in the menu of the panel's header (`⋯`), puts the panel and the
+strip on the left of the page, for an app whose own controls sit on the right;
+**Move to the right** brings them back. A strip moved by hand goes to the same
+place on the other side. Where the strip is, which side the widget is on, and
+whether the panel floats or is docked, hold for every tab of the app and the
+next sessions.
 
 - **Comments**, at the strip's end, opens the panel. Its **New comment**
   (`+`) starts a comment for the page, or the whole app; so does the comment
@@ -300,6 +305,7 @@ floats or is docked, hold for every tab of the app and the next sessions.
   whose diff was kept says how many lines the run added and removed; a click
   on its row shows that run's own diff of it, with line numbers, from before its first write
   to after its last: not what you or other agents changed before or after it.
+  A TypeScript, JavaScript (JSX included) or JSON file's diff is highlighted.
   Beside it, a button copies its path (in the project, or whole out of the
   repository), and _Open_ opens it in
   VS Code at the first line the run changed; `editor` in `.annotant.json` names another
@@ -314,9 +320,10 @@ floats or is docked, hold for every tab of the app and the next sessions.
   remote is on GitHub or GitLab, open in a new tab.
 - **Formatted answers**: Claude's answers and questions show a small subset
   of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
-  code blocks); anything else, HTML included, shows as its text. Your own
+  code blocks, highlighted when their fence says `ts`, `tsx`, `js`, `jsx` or
+  `json`); anything else, HTML included, shows as its text. Your own
   messages stay as you typed them.
-- **Settings**, the gear in the panel's header: the project's instructions
+- **Settings**, in the menu of the panel's header (`⋯`): the project's instructions
   for the agents (`instructions` in `.annotant.json`), what every comment's
   agent should know: "we use Tailwind, never inline styles", "copy is in
   Canadian French", "don't touch `src/legacy/`". Agents follow them after

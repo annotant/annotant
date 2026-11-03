@@ -27,6 +27,9 @@ const PATHS = {
   cursor: 'M6 3l13 10-6 1-3 6z',
   frame: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
   'expand-horizontal': 'M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4',
+  // A window with its panel on that side.
+  'panel-left': 'M4 5h16v14H4zM9 5v14',
+  'panel-right': 'M4 5h16v14H4zM15 5v14',
   'collapse-horizontal': 'M12 4v16M3 12h6M21 12h-6M6 9l3 3-3 3M18 9l-3 3 3 3',
   external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
   send: 'M4 12l16-8-6 16-3-6zM11 14l9-10',
@@ -46,6 +49,7 @@ const PATHS = {
   'arrow-up': 'M12 19V5M6 11l6-6 6 6',
   'chevron-down': 'M6 9l6 6 6-6',
   check: 'M5 12l5 5 9-11',
+  dots: 'M5 12h.01M12 12h.01M19 12h.01',
   grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9h.01',
   gear: 'M9.8 5.6L10.4 2.6L13.6 2.6L14.2 5.6L15 5.9L17.4 4.2L19.8 6.6L18.1 9L18.4 9.8L21.4 10.4L21.4 13.6L18.4 14.2L18.1 15L19.8 17.4L17.4 19.8L15 18.1L14.2 18.4L13.6 21.4L10.4 21.4L9.8 18.4L9 18.1L6.6 19.8L4.2 17.4L5.9 15L5.6 14.2L2.6 13.6L2.6 10.4L5.6 9.8L5.9 9L4.2 6.6L6.6 4.2L9 5.9zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
@@ -126,6 +130,111 @@ export function IconButton({
     >
       <Icon name={icon} />
     </button>
+  )
+}
+
+export interface MenuItem {
+  icon: IconName
+  label: string
+  onSelect: () => void
+}
+
+const MENU_KEYS: Record<string, (at: number, count: number) => number> = {
+  ArrowDown: (at, count) => (at + 1) % count,
+  ArrowUp: (at, count) => (at - 1 + count) % count,
+  Home: () => 0,
+  End: (_, count) => count - 1,
+}
+
+/**
+ * A button opening a menu of what is used less often. Opened, its first item
+ * has the focus and the arrow keys move it; Escape closes it, the focus back
+ * on the button. An item chosen closes it too, and so does the focus leaving
+ * it: a click outside, or Tab.
+ */
+export function MenuButton({
+  label,
+  items,
+  ref,
+}: {
+  label: string
+  items: readonly MenuItem[]
+  /** Its button: what opens from the menu gives the focus back to it. React 19 passes it with the props. */
+  ref: Ref<HTMLButtonElement>
+}) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  const closeMenu = () => {
+    setOpen(false)
+    wrap.current?.querySelector('button')?.focus()
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      // Not the panel's Escape, which closes it.
+      event.preventDefault()
+      event.stopPropagation()
+      closeMenu()
+      return
+    }
+    const move = MENU_KEYS[event.key]
+    if (!move) return
+    event.preventDefault()
+    const all = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ]
+    const at = all.findIndex((entry) => entry === event.target)
+    all[move(at, all.length)]?.focus()
+  }
+
+  return (
+    <div
+      className="an-menu-wrap"
+      ref={wrap}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      }}
+    >
+      <IconButton
+        ref={ref}
+        icon="dots"
+        label={label}
+        className="an-menu-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        // The focus stays where it is: in the menu, so that a click closing it is not a blur
+        // reopening it (Safari focuses no button on a click).
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => setOpen(!open)}
+      />
+      {open && (
+        <div
+          // Its first item takes the focus as it opens.
+          ref={(menu) => menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()}
+          role="menu"
+          aria-label={label}
+          className="an-menu"
+          onKeyDown={onKeyDown}
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              className="an-menu-item"
+              onClick={() => {
+                closeMenu()
+                item.onSelect()
+              }}
+            >
+              <Icon name={item.icon} />
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

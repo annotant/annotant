@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileDiff } from './api'
+import { Code, languageOfFile } from './syntax'
 
 /** How many lines a run added to a file and removed from it. */
 export type LineCounts = { added: number; removed: number }
@@ -71,9 +72,16 @@ const LOADING: Loaded = { state: 'loading' }
 /**
  * What one run did to one file: its unified diff, added lines green and
  * removed ones red, each with its old and new line numbers, in a box that
- * scrolls when long.
+ * scrolls when long; the code highlighted when `file` is TypeScript,
+ * JavaScript or JSON.
  */
-export function FileDiffView({ loaded = LOADING }: { loaded?: Loaded | undefined }) {
+export function FileDiffView({
+  file,
+  loaded = LOADING,
+}: {
+  file: string
+  loaded?: Loaded | undefined
+}) {
   if (loaded.state === 'loading')
     return (
       <div className="an-diff an-diff--note" role="status">
@@ -101,6 +109,7 @@ export function FileDiffView({ loaded = LOADING }: { loaded?: Loaded | undefined
     return (
       <div className="an-diff an-diff--note">No line changed (line endings aside).</div>
     )
+  const language = languageOfFile(file)
   return (
     <div className="an-diff" data-testid="an-diff">
       {diff.hunks.map((hunk) => (
@@ -133,7 +142,9 @@ export function FileDiffView({ loaded = LOADING }: { loaded?: Loaded | undefined
               >
                 {line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '}
               </span>
-              <span className="an-diff-text">{line.text}</span>
+              <span className="an-diff-text">
+                <Code code={line.text} language={language} />
+              </span>
             </div>
           ))}
         </div>
