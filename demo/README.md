@@ -79,6 +79,8 @@ The scene, about 50 s once cut, looped on the site:
 
    The poster is the last frame: the fixed page, shown to readers who asked
    for reduced motion.
-4. Update the video's `aria-label` in `site/index.html`, which tells the
+4. Bump the `?v=` of the video's sources and poster in `site/index.html`
+   (the release it shows), or browsers keep playing the cached take. Update
+   the video's `aria-label` there too, which tells the
    scene to readers who do not see it, when the scene or what the agents made
    of it changes (the button's new colour, for one).

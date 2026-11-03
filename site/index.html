@@ -45,7 +45,8 @@ root: ''
 <section class="demo" aria-label="A comment turning into a change">
   <figure class="page">
     <div class="page-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-    <!-- Shot on demo/ with real agents: demo/README.md tells how to shoot it again. -->
+    <!-- Shot on demo/ with real agents: demo/README.md tells how to shoot it again.
+         Its ?v= gives a new take new URLs: browsers never replay a cached one. -->
     <video
       class="page-video"
       autoplay
@@ -55,11 +56,11 @@ root: ''
       preload="metadata"
       width="1280"
       height="800"
-      poster="assets/demo-poster.jpg"
+      poster="assets/demo-poster.jpg?v=0.5.0"
       aria-label="On a plant care app, the reader selects the typo “healty” in the headline and comments “typo”, then draws an area around the hero’s faint button and asks to make it stand out. Two agents work on them at once, their steps showing live in the panel. The headline turns to “healthy”, and while the second agent works the reader adds “use the forest green”, which it picks up: the button turns into a bold forest green pill. Its answer lists the file it changed and the branch; the typo’s answer opens its diff of Hero.tsx, and the page shows both fixes."
     >
-      <source src="assets/demo.webm" type="video/webm" />
-      <source src="assets/demo.mp4" type="video/mp4" />
+      <source src="assets/demo.webm?v=0.5.0" type="video/webm" />
+      <source src="assets/demo.mp4?v=0.5.0" type="video/mp4" />
     </video>
     <figcaption>
       One comment, one agent: its steps show live, you add details as it works, and its
