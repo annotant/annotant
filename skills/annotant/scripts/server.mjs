@@ -24,7 +24,7 @@ import { RUN_ID, readDiff } from './lib/diffs.mjs'
 import { errorCode } from './lib/errors.mjs'
 import { defaultBranch, gitPlace } from './lib/git.mjs'
 import { originOf } from './lib/remote.mjs'
-import { SettingsRefusal, proposeSettings, readSettings } from './lib/settings.mjs'
+import { SettingsRefusal, readSettings, saveSettings } from './lib/settings.mjs'
 import {
   CONTENT_TYPES,
   IMAGE_NAME,
@@ -708,17 +708,16 @@ async function handle(req, res) {
     return res.end(await stepFiles(project, steps))
   }
 
-  // The settings dialog: what `.annotant.json` holds, and the change the reader
-  // saved, which waits for their `/annotant-settings accept` in Claude Code.
+  // The settings dialog: what `.annotant.json` holds, written there on a save.
   if (url.pathname === '/api/settings') {
     if (req.method === 'GET') return send(res, 200, await readSettings(project), cors)
     if (req.method === 'POST') {
       const input = await readJson(req)
       try {
-        const { settings, proposed } = await proposeSettings(project, input)
+        const { settings, changed } = await saveSettings(project, input)
         // For the hooks: they tell the reader in Claude Code.
-        if (proposed) console.log('SETTINGS pending')
-        return send(res, proposed ? 202 : 200, settings, cors)
+        if (changed) console.log('SETTINGS changed')
+        return send(res, 200, settings, cors)
       } catch (error) {
         if (error instanceof SettingsRefusal)
           return send(res, 422, { error: error.message }, cors)

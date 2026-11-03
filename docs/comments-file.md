@@ -335,20 +335,15 @@ At most 4000 characters, since every agent reads them. `.annotant.json` is
 usually committed: the instructions are the team's.
 
 The widget's settings dialog (the gear in the panel's header) shows them and
-edits them, but writes nothing that steers the agents by itself: the app's
-own scripts run beside the widget and could call the server too. Saving
-there makes a pending change (`POST /api/settings`), kept in the state folder
-(`settings.json`, beside `progress/`), and the server prints `SETTINGS
-pending` for the hooks, which tell the reader. `/annotant-settings`, in a
-Claude Code session watching the project, shows the change with a code;
-`/annotant-settings accept <code>`, typed in Claude Code's prompt, writes it
-to `.annotant.json`, `reject <code>` drops it. The code is random, made by
-the hooks for that listing, never sent to the server or the page: an accept
-takes only the text the listing showed, and refuses a change swapped since.
-Text with control, zero-width or bidi characters is refused (422), so what
-the reader reads is what they accept. Saving the instructions `.annotant.json`
-already holds withdraws the change. `GET /api/settings` answers `{ instructions, pending?, max }`,
-`pending` being `{ instructions, at }`.
+edits them. Saving there (`POST /api/settings`) writes them to
+`.annotant.json` at once, its other keys kept (none removes the key), and the
+server prints `SETTINGS changed` for the hooks, which tell the reader in
+Claude Code: the app's own scripts run beside the widget and could save them
+too. Each agent reads `.annotant.json` when it starts, so the next comments'
+agents follow them and those already working keep the ones they had. Text
+with control, zero-width or bidi characters is refused (422), so what an
+agent reads is what the reader sees. Saving the instructions it already holds
+writes nothing. `GET /api/settings` and the save answer `{ instructions, max }`.
 
 ## The step files
 

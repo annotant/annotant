@@ -241,8 +241,6 @@ code { font-family: var(--cb-mono); }
 .an-settings-hint { margin: 0; color: var(--cb-muted); font-size: 13px; }
 .an-settings-count { align-self: flex-end; color: var(--cb-muted); font-size: 12px; }
 .an-settings-count[data-over] { color: var(--cb-red); font-weight: 600; }
-.an-settings-pending { margin: 0; padding: 10px 12px; border: 1px solid var(--cb-amber-border); border-radius: var(--cb-radius); background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 13px; }
-.an-settings-pending code { font-family: var(--cb-mono); font-weight: 600; }
 .an-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .an-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--cb-border); }
 .an-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
