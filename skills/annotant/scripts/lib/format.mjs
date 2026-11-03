@@ -157,6 +157,10 @@ export const MAX_PICKED = 1
  *   deleted folder with a `/` at its end; absent when it changed none.
  * @property {string[]} [added] With `changed`: those of them the run created.
  * @property {string[]} [deleted] With `changed`: those of them it deleted.
+ * @property {Record<string, number>} [firstLines] With `changed`: the first line
+ *   the run changed in each file it kept the diff of (`diffs/<id>/<run>/`),
+ *   from 1, where the editor opens it; a file with no key (deleted, too
+ *   large, outside the repository, no line changed) opens at line 1.
  * @property {string[]} [choices] Reader only: the options they picked.
  * @property {string[]} [images] Reader only: the images they attached, file
  *   names in `images/<comment id>/` beside the comments file (images.mjs).

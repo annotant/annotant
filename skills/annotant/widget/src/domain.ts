@@ -180,6 +180,11 @@ export interface ReviewMessage {
   added?: string[]
   /** With `changed`: those of them the run deleted. */
   deleted?: string[]
+  /**
+   * With `changed`: the first line the run changed in each file it kept the
+   * diff of, from 1, where the editor opens it; a file with no key opens at line 1.
+   */
+  firstLines?: Record<string, number>
   /** Reader only: the options they picked, also written at the start of `body`. */
   choices?: string[]
   /** Reader only: the images they attached, file names the server serves. */

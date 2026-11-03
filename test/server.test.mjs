@@ -1542,3 +1542,50 @@ test('takes the elements the reader picked with a reply, and tells the hooks', a
   )
   assert.equal(resolved.messages.length, alone.messages.length)
 })
+
+/**
+ * Where the server serves run `ran`'s diff of `name`, of comment `c-diff`.
+ * @param {string} ran
+ * @param {string} name
+ */
+const diffUrl = (ran, name) =>
+  `${base}/api/comments/c-diff/runs/${ran}/diff?file=${encodeURIComponent(name)}`
+
+test("serves a run's diff of a file, from the sides the hooks kept", async () => {
+  const diffs = await import('../skills/annotant/scripts/lib/diffs.mjs')
+  const project = { commentsFile: path.join(root, '.annotant', 'comments.json') }
+  const file = path.join(root, 'src', 'diffed.ts')
+  await writeFile(file, 'a\nb\n')
+  await diffs.keepBefore(project, 'c-diff', 'r1', 'src/diffed.ts', file)
+  await writeFile(file, 'a\nB\n')
+  await diffs.keepAfter(project, 'c-diff', 'r1', 'src/diffed.ts', file)
+  const served = await fetch(diffUrl('r1', 'src/diffed.ts'))
+  assert.equal(served.status, 200)
+  assert.equal(served.headers.get('cache-control'), 'no-store')
+  assert.deepEqual(await served.json(), {
+    hunks: [
+      {
+        oldStart: 1,
+        oldLines: 2,
+        newStart: 1,
+        newLines: 2,
+        lines: [
+          { kind: 'context', text: 'a' },
+          { kind: 'removed', text: 'b' },
+          { kind: 'added', text: 'B' },
+        ],
+      },
+    ],
+  })
+  // Another run, another file: none kept, which the widget says.
+  for (const none of [diffUrl('r2', 'src/diffed.ts'), diffUrl('r1', 'src/other.ts')]) {
+    assert.deepEqual(await (await fetch(none)).json(), { missing: true }, none)
+  }
+  // A run id the store never makes, no file: no such route.
+  for (const missing of [
+    diffUrl('..', 'src/diffed.ts'),
+    `${base}/api/comments/c-diff/runs/r1/diff`,
+  ]) {
+    assert.equal((await fetch(missing)).status, 404, missing)
+  }
+})

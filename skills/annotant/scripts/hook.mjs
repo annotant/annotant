@@ -8,9 +8,11 @@
 // pre: refuses AskUserQuestion, Bash commands that write files, and an Edit,
 //      Write, MultiEdit or NotebookEdit outside the project's `editable`
 //      paths (when it lists them); locks the file an edit writes
-//      (another comment's agent may hold it), and records the step for the
-//      widget.
-// post: records the step done or failed; gives the agent the reader's
+//      (another comment's agent may hold it), keeps it as it is before the
+//      run's first write of it (lib/diffs.mjs), as it keeps a file rm, git rm
+//      or unlink names, and records the step for the widget.
+// post: records the step done or failed; keeps a file the run wrote or
+//      deleted as it is now; gives the agent the reader's
 //      messages sent since its claim, once each, as additional context; after a file of the repository
 //      written by Edit, Write, MultiEdit or NotebookEdit, or deleted (rm, git
 //      rm, unlink),
@@ -40,6 +42,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
+import { RUN_ID, diffsDir, keepAfter, keepBefore } from './lib/diffs.mjs'
 import { errorCode } from './lib/errors.mjs'
 import { withFileLock } from './lib/filelock.mjs'
 import { fence } from './lib/fence.mjs'
@@ -183,7 +186,8 @@ const from = (file, base) => (path.isAbsolute(file) ? file : `${base}${path.sep}
 
 /**
  * The deny message for a file a comment's agent writes, `target`: one of
- * Annotant's own files (`.annotant.json`, the comments file), or one outside
+ * Annotant's own files (`.annotant.json`, the comments file, the runs'
+ * diffs), or one outside
  * the project's `editable` paths (a folder above it such as `../api` included);
  * undefined under one of them, or when the project declares no `editable`
  * (the worker's instructions alone keep the agent there). An empty list
@@ -220,6 +224,16 @@ async function outsideEditable({ root, cwd = root, target, comment, scripts }) {
       ? config.commentsFile
       : '.annotant/comments.json',
   ]
+  // The run's diffs, beside the comments file: what the reader sees it did.
+  const diffs = await resolved(
+    diffsDir({ commentsFile: path.resolve(root, own[1] ?? '') }, '.'),
+  )
+  if (file && diffs && within(diffs, file) !== undefined) {
+    return {
+      deny: `${target} is Annotant's own file: agents never change it. ${ask}`,
+      why: `Annotant's own file (${file})`,
+    }
+  }
   for (const name of own) {
     const protectedFile = await resolved(path.resolve(root, name))
     if (file && file === protectedFile) {
@@ -495,6 +509,34 @@ function hooksFor({ comment, root, lockRoot, agent }) {
   }
 
   /**
+   * Keeps `files` of the repository (as the tool named them) for the run's
+   * diff: as they are before its first write of them, or after this one.
+   * Best effort: a diff missing never stops the agent.
+   * @param {'before' | 'after'} side
+   * @param {string[]} files
+   */
+  async function keep(side, files) {
+    const found = await readComment()
+    const run = found ? currentRun(found) : undefined
+    if (!run || !RUN_ID.test(run)) return
+    for (const file of files) {
+      const full = path.resolve(root, file)
+      const { label, external } = fileStep('edit', file)
+      // Outside the repository (a dotfile in the home folder…): its content
+      // may be anything, never copied into the project.
+      if (external) continue
+      const named = label
+      try {
+        if (side === 'before') await keepBefore(project, comment, run, named, full)
+        else if (!(await keepAfter(project, comment, run, named, full)))
+          await log(`no diff of ${named}: nothing kept before its write`)
+      } catch (why) {
+        await log(`could not keep ${named} ${side} the write: ${String(why)}`)
+      }
+    }
+  }
+
+  /**
    * The paths `command` names to delete with `rm`, `git rm` or `unlink`,
    * absolute: files or folders, from the folder an earlier `cd` of the command
    * went to. Best effort: options, what the shell expands (globs, variables)
@@ -670,6 +712,7 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       if (target) {
         const deny = await lockTarget(target, step)
         if (deny) return deny
+        if (target !== '@build') await keep('before', [target])
       }
       // A file Write makes, not one it overwrites: the run added it.
       const written = tool === 'Write' ? textOf(input, 'file_path') : undefined
@@ -685,6 +728,23 @@ function hooksFor({ comment, root, lockRoot, agent }) {
           else if (is === 'folder') removing.push({ path: file, folder: true })
         }
         if (removing.length) step.removing = removing
+        await keep(
+          'before',
+          // Not a link: its target, maybe anywhere, is not what the run deletes.
+          (
+            await Promise.all(
+              removing.map(async (one) =>
+                !one.folder &&
+                (await lstat(one.path).then(
+                  (found) => found.isFile(),
+                  () => false,
+                ))
+                  ? [one.path]
+                  : [],
+              ),
+            )
+          ).flat(),
+        )
       }
       await record([{ ...step, state: 'running' }])
       return undefined
@@ -756,6 +816,13 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       // After the step: a comments file it cannot lock never leaves it running.
       const target = writeTarget(tool, input)
       const changed = !failed && target && target !== '@build' ? target : removed
+      const kept = deleted
+        .filter((one) => !one.folder)
+        .map((one) => one.external ?? path.join(root, one.label))
+      await keep('after', [
+        ...(!failed && target && target !== '@build' ? [target] : []),
+        ...kept,
+      ])
       if (found && changed) {
         await noteWrite(found, changed).catch((why) =>
           log(`could not record the git branch: ${String(why)}`),

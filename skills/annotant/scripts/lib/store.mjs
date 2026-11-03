@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/prom
 import path from 'node:path'
 import { errorCode } from './errors.mjs'
 import { withFileLock } from './filelock.mjs'
+import { firstLines, removeDiffs } from './diffs.mjs'
 import { removeImages, saveImages } from './images.mjs'
 import {
   COMPLEXITIES,
@@ -538,7 +539,8 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * agent, showing "Waiting for Claude" to a reader who was the one being
      * waited on. The run's steps are dropped: the comments file holds the
      * discussion, not the agent's log, and the message only the files the
-     * run changed (`changed`, with `added` and `deleted`).
+     * run changed (`changed`, with `added`, `deleted` and the first line it
+     * changed in each, `firstLines`, from the diffs the hooks kept).
      * A question may offer `options`, the reader picking one, or several when
      * `multiple`; they can always answer in their own words instead.
      * The reader's messages sent during the run that its agent never read are
@@ -561,6 +563,8 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         }
         const run = currentRun(comment)
         const { changed, added, deleted } = changesOf(await readProgress(project, id))
+        const firstLineOf =
+          run && changed.length ? await firstLines(project, id, run, changed) : {}
         move(
           comment,
           question ? 'asking' : wasResolved(comment) ? 'answered' : 'resolved',
@@ -577,6 +581,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
               ...(changed.length ? { changed } : {}),
               ...(added.length ? { added } : {}),
               ...(deleted.length ? { deleted } : {}),
+              ...(Object.keys(firstLineOf).length ? { firstLines: firstLineOf } : {}),
             },
           },
         )
@@ -806,6 +811,7 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         await rm(progressFile(id), { force: true })
         await rm(historyPath(project, id), { force: true })
         await removeImages(project, id)
+        await removeDiffs(project, id)
         return true
       })
     },

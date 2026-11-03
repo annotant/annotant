@@ -9,6 +9,12 @@ released to the `stable` branch.
 
 ### Added
 
+- **See what each run did to a file.** Beside each file an answer lists, a
+  `+-` button shows that run's own diff of it, added lines green and removed
+  ones red: the file before the run's first write and after its last, not
+  what you or another agent changed in it before or after the run. A file
+  over 256 KB, not text, or outside the repository, shows none. Its link opens the file at the
+  first line the run changed. (#221)
 - **Write to Claude while it works.** The message box stays while a comment
   waits for an agent or one works on it: a detail you add reaches the agent
   at work after its next step, and the thread marks it _Sent to the agent at
