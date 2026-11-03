@@ -297,16 +297,16 @@ floats or is docked, hold for every tab of the app and the next sessions.
 - Once answered: the files the run changed, under its answer (a count when
   there are several, which opens on a click), and reply in the thread to follow up,
   reusing the same agent and its context when it is still around. A click on
-  a file opens it in VS Code; `editor` in `.annotant.json` names another
+  a file's name shows that run's own diff of it, from before its first write
+  to after its last: not what you or other agents changed before or after it.
+  Beside it, a button copies its path in the project, and _Open_ opens it in
+  VS Code at the first line the run changed; `editor` in `.annotant.json` names another
   (`cursor`, `windsurf`, `zed`, `vscode-insiders`), a URL of your editor's
   own with `{path}` and `{line}` (`"idea://open?file={path}&line={line}"`),
   or `false` for no link. The browser may ask before handing it over. A
   file out of the project shows an _external_ badge, its full path on hover.
   Its icon says what the run did: green when it added the file, orange when
-  it modified it, red when it deleted it. The link opens the file at the
-  first line the run changed, and the `+-` button beside it shows that run's
-  own diff of the file, from before its first write to after its last: not
-  what you or other agents changed before or after it.
+  it modified it, red when it deleted it.
 - **Links in the thread**: the URLs a message cites, and its issues (`#12`,
   `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
   remote is on GitHub or GitLab, open in a new tab.

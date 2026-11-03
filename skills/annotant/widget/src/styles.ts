@@ -363,13 +363,11 @@ code { font-family: var(--cb-mono); }
 .an-bubble--reader { background: var(--cb-accent); color: var(--cb-on-accent); border-bottom-right-radius: 4px; }
 .an-bubble--claude { width: 100%; background: var(--cb-bubble); color: var(--cb-text); }
 /* The files the run behind an answer wrote, under it: a quiet list, folded into a count when long. */
-.an-changed { display: flex; flex-direction: column; gap: 2px; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
+.an-changed { display: flex; flex-direction: column; gap: 2px; align-self: stretch; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
 .an-changed ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .an-changed li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .an-changed li code { overflow-wrap: anywhere; }
 .an-external { flex-shrink: 0; padding: 0 6px; border: 1px solid var(--cb-border); border-radius: 999px; font-size: 11px; line-height: 16px; cursor: help; }
-.an-changed li a { min-width: 0; color: inherit; text-decoration: none; }
-.an-changed li a:hover { color: var(--cb-accent); text-decoration: underline; text-underline-offset: 2px; }
 .an-changed svg { width: 14px; height: 14px; flex-shrink: 0; }
 /* What the run did to the file, in the icon's colour: added, modified, deleted. */
 .an-change { display: inline-flex; flex-shrink: 0; }
@@ -380,10 +378,19 @@ code { font-family: var(--cb-mono); }
 .an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
 .an-changed-toggle:hover { color: var(--cb-text); }
 /* A file's diff, as that run changed it: under the file, scrolling when long. */
-.an-diff-toggle { display: inline-flex; padding: 2px; border: none; border-radius: 4px; background: none; color: inherit; cursor: pointer; }
-.an-diff-toggle:hover, .an-diff-toggle[aria-expanded="true"] { color: var(--cb-text); background: var(--cb-bubble); }
+.an-file-name { min-width: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.an-file-name:hover, .an-file-name[aria-expanded="true"] { color: var(--cb-text); }
+.an-file-name:hover code { text-decoration: underline; text-underline-offset: 2px; }
+.an-file-action { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 1px 4px; border: none; border-radius: 4px; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
+.an-file-action:hover { color: var(--cb-text); background: var(--cb-bubble); }
+.an-file-action--off { opacity: .5; cursor: help; }
+.an-file-action--off:hover { background: none; }
+.an-changed .an-file-action svg { width: 12px; height: 12px; }
 .an-diff { flex-basis: 100%; max-height: 320px; overflow: auto; border: 1px solid var(--cb-border); border-radius: 6px; font: 12px/1.5 var(--cb-mono); color: var(--cb-text); }
 .an-diff--note { padding: 4px 8px; font-family: inherit; color: var(--cb-muted); }
+.an-changed li.an-file--open { margin: 2px 0; padding: 3px 6px 0; border: 1px solid var(--cb-border); border-radius: 6px; background: var(--cb-bubble); overflow: hidden; }
+.an-file--open .an-diff { flex-basis: calc(100% + 12px); margin: 3px -6px 0; border: none; border-top: 1px solid var(--cb-border); border-radius: 0; background: var(--cb-surface); }
+.an-file--open .an-file-action:hover { background: var(--cb-surface); }
 .an-diff-hunk { min-width: max-content; }
 .an-diff-head { padding: 0 8px; background: var(--cb-bubble); color: var(--cb-muted); }
 .an-diff-line { display: flex; white-space: pre; }

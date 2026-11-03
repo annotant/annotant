@@ -478,6 +478,21 @@ function ChangedFiles({
     if (!next.delete(file)) next.add(file)
     setShown(next)
   }
+  // The file whose path was just copied, ticked for a moment.
+  const [copied, setCopied] = useState<string>()
+  const copyPath = async (file: string) => {
+    try {
+      await navigator.clipboard.writeText(file)
+    } catch (error) {
+      console.warn('annotant: the path could not be copied', error)
+      return
+    }
+    setCopied(file)
+    setTimeout(
+      () => setCopied((current) => (current === file ? undefined : current)),
+      1500,
+    )
+  }
   const folds = files.length > 1
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
   return (
@@ -504,7 +519,10 @@ function ChangedFiles({
                 : 'modified'
             const change = CHANGES[status]
             return (
-              <li key={file} className={`an-changed--${status}`}>
+              <li
+                key={file}
+                className={`an-changed--${status}${shown.has(file) ? ' an-file--open' : ''}`}
+              >
                 <span
                   className="an-change"
                   role="img"
@@ -513,28 +531,19 @@ function ChangedFiles({
                 >
                   <Icon name={change.icon} />
                 </span>
-                {/* A deleted file has nothing left to open. */}
-                {editor && path && status !== 'deleted' ? (
-                  <a
-                    href={editorLink(editor, path, firstLines?.[file])}
-                    title={
-                      editor.assumed
-                        ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
-                        : `Open in ${editor.name}`
-                    }
+                {/* The name unfolds the run's diff; a deleted folder has no lines. */}
+                {diffOf && !file.endsWith('/') ? (
+                  <button
+                    type="button"
+                    className="an-file-name"
+                    aria-expanded={shown.has(file)}
+                    title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
+                    onClick={() => toggleDiff(file)}
                   >
                     <code>{name}</code>
-                  </a>
+                  </button>
                 ) : (
-                  <code
-                    title={
-                      editorIgnored && status !== 'deleted'
-                        ? '"editor" in .annotant.json names no editor Annotant can open'
-                        : undefined
-                    }
-                  >
-                    {name}
-                  </code>
+                  <code>{name}</code>
                 )}
                 {external && (
                   // Out of the project: the badge tells where, on hover.
@@ -542,18 +551,43 @@ function ChangedFiles({
                     external
                   </span>
                 )}
-                {/* A deleted folder has no lines to show. */}
-                {diffOf && !file.endsWith('/') && (
-                  <button
-                    type="button"
-                    className="an-diff-toggle"
-                    aria-expanded={shown.has(file)}
-                    aria-label={`${shown.has(file) ? 'Hide' : 'Show'} the diff of ${name}`}
-                    title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
-                    onClick={() => toggleDiff(file)}
+                <button
+                  type="button"
+                  className="an-file-action"
+                  aria-label={`Copy the path of ${name}`}
+                  title={copied === file ? 'Copied' : 'Copy the path'}
+                  onClick={() => void copyPath(file)}
+                >
+                  <Icon name={copied === file ? 'check' : 'copy'} />
+                </button>
+                {/* A deleted file has nothing left to open. */}
+                {editor && path && status !== 'deleted' ? (
+                  <a
+                    className="an-file-action"
+                    href={editorLink(editor, path, firstLines?.[file])}
+                    aria-label={`Open ${name} in ${editor.name}`}
+                    title={
+                      editor.assumed
+                        ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
+                        : `Open in ${editor.name}`
+                    }
                   >
-                    <Icon name="diff" />
-                  </button>
+                    <Icon name="external" />
+                    Open
+                  </a>
+                ) : (
+                  editorIgnored &&
+                  status !== 'deleted' && (
+                    <span
+                      className="an-file-action an-file-action--off"
+                      title={
+                        '"editor" in .annotant.json names no editor Annotant can open'
+                      }
+                    >
+                      <Icon name="external" />
+                      Open
+                    </span>
+                  )
                 )}
                 {diffOf && shown.has(file) && <FileDiffView load={() => diffOf(file)} />}
               </li>

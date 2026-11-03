@@ -699,7 +699,7 @@ test('a question lists the file its run changed by name', async () => {
   ).toBeNull()
 })
 
-test("a changed file shows its run's own diff, and opens at the first line it changed", async () => {
+test("a changed file's name shows its run's own diff; Open opens it at the first line it changed", async () => {
   const at = '2026-01-01T10:00:00.000Z'
   const { fetch } = fakeServer(
     [
@@ -756,14 +756,14 @@ test("a changed file shows its run's own diff, and opens at the first line it ch
   if (!first || !second) throw new Error('two lists expected')
   fireEvent.click(within(first).getByRole('button', { name: '3 files changed' }))
   expect(
-    (await within(first).findByRole('link', { name: 'src/data.ts' })).getAttribute(
-      'href',
-    ),
+    (
+      await within(first).findByRole('link', { name: 'Open src/data.ts in VS Code' })
+    ).getAttribute('href'),
   ).toBe('vscode://file/work/shop/src/data.ts:12')
   // No diff loaded before the reader asks for one.
   expect(fetch.mock.calls.some(([url]) => url.includes('/diff'))).toBe(false)
 
-  const show = within(first).getByRole('button', { name: 'Show the diff of src/data.ts' })
+  const show = within(first).getByRole('button', { name: 'src/data.ts' })
   fireEvent.click(show)
   expect(show.getAttribute('aria-expanded')).toBe('true')
   const diff = await within(first).findByTestId('an-diff')
@@ -778,28 +778,25 @@ test("a changed file shows its run's own diff, and opens at the first line it ch
     'added:const b = 3',
   ])
 
-  fireEvent.click(
-    within(first).getByRole('button', { name: 'Show the diff of src/big.json' }),
-  )
+  fireEvent.click(within(first).getByRole('button', { name: 'src/big.json' }))
   expect(await within(first).findByText('Too large to show.')).toBeTruthy()
   // A deleted file: no link. A server without the route: said, not "none kept".
-  expect(within(first).queryByRole('link', { name: 'src/gone.ts' })).toBeNull()
-  fireEvent.click(
-    within(first).getByRole('button', { name: 'Show the diff of src/gone.ts' }),
-  )
+  expect(within(first).queryByRole('link', { name: /src\/gone\.ts/ })).toBeNull()
+  fireEvent.click(within(first).getByRole('button', { name: 'src/gone.ts' }))
   expect((await within(first).findByRole('alert')).textContent).toBe(
     'The diff could not be loaded: Request failed (404)',
   )
 
   // The second run kept none: it says so, and its link opens at line 1.
-  fireEvent.click(
-    within(second).getByRole('button', { name: 'Show the diff of src/data.ts' }),
-  )
+  fireEvent.click(within(second).getByRole('button', { name: 'src/data.ts' }))
   expect(await within(second).findByText('No diff was kept for this file.')).toBeTruthy()
   expect(
-    within(second).getByRole('link', { name: 'src/data.ts' }).getAttribute('href'),
+    within(second)
+      .getByRole('link', { name: 'Open src/data.ts in VS Code' })
+      .getAttribute('href'),
   ).toBe('vscode://file/work/shop/src/data.ts:1')
 
+  expect(show.getAttribute('title')).toBe('Hide the diff')
   fireEvent.click(show)
   expect(within(first).queryByTestId('an-diff')).toBeNull()
 })
@@ -820,7 +817,8 @@ test("each changed file opens in the project's editor", async () => {
   openThread('c1')
   renderWidget()
 
-  const link = await screen.findByRole('link', { name: 'src/App.tsx' })
+  const link = await screen.findByRole('link', { name: 'Open src/App.tsx in Cursor' })
+  expect(link.textContent).toBe('Open')
   expect(link.getAttribute('href')).toBe('cursor://file/work/shop/src/App.tsx:1')
   expect(link.getAttribute('title')).toBe('Open in Cursor')
 })
@@ -842,7 +840,8 @@ test('a changed file is no link when the project turned the editor off', async (
   renderWidget()
 
   await screen.findByText('src/App.tsx')
-  expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
+  expect(screen.queryByRole('link', { name: /^Open / })).toBeNull()
+  expect(screen.queryByText('Open')).toBeNull()
 })
 
 test('a changed file says how to name another editor than the assumed VS Code', async () => {
@@ -861,7 +860,7 @@ test('a changed file says how to name another editor than the assumed VS Code', 
   openThread('c1')
   renderWidget()
 
-  const link = await screen.findByRole('link', { name: 'src/App.tsx' })
+  const link = await screen.findByRole('link', { name: 'Open src/App.tsx in VS Code' })
   expect(link.getAttribute('title')).toBe(
     'Open in VS Code (another editor: "editor" in .annotant.json)',
   )
@@ -885,12 +884,12 @@ test('a changed file says the editor setting names nothing it can open', async (
   openThread('c1')
   renderWidget()
 
-  await waitFor(() =>
-    expect(screen.getByText('src/App.tsx').getAttribute('title')).toBe(
+  expect(
+    await screen.findByTitle(
       '"editor" in .annotant.json names no editor Annotant can open',
     ),
-  )
-  expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
+  ).toBeTruthy()
+  expect(screen.queryByRole('link', { name: /^Open / })).toBeNull()
 })
 
 test('a file out of the project is marked external, its path shown on hover', async () => {
@@ -916,7 +915,7 @@ test('a file out of the project is marked external, its path shown on hover', as
   renderWidget()
 
   fireEvent.click(await screen.findByRole('button', { name: '2 files changed' }))
-  const notes = screen.getByRole('link', { name: 'notes.md' })
+  const notes = screen.getByRole('link', { name: 'Open notes.md in VS Code' })
   expect(notes.getAttribute('href')).toBe('vscode://file/tmp/plan/notes.md:1')
   const items = screen.getAllByRole('listitem')
   expect(within(items[0]!).queryByText('external')).toBeNull()
@@ -960,8 +959,48 @@ test('each changed file says whether the run added, modified or deleted it', asy
   expect(
     within(list)
       .getAllByRole('link')
-      .map((link) => link.textContent),
-  ).toEqual(['src/new.ts', 'src/App.tsx'])
+      .map((link) => link.getAttribute('aria-label')),
+  ).toEqual(['Open src/new.ts in VS Code', 'Open src/App.tsx in VS Code'])
+})
+
+test('each changed file copies its path in the project', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const writeText = vi.fn(() => Promise.resolve())
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText },
+    configurable: true,
+  })
+  onTestFinished(() => {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/App.tsx', '/tmp/plan/notes.md'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '2 files changed' }))
+  const copy = screen.getByRole('button', { name: 'Copy the path of src/App.tsx' })
+  fireEvent.click(copy)
+  expect(writeText).toHaveBeenCalledWith('src/App.tsx')
+  await waitFor(() => expect(copy.getAttribute('title')).toBe('Copied'))
+  // Out of the project: the path it has, whole.
+  fireEvent.click(screen.getByRole('button', { name: 'Copy the path of notes.md' }))
+  expect(writeText).toHaveBeenLastCalledWith('/tmp/plan/notes.md')
 })
 
 const AT = '2026-01-01T10:00:00.000Z'
