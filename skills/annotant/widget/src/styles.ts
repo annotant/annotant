@@ -176,6 +176,7 @@ code { font-family: var(--cb-mono); }
   padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
   background: var(--cb-surface); box-shadow: 0 4px 16px rgba(0,0,0,.15);
 }
+.an-dock[data-side="left"] { right: auto; left: 16px; }
 /* Its grip moves it: the tools keep their clicks. */
 .an-grip {
   display: inline-flex; align-items: center; justify-content: center;
@@ -216,22 +217,27 @@ code { font-family: var(--cb-mono); }
   position: fixed; top: 16px; right: 16px; bottom: 16px;
   display: flex; flex-direction: column; background: var(--cb-surface);
   border-radius: 12px; box-shadow: var(--cb-shadow);
+  /* Where it slides in from, and out to: off its side of the page. */
+  --an-panel-off: 100%;
   animation: an-panel-in ${PANEL_IN_MS}ms ease-out;
-  transition-property: width, top, right, bottom, border-radius;
+  transition-property: width, top, right, bottom, left, border-radius;
   transition-duration: ${PANEL_IN_MS}ms; transition-timing-function: ease-out;
 }
 .an-panel--docked { top: 0; right: 0; bottom: 0; border-radius: 0; box-shadow: none; border-left: 1px solid var(--cb-border); }
+.an-panel[data-side="left"] { right: auto; left: 16px; --an-panel-off: -100%; }
+.an-panel--docked[data-side="left"] { left: 0; border-left: 0; border-right: 1px solid var(--cb-border); }
 /* Open again as the tab kept it: already in place, it does not slide in. */
 .an-panel[data-restored] { animation: none; }
 /* Kept on screen until it has left: the page underneath gets the pointer back at once. */
 .an-panel[data-closing] { animation: an-panel-out ${PANEL_OUT_MS}ms ease-in forwards; pointer-events: none; }
 /* Dragged, the edge follows the pointer. */
 .an-panel:has(.an-resize[data-dragging]) { transition: none; }
-@keyframes an-panel-in { from { transform: translateX(100%); opacity: 0; } }
-@keyframes an-panel-out { to { transform: translateX(100%); opacity: 0; } }
+@keyframes an-panel-in { from { transform: translateX(var(--an-panel-off)); opacity: 0; } }
+@keyframes an-panel-out { to { transform: translateX(var(--an-panel-off)); opacity: 0; } }
 @keyframes an-fade-in { from { opacity: 0; } }
 @keyframes an-fade-out { to { opacity: 0; } }
 .an-resize { position: absolute; top: 0; bottom: 0; left: -3px; width: 7px; cursor: col-resize; z-index: 1; }
+.an-panel[data-side="left"] .an-resize { left: auto; right: -3px; }
 .an-resize:hover, .an-resize[data-dragging] { background: var(--cb-accent); opacity: .6; }
 /* The settings dialog, over the panel's whole height, as a sheet of its own. */
 .an-settings { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: var(--cb-surface); border-radius: inherit; animation: an-fade-in ${PANEL_OUT_MS}ms ease-out; }
