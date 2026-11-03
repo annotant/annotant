@@ -20,7 +20,7 @@
 // live in $.state, so they survive a reload of the module and vanish with the
 // session, like the agents themselves.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { CommandRunInput, EngineInterface, Register } from 'claude-code'
 
 import type { CommentsFile, Complexity, Worker } from '../types'
 
@@ -35,6 +35,8 @@ type Project = {
   lockRoot: string
   commentsFile: string
   progressDir: string
+  /** The settings change the widget sent, waiting for `/annotant-settings accept`. */
+  settingsFile: string
   /** A model (`haiku`, an id, or `inherit`) per label. */
   models: Partial<Record<Complexity, string>>
 }
@@ -217,6 +219,14 @@ async function mainCheckout($: $, dir: string) {
   return common?.endsWith('/.git') ? common.slice(0, -'/.git'.length) : undefined
 }
 
+/** The SHA-1 of `text`, in hex. */
+async function sha1(text: string) {
+  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 async function loadProjectOnce($: $, root: string): Promise<Project> {
   const config: { commentsFile?: string; models?: unknown } = JSON.parse(
     await $.fs.read(`${root}/.annotant.json`),
@@ -227,17 +237,14 @@ async function loadProjectOnce($: $, root: string): Promise<Project> {
     config.commentsFile ??
     '.annotant/comments.json'
   // lib/project.mjs: the state folder is named after sha1(root).
-  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(root))
-  const hash = [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 12)
+  const hash = (await sha1(root)).slice(0, 12)
   const top = await gitTop($, root)
   return {
     root,
     lockRoot: top && relative(top, root) !== undefined ? top : root,
     commentsFile: resolve(root, commentsFile),
     progressDir: `${stateRoot}/${hash}/progress`,
+    settingsFile: `${stateRoot}/${hash}/settings.json`,
     models: modelsOf(config.models),
   }
 }
@@ -863,6 +870,12 @@ async function onLine(
 ) {
   const [kind = '', id = ''] = line.split(' ', 2)
   if (kind === 'READY') return settle(line)
+  if (kind === 'SETTINGS') {
+    $.ui.toast(
+      `Annotant: new instructions for the agents of ${basename(watched.root)} wait for you; /annotant-settings shows them.`,
+    )
+    return
+  }
   if (SERVER_ERRORS.has(kind)) {
     settle(line)
     await update($, watching, (all) => {
@@ -1151,6 +1164,172 @@ async function statusText($: $) {
   return lines.join('\n')
 }
 
+// ---------------------------------------------------------------------------
+// The widget's settings dialog writes nothing that steers the agents: the page's
+// own scripts could call the server too. The server keeps what the reader saved
+// as a pending change (lib/settings.mjs), and only the reader's
+// `/annotant-settings accept <code>`, typed in Claude Code, writes it to
+// `.annotant.json`. The code is random, made when the listing shows the change,
+// and never leaves this module: the page can neither read nor forge it, and an
+// accept takes only the very text that listing showed.
+
+/** lib/settings.mjs's MAX_INSTRUCTIONS and HIDDEN, which the server checks first. */
+const MAX_INSTRUCTIONS = 4000
+// Control, zero-width and bidi characters: they could make the text shown
+// differ from the text accepted. Tabs and line breaks stay.
+const HIDDEN =
+  // oxlint-disable-next-line no-control-regex -- matching control characters is the point
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/
+
+/** The change waiting for a project: its text, or why it cannot be shown. */
+type Pending = { instructions: string; at: string } | { unreadable: string }
+
+/**
+ * By code, the change a listing showed, until it is settled or listed again:
+ * module memory, so a reload asks for a new listing.
+ */
+const shown = new Map<string, { root: string; instructions: string }>()
+
+/** The change waiting for the project at `root`, if any. */
+async function readPending($: $, root: string): Promise<Pending | undefined> {
+  const { settingsFile } = await loadProject($, root)
+  if (!(await $.fs.exists(settingsFile))) return undefined
+  let text: string
+  try {
+    text = await $.fs.read(settingsFile)
+  } catch (error) {
+    return { unreadable: `${settingsFile} cannot be read: ${String(error)}` }
+  }
+  try {
+    const pending: { instructions?: unknown; at?: unknown } = JSON.parse(text)
+    const { instructions, at } = pending
+    if (typeof instructions !== 'string')
+      return { unreadable: `${settingsFile} holds no instructions` }
+    if (instructions.length > MAX_INSTRUCTIONS || HIDDEN.test(instructions))
+      return {
+        unreadable: `${settingsFile} holds more than ${MAX_INSTRUCTIONS} characters, or hidden ones`,
+      }
+    return { instructions, at: typeof at === 'string' ? at : '' }
+  } catch {
+    return { unreadable: `${settingsFile} is not JSON` }
+  }
+}
+
+/** A code no one can guess: 8 random hex digits. */
+function newCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(4))
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/** Text the page sent, set apart line by line for the person to read. */
+const quoted = (text: string) =>
+  text
+    ? text.split('\n').map((line) => `  │ ${line}`)
+    : ['  │ (none: the agents get no instructions)']
+
+/** The instructions `.annotant.json` holds now, or why they cannot be read. */
+async function currentInstructions($: $, root: string) {
+  try {
+    const config: { instructions?: unknown } = JSON.parse(
+      await $.fs.read(`${root}/.annotant.json`),
+    )
+    return quoted(typeof config.instructions === 'string' ? config.instructions : '')
+  } catch (error) {
+    return [`  .annotant.json cannot be read, by the agents either: ${String(error)}`]
+  }
+}
+
+/** Removes the change, when it is still `instructions`: a newer one stays. */
+async function dropSettings($: $, root: string, instructions: string) {
+  const now = await readPending($, root)
+  if (!now || !('instructions' in now) || now.instructions !== instructions) return false
+  const { settingsFile } = await loadProject($, root)
+  const removed = await $.process.run(['rm', '-f', settingsFile])
+  if (removed.exitCode !== 0)
+    throw new Error(`${settingsFile} could not be removed: ${removed.stderr.trim()}`)
+  return true
+}
+
+/** Writes `instructions` to `.annotant.json`: none removes the key. */
+async function writeInstructions($: $, root: string, instructions: string) {
+  const file = `${root}/.annotant.json`
+  const config: Record<string, unknown> = JSON.parse(await $.fs.read(file))
+  if (instructions) config.instructions = instructions
+  else delete config.instructions
+  await $.fs.write(file, `${JSON.stringify(config, null, 2)}\n`)
+}
+
+/** `/annotant-settings accept|reject <code>`: settles the change a listing showed. */
+async function settleChange($: $, word: 'accept' | 'reject', code: string) {
+  const entry = shown.get(code)
+  if (!entry)
+    return `No change was shown with the code ${code || '(none)'}: /annotant-settings shows those that wait.`
+  shown.delete(code)
+  const { root, instructions } = entry
+  const now = await readPending($, root)
+  if (!now || !('instructions' in now) || now.instructions !== instructions)
+    return `The change for ${basename(root)} is not the one shown with ${code} any more: /annotant-settings shows what waits now.`
+  if (word === 'accept') await writeInstructions($, root, instructions)
+  const dropped = await dropSettings($, root, instructions)
+  const newer = dropped
+    ? ''
+    : ' A newer change arrived meanwhile: /annotant-settings shows it.'
+  return word === 'accept'
+    ? `Accepted: the next comment's agent in ${basename(root)} follows the new instructions (.annotant.json, \`instructions\`).${newer}`
+    : `Rejected: ${basename(root)}'s instructions for the agents stay as they were.${newer}`
+}
+
+/** `/annotant-settings [accept|reject <code>]`: the answer the person reads. */
+async function settingsCommand(
+  $: $,
+  args: string,
+  origin: CommandRunInput['origin'],
+): Promise<string> {
+  const [word = '', code = ''] = args.trim().toLowerCase().split(/\s+/)
+  if (word === 'accept' || word === 'reject') {
+    // Only the person's own Enter: not a plugin, the SDK or the bridge.
+    if (origin.kind !== 'composer')
+      return `/annotant-settings ${word} only works typed in Claude Code's prompt.`
+    try {
+      return await settleChange($, word, code)
+    } catch (error) {
+      return `Annotant could not ${word} the change: ${String(error)}`
+    }
+  }
+  if (word)
+    return 'Usage: /annotant-settings shows the changes the widget saved; accept <code> or reject <code> settles one.'
+  const roots = [...watches.keys()]
+  if (!roots.length)
+    return 'Annotant is not watching any project in this session: /annotant starts it; a change saved before waits until then.'
+  const lines: string[] = []
+  for (const root of roots) {
+    if (lines.length) lines.push('')
+    for (const [old, entry] of shown) if (entry.root === root) shown.delete(old)
+    const pending = await readPending($, root).catch((error: unknown): Pending => ({
+      unreadable: String(error),
+    }))
+    if (pending && 'unreadable' in pending) {
+      lines.push(`${root}: a change waits, but cannot be shown: ${pending.unreadable}.`)
+      continue
+    }
+    if (!pending) {
+      lines.push(
+        `${root}: no change waits. The instructions for the agents, in .annotant.json:`,
+        ...(await currentInstructions($, root)),
+      )
+      continue
+    }
+    const fresh = newCode()
+    shown.set(fresh, { root, instructions: pending.instructions })
+    lines.push(
+      `${root}: new instructions for the agents, saved in the widget${pending.at ? ` at ${pending.at}` : ''}. Read them before accepting: the app's own scripts can write here too.`,
+      ...quoted(pending.instructions),
+      `Accept them with /annotant-settings accept ${fresh}, or drop them with /annotant-settings reject ${fresh}.`,
+    )
+  }
+  return lines.join('\n')
+}
+
 const hasConfig = ($: $, dir: string) =>
   $.fs.exists(`${dir}/.annotant.json`).catch(() => false)
 
@@ -1395,6 +1574,14 @@ export const register: Register = (on) => {
       argumentHint: '[on|off]',
       immediate: true,
     })
+    // Immediate. An accept counts only typed by the person (`origin` composer).
+    await registerCommand($, {
+      name: 'annotant-settings',
+      description:
+        "Annotant: review the settings saved in the widget's dialog, then accept or reject them",
+      argumentHint: '[accept|reject <code>]',
+      immediate: true,
+    })
     // Immediate: it runs mid-turn, and starts no turn of its own. Refused
     // while the skill holds the name /annotant: the skill calls the tool.
     await registerCommand($, {
@@ -1413,6 +1600,12 @@ export const register: Register = (on) => {
 
   on('command.run', { command: 'annotant-debug' }, async ($, e) => ({
     text: await debugCommand($, e.args),
+  }))
+
+  on('command.run', { command: 'annotant-settings' }, async ($, e) => ({
+    text: await settingsCommand($, e.args, e.origin).catch(
+      (error: unknown) => `Annotant could not read the settings: ${String(error)}`,
+    ),
   }))
 
   on('command.run', { command: 'annotant' }, async ($, e) => ({

@@ -4,6 +4,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   type TextareaHTMLAttributes,
   Component,
   forwardRef,
@@ -47,6 +48,7 @@ const PATHS = {
   check: 'M5 12l5 5 9-11',
   grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9h.01',
+  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1',
   'git-branch':
     'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9',
 } as const
@@ -102,6 +104,8 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   danger?: boolean
   /** The keyboard shortcut doing the same, shown in the tooltip. */
   keys?: string
+  /** React 19 passes it with the props, to the button. */
+  ref?: Ref<HTMLButtonElement>
 }
 
 export function IconButton({

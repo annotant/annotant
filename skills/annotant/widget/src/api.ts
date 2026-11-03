@@ -14,6 +14,7 @@ const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
 const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
 const HEALTH = new URL('api/health', new URL('.', import.meta.url)).href
 const GIT = new URL('api/git', new URL('.', import.meta.url)).href
+const SETTINGS = new URL('api/settings', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -266,6 +267,25 @@ export function useServerSettings() {
   }, [])
   return settings
 }
+
+/**
+ * The settings dialog's: the instructions `.annotant.json` holds for the
+ * agents, and the change the reader saved, which waits for their
+ * `/annotant-settings accept` in Claude Code.
+ */
+export type ProjectSettings = {
+  instructions: string
+  pending?: { instructions: string; at: string }
+  max: number
+}
+
+export const fetchSettings = () => request<ProjectSettings>(SETTINGS)
+
+export const saveSettings = (instructions: string) =>
+  request<ProjectSettings>(SETTINGS, {
+    method: 'POST',
+    body: JSON.stringify({ instructions }),
+  })
 
 /** Where the project is in git now, and whether that is its default branch. */
 export type GitNow = GitPlace & { default?: true }

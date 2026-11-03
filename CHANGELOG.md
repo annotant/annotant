@@ -9,6 +9,14 @@ released to the `stable` branch.
 
 ### Added
 
+- **Instructions for the agents, from the widget.** A gear in the panel's
+  header opens the settings: the project's instructions for every comment's
+  agent (`instructions` in `.annotant.json`), such as "we use Tailwind, never
+  inline styles" or "copy is in Canadian French". Agents follow them after
+  their own rules, which they cannot override. What you save there waits for
+  you in Claude Code, since the app's own scripts could call the server too:
+  `/annotant-settings` shows it, `/annotant-settings accept <code>` writes it.
+  (#224)
 - **See what each run did to a file.** Beside each file an answer lists, a
   `+-` button shows that run's own diff of it, added lines green and removed
   ones red: the file before the run's first write and after its last, not
