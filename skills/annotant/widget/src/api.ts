@@ -5,6 +5,7 @@ import type {
   ReviewComment,
   ReviewCommentPatch,
 } from './domain'
+import { parseEditor, type Editor } from './editor'
 import { parseRepository, type Repository } from './links'
 import { parseTheme, type ThemeSetting } from './theme'
 
@@ -211,14 +212,18 @@ export function useCommentHistory(enabled: boolean) {
 
 /**
  * What the server tells the widget about the project: how the app switches
- * between light and dark, as it read it in `.annotant.json`, and the
- * repository of its `origin` remote. Each undefined until it answers, and
- * when it has none.
+ * between light and dark and the editor its files open in, as it read them
+ * in `.annotant.json`, the project's root, and the repository of its `origin`
+ * remote. Each undefined until it answers, and when it has none.
  */
 export function useServerSettings() {
   const [settings, setSettings] = useState<{
     theme?: ThemeSetting | undefined
     repository?: Repository | undefined
+    root?: string | undefined
+    editor?: Editor | undefined
+    /** `editor` in `.annotant.json` names nothing the widget can open. */
+    editorIgnored?: true | undefined
   }>({})
   useEffect(() => {
     let live = true
@@ -237,7 +242,21 @@ export function useServerSettings() {
       if (remote !== undefined && !repository) {
         console.warn("Annotant: ignoring the server's `repository`:", remote)
       }
-      setSettings({ theme: parsed, repository })
+      const project = 'project' in health ? health.project : undefined
+      const root = typeof project === 'string' && project ? project : undefined
+      const named = 'editor' in health ? health.editor : undefined
+      const editor = parseEditor(named)
+      const editorIgnored = named !== undefined && named !== false && !editor
+      if (editorIgnored) {
+        console.warn('Annotant: ignoring `editor` in .annotant.json:', named)
+      }
+      setSettings({
+        theme: parsed,
+        repository,
+        root,
+        editor,
+        ...(editorIgnored && { editorIgnored }),
+      })
     }
     // No server: the lists say so; the page's background picks the theme meanwhile.
     load().catch(() => undefined)

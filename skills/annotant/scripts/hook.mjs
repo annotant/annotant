@@ -9,9 +9,10 @@
 //      file an edit writes (another comment's agent may hold it), and records
 //      the step for the widget.
 // post: records the step done or failed; after a file of the repository
-//      written by Edit, Write, MultiEdit or NotebookEdit, where the project is
-//      in git, on the comment (the run's first write, and a move); after
-//      resolve.mjs or ask.mjs, ends the run: the agent's locks are released.
+//      written by Edit, Write, MultiEdit or NotebookEdit, or deleted with rm,
+//      where the project is in git, on the comment (the run's first write,
+//      and a move); after resolve.mjs or ask.mjs, ends the run: the agent's
+//      locks are released.
 // stop: the agent stopped; it holds nothing.
 // note: the hooks module's steps (what the agent thinks and says), as JSON
 //      lines on stdin.
@@ -23,13 +24,14 @@
 // found; agents may edit outside the project (`editable` such as `../api`).
 // A hook never fails the agent: on any error, it lets the tool run.
 import { createHash } from 'node:crypto'
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { errorCode } from './lib/errors.mjs'
 import { withFileLock } from './lib/filelock.mjs'
 import { currentRun, parseFile } from './lib/format.mjs'
 import { gitPlace, wroteAt } from './lib/git.mjs'
 import { STATE_ROOT, project as projectAt } from './lib/project.mjs'
-import { createStore, isActive, progressPath } from './lib/store.mjs'
+import { createStore, isActive, progressPath, readProgress } from './lib/store.mjs'
 
 /** @typedef {import('./lib/format.mjs').CommentV2} CommentV2 */
 /** @typedef {import('./lib/format.mjs').Step} Step */
@@ -73,6 +75,41 @@ const IN_PLACE = /\b(?:sed|perl)\s+(?:-\S+\s+)*-[\w-]*i/
 const CAT_INTO = /\bcat\s*>>?\s*(\S+)/
 const TEE = /\btee\b((?:\s+[^\s|;&<>]+)*)/
 const MAX_LABEL = 80
+// A command's words: quoted, or up to a space.
+const WORDS = /"([^"]*)"|'([^']*)'|(\S+)/g
+// What the shell expands, unquoted or between double quotes: not a path as written.
+const GLOB = /[*?[\]{}$`~]/
+const EXPANDED = /[$`]/
+// A redirection or `&`: the command's arguments end there.
+const REDIRECT = /[<>&]/
+
+/**
+ * Whether `file` is there, a folder or not, without following a link; `unknown`
+ * when it cannot be told (no access).
+ * @param {string} file
+ * @returns {Promise<'file' | 'folder' | 'missing' | 'unknown'>}
+ */
+async function presence(file) {
+  try {
+    return (await lstat(file)).isDirectory() ? 'folder' : 'file'
+  } catch (error) {
+    return errorCode(error) === 'ENOENT' ? 'missing' : 'unknown'
+  }
+}
+
+/**
+ * The words of a shell command's segment, each with the quote it was in.
+ * @param {string} segment
+ */
+function wordsOf(segment) {
+  return [...segment.matchAll(WORDS)].map(([, double, single, bare]) =>
+    double !== undefined
+      ? { text: double, quote: '"' }
+      : single !== undefined
+        ? { text: single, quote: "'" }
+        : { text: bare ?? '', quote: '' },
+  )
+}
 
 /** @param {string} name */
 function flag(name) {
@@ -242,18 +279,23 @@ function hooksFor({ comment, root, lockRoot, agent }) {
     }
   }
 
-  /** A path as the reader sees it: from the project, else its name. */
-  function shown(file = '') {
+  /**
+   * A file tool's step: the file as the reader sees it, from the project, else
+   * its name, and outside the repository its absolute path (`external`) too.
+   * @param {string} kind
+   * @param {string} file
+   */
+  function fileStep(kind, file) {
     const full = path.resolve(root, file)
     return within(lockRoot, full) === undefined
-      ? path.basename(file)
-      : path.relative(root, full)
+      ? { kind, label: path.basename(file), external: full }
+      : { kind, label: path.relative(root, full) }
   }
 
   /**
    * @param {string} tool
    * @param {Record<string, unknown>} input
-   * @returns {{ kind: string, label: string }}
+   * @returns {{ kind: string, label: string, external?: string }}
    */
   function describe(tool, input) {
     const text = (/** @type {string} */ key) => textOf(input, key) ?? ''
@@ -266,9 +308,9 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       case 'Edit':
       case 'Write':
       case 'MultiEdit':
-        return { kind: tool.toLowerCase(), label: shown(text('file_path')) }
+        return fileStep(tool.toLowerCase(), text('file_path'))
       case 'NotebookEdit':
-        return { kind: 'edit', label: shown(text('notebook_path')) }
+        return fileStep('edit', text('notebook_path'))
       case 'Bash':
         return CLAIM.test(text('command'))
           ? { kind: 'start', label: 'Started' }
@@ -288,6 +330,51 @@ function hooksFor({ comment, root, lockRoot, agent }) {
       default:
         return { kind: 'tool', label: tool }
     }
+  }
+
+  /**
+   * The paths `command` names to delete with `rm`, `git rm` or `unlink`,
+   * absolute: files or folders, from the folder an earlier `cd` of the command
+   * went to. Best effort: options, what the shell expands (globs, variables)
+   * and what follows a redirection are left out, and so is any path after a
+   * `cd` the hook cannot follow; `mv` is not seen.
+   * @param {string} command
+   */
+  function deletedBy(command) {
+    /** @type {string | undefined} */
+    let folder = root
+    /** @type {string[]} */
+    const paths = []
+    for (const segment of command.split(/&&|\|\||[;|\n]/)) {
+      const words = wordsOf(segment)
+      if (words[0]?.text === 'sudo') words.shift()
+      const [first, second] = words
+      if (first?.text === 'cd') {
+        const to = second && !second.quote && GLOB.test(second.text) ? undefined : second
+        folder = to && folder !== undefined ? path.resolve(folder, to.text) : undefined
+        continue
+      }
+      const named =
+        first?.text === 'rm' || first?.text === 'unlink'
+          ? words.slice(1)
+          : first?.text === 'git' && second?.text === 'rm'
+            ? words.slice(2)
+            : undefined
+      if (!named || folder === undefined) continue
+      let options = true
+      for (const { text, quote } of named) {
+        if (!quote && REDIRECT.test(text)) break
+        if (options && !quote && text === '--') {
+          options = false
+          continue
+        }
+        if (options && !quote && text.startsWith('-')) continue
+        if (!text || (quote === '"' && EXPANDED.test(text))) continue
+        if (!quote && GLOB.test(text)) continue
+        paths.push(path.resolve(folder, text))
+      }
+    }
+    return paths
   }
 
   /** The agent's own scripts pass: an answer may quote anything. */
@@ -400,10 +487,42 @@ function hooksFor({ comment, root, lockRoot, agent }) {
           "the other comments' agents. Make the change with the Edit or Write tool instead."
         )
       }
+      // The answer lists the files the run changed as the command starts: a
+      // deletion in the same command would be missing from it.
+      const resolving = RESOLVE.exec(command)
+      if (resolving && deletedBy(command.slice(0, resolving.index)).length) {
+        await log(`refused a deletion with the answer: ${short(command, 120)}`)
+        await record([
+          {
+            ...step,
+            state: 'failed',
+            error: 'deletes files in the command that answers',
+          },
+        ])
+        return (
+          'Delete files in a command of their own, before the one that answers: ' +
+          'the answer lists the files the run changed when it starts.'
+        )
+      }
       const target = writeTarget(tool, input)
       if (target) {
         const deny = await lockTarget(target, step)
         if (deny) return deny
+      }
+      // A file Write makes, not one it overwrites: the run added it.
+      const written = tool === 'Write' ? textOf(input, 'file_path') : undefined
+      if (written && (await presence(path.resolve(root, written))) === 'missing')
+        step.created = true
+      // What the command names to delete and is there: once gone, it was deleted.
+      if (command && !resolving) {
+        /** @type {{ path: string, folder?: true }[]} */
+        const removing = []
+        for (const file of deletedBy(command)) {
+          const is = await presence(file)
+          if (is === 'file') removing.push({ path: file })
+          else if (is === 'folder') removing.push({ path: file, folder: true })
+        }
+        if (removing.length) step.removing = removing
       }
       await record([{ ...step, state: 'running' }])
       return undefined
@@ -440,11 +559,31 @@ function hooksFor({ comment, root, lockRoot, agent }) {
         await unlock('@build')
         await log('build ended: released the build lock')
       }
-      await record([step])
+      // What was there as the command started and is gone, even when the
+      // command failed past the deletion.
+      const started = id
+        ? (await readProgress(project, comment)).find((one) => one.id === id)
+        : undefined
+      /** @type {Step[]} */
+      const deleted = []
+      /** @type {string | undefined} The first file it deleted, for the git branch. */
+      let removed
+      for (const { path: file, folder } of started?.removing ?? []) {
+        if ((await presence(file)) !== 'missing') continue
+        removed ??= file
+        deleted.push({
+          at: step.at,
+          ...fileStep('delete', file),
+          ...(folder && { folder }),
+          state: 'done',
+        })
+      }
+      await record([step, ...deleted])
       // After the step: a comments file it cannot lock never leaves it running.
       const target = writeTarget(tool, input)
-      if (!failed && found && target && target !== '@build') {
-        await noteWrite(found, target).catch((why) =>
+      const changed = !failed && target && target !== '@build' ? target : removed
+      if (found && changed) {
+        await noteWrite(found, changed).catch((why) =>
           log(`could not record the git branch: ${String(why)}`),
         )
       }

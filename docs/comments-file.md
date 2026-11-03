@@ -96,7 +96,8 @@ copy.
   "at": "…" }
 { "id": "m3", "author": "reader", "body": "Café torréfié la semaine où tu le bois",
   "choices": ["Café torréfié la semaine où tu le bois"], "at": "…", "sentAt": "…" }
-{ "id": "m4", "run": "r2", "author": "claude", "body": "Le titre est changé.", "at": "…" }
+{ "id": "m4", "run": "r2", "author": "claude", "body": "Le titre est changé.",
+  "changed": ["src/pages/Home.tsx"], "at": "…" }
 ```
 
 | Field | Type | Notes |
@@ -109,6 +110,8 @@ copy.
 | `question` | `true`, Claude only | A question rather than an answer. |
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
+| `changed` | string[], Claude only | The files the run it closes (an answer or a question) changed, each once: those its file tools wrote (`edit`, `write`, `multiedit`, not failed; a write from Bash is refused) and those `rm`, `git rm` or `unlink` deleted (`delete` steps). Relative to the project (`../api/x.ts` out of it, in the repository), a file outside the repository by its absolute path, a deleted folder with a `/` at its end (the files the run changed in it left out); absent when it changed none. The widget lists them under the message, folded into a count past one, each a link to the project's editor (none for a deleted file), its icon green when added, orange when modified, red when deleted; one out of the project shows an _external_ badge, its full path on hover. |
+| `added`, `deleted` | string[], with `changed` | Those of `changed` the run created (a `write` with `created`) or deleted (a `delete` step), by what it did last: a file it added then deleted is no change, one it deleted then wrote again is modified. Absent when empty. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
 | `elements` | PickedElement[], reader only | The element they picked in the page with it, one at most, in a list: its `selector`, `tag`, `text` and `html`, cut and redacted as `anchor.element`'s, and `route`, the page it was on, which may be another than the comment's. Older messages may hold several. |
@@ -150,7 +153,8 @@ copy.
 | `switched` | GitPlace, optional | A later write of the run found the project elsewhere: the last such place other than the first. A write back where it first wrote records nothing. |
 
 The hooks record one per run, after its first file of the repository written
-by Edit, Write, MultiEdit or NotebookEdit, where the project then was in git,
+by Edit, Write, MultiEdit or NotebookEdit, or deleted with `rm`, where the
+project then was in git,
 so the thread keeps where its changes went after a branch switch or a reload.
 The widget flags a run that wrote elsewhere (another branch, commit or
 worktree) than where its `working` event's `git` says it started, or that
@@ -163,8 +167,8 @@ worktree) than where its `working` event's `git` says it started, or that
 ```
 
 `at` is the time of its `stopped` event, the reader's or the agent's. `changed` lists the files the stopped
-run had written, relative to the repository: a failed write is not counted,
-and one cut short by the stop is. `steps` counts its tool calls, not its
+run had changed, by the rules of a message's `changed`; a write cut short by
+the stop is counted. `steps` counts its tool calls, not its
 thinking or messages.
 
 ### States and moves
@@ -201,9 +205,9 @@ stateDiagram-v2
 | Move | Trigger | `by` | Also writes |
 | --- | --- | --- | --- |
 | `open → working` | `claim.mjs` | agent | A new `run` in the event. Claimed again while working, it stays in its run. It prints its `claimed` line, then the comment for its agent as JSON: `route`, `url`, `anchor`, `state`, `messages` (the reader's comment and the 19 latest, `elided` saying how many it left out, their `images` as absolute paths) and `cancellation`; `url`, `elided` and `cancellation` only when set. |
-| `working → asking` | `ask.mjs` | agent | A `claude` message with `question` and `run`. |
-| `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`. |
-| `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`. |
+| `working → asking` | `ask.mjs` | agent | A `claude` message with `question`, `run`, and `changed` when it changed files. |
+| `working → resolved` | `resolve.mjs`, on a thread never resolved | agent | A `claude` message with `run`, and `changed` when it changed files. |
+| `working → answered` | `resolve.mjs`, on a thread resolved before | agent | A `claude` message with `run`, and `changed` when it changed files. |
 | `open` or `working → stopped` | PATCH `cancelled: true` | reader | The `cancellation`, with the `run`. |
 | `working → stopped` | `hook.mjs ended`, run by the hooks once the comment's agent ended its turn without answering or asking, on a run it claimed or that names no agent | agent | The `cancellation`, with the `run`. |
 | `asking`, `answered` or `resolved → open` | PATCH `followUp`, `choices`, `images` and/or `elements` or `area` | reader | A `reader` message, with `sentAt`. |
@@ -301,7 +305,7 @@ one line each.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `at` | number | Milliseconds since the epoch. |
-| `kind` | string | `start` (the claim), `read`, `edit`, `write`, `multiedit`, `bash`, `search`, `web`, `mcp`, `skill`, `tool` (any other tool), `thinking`, `message`. |
+| `kind` | string | `start` (the claim), `read`, `edit`, `write`, `multiedit`, `delete` (a path `rm`, `git rm` or `unlink` named, there as the command started and gone once it ended, even when it failed: one step each, after its `bash` step; best effort, what the shell expands left out), `bash`, `search`, `web`, `mcp`, `skill`, `tool` (any other tool), `thinking`, `message`. |
 | `label` | string | The file, from the project; the command's description; the pattern, the host, `server · tool`… Empty for thinking the API redacted. Up to 400 characters for thinking and messages. |
 | `id` | string, tools only | Claude Code's `tool_use_id`: the debug panel finds the call in the transcripts with it. |
 | `state` | `running`, `done` or `failed`, tools only | |
@@ -309,16 +313,23 @@ one line each.
 | `run` | `r1`, `r2`… | The run it belongs to: the hooks write it from `claim.mjs`'s output, and the store adds it to untagged steps when it archives them. |
 | `agent` | string | The Claude Code agent that called the tool (`main` for a session's main loop). Runs of one comment may have different agents. |
 | `model`, `complexity` | `start` only, optional | As on the `working` event: the widget reads "Started on haiku". |
+| `created` | `true`, optional, `write` only | The file did not exist before it. |
+| `external` | string, optional | A file tool's (`read`, `edit`, `write`, `multiedit`) or a `delete`, on a file outside the repository: its absolute path, `label` holding only its name. |
+| `folder` | `true`, optional, `delete` only | The path was a folder. |
+| `removing` | `{ path, folder? }[]`, optional, `bash` only | Written as the command starts: what it names to delete and is there, by absolute path; those gone once it ended become `delete` steps. A command that answers (`resolve.mjs`, `ask.mjs`) may not delete: the answer lists the files as it starts. |
 
 `<id>.jsonl` exists only while a run is in progress. When the run ends
-(`ask.mjs`, `resolve.mjs`, a stop, the reader resolving), the store moves its
+(`ask.mjs`, `resolve.mjs`, a stop, the reader resolving), the store keeps
+the files it changed in the comments file (the `changed` of Claude's message
+for an answer or a question, of the cancellation for a stop; nowhere when the
+reader resolves it, with no message to file them under), then moves its
 lines to `<id>.history.jsonl` with a dev build of the widget, or drops them,
 and the hooks add the ending script's own step, done, to the history.
 
 The server never writes steps into `comments.json`. It serves them with the
 comments: `progress`, the last 10 steps of the run in progress; `edited:
-true` once one of that run's steps started writing a file (`edit`, `write`
-or `multiedit`, not failed), which greys out a drawn area, as the page under
+true` once that run changed a file, as a message's `changed` counts them (a
+write started, or a deletion), which greys out a drawn area, as the page under
 it may have changed (a stopped comment's `cancellation.changed` does the
 same); and with `history=1` (the debug panel), `history`, every step of every run. With a dev
 widget, `GET /api/debug/steps/<id>` serves both files as they are on disk,

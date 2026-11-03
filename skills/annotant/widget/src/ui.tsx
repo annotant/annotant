@@ -32,6 +32,7 @@ const PATHS = {
   'file-text': 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
   pencil: 'M4 20l1-5L16 4l4 4L9 19zM14 6l4 4',
   'file-plus': 'M6 3h8l4 4v14H6zM14 3v4h4M12 11v6M9 14h6',
+  'file-minus': 'M6 3h8l4 4v14H6zM14 3v4h4M9 14h6',
   terminal: 'M4 5h16v14H4zM8 10l3 2-3 2M13 15h4',
   search: 'M16 16l4 4M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z',
   plug: 'M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5',

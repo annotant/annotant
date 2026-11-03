@@ -616,3 +616,244 @@ test('the list keeps each thread its date', async () => {
 
   expect((await screen.findByTestId('an-summary')).querySelector('time')).not.toBeNull()
 })
+
+test('each answer lists the files its own run changed, folded into a count past one', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      state: 'answered',
+      messages: [
+        {
+          author: 'claude',
+          body: 'The title is bigger.',
+          at,
+          run: 'r1',
+          changed: ['src/data.ts', 'src/pages/Home.tsx'],
+        },
+        { author: 'reader', body: 'And the footer, everywhere', at },
+        {
+          author: 'claude',
+          body: 'Done.',
+          at,
+          run: 'r2',
+          changed: ['a.ts', 'b.ts', 'c.ts', 'd.ts'],
+        },
+        { author: 'reader', body: 'Why?', at },
+        { author: 'claude', body: 'It reads better.', at, run: 'r3' },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const lists = await screen.findAllByTestId('an-changed')
+  // The answer that changed nothing shows nothing.
+  expect(lists).toHaveLength(2)
+  const [first, second] = lists
+  if (!first || !second) throw new Error('two lists expected')
+  fireEvent.click(within(first).getByRole('button', { name: '2 files changed' }))
+  expect(
+    within(first)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['src/data.ts', 'src/pages/Home.tsx'])
+  const toggle = within(second).getByRole('button', { name: '4 files changed' })
+  expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  expect(within(second).queryByRole('listitem')).toBeNull()
+  fireEvent.click(toggle)
+  expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  expect(
+    within(second)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'])
+})
+
+test('a question lists the file its run changed by name', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer([
+    comment({
+      state: 'asking',
+      messages: [
+        {
+          author: 'claude',
+          body: 'Which blue?',
+          at,
+          run: 'r1',
+          question: true,
+          changed: ['a.ts'],
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const list = await screen.findByRole('list', { name: '1 file changed' })
+  expect(
+    within(list)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['a.ts'])
+  expect(within(screen.getByTestId('an-changed')).queryByRole('button')).toBeNull()
+})
+
+test("each changed file opens in the project's editor", async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: 'cursor' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const link = await screen.findByRole('link', { name: 'src/App.tsx' })
+  expect(link.getAttribute('href')).toBe('cursor://file/work/shop/src/App.tsx:1')
+  expect(link.getAttribute('title')).toBe('Open in Cursor')
+})
+
+test('a changed file is no link when the project turned the editor off', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: false },
+  )
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByText('src/App.tsx')
+  expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
+})
+
+test('a changed file says how to name another editor than the assumed VS Code', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const link = await screen.findByRole('link', { name: 'src/App.tsx' })
+  expect(link.getAttribute('title')).toBe(
+    'Open in VS Code (another editor: "editor" in .annotant.json)',
+  )
+})
+
+test('a changed file says the editor setting names nothing it can open', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  onTestFinished(() => warn.mockRestore())
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          { author: 'claude', body: 'Done.', at, run: 'r1', changed: ['src/App.tsx'] },
+        ],
+      }),
+    ],
+    { project: '/work/shop', editor: 'webstorm' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  await waitFor(() =>
+    expect(screen.getByText('src/App.tsx').getAttribute('title')).toBe(
+      '"editor" in .annotant.json names no editor Annotant can open',
+    ),
+  )
+  expect(screen.queryByRole('link', { name: 'src/App.tsx' })).toBeNull()
+})
+
+test('a file out of the project is marked external, its path shown on hover', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/App.tsx', '/tmp/plan/notes.md'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '2 files changed' }))
+  const notes = screen.getByRole('link', { name: 'notes.md' })
+  expect(notes.getAttribute('href')).toBe('vscode://file/tmp/plan/notes.md:1')
+  const items = screen.getAllByRole('listitem')
+  expect(within(items[0]!).queryByText('external')).toBeNull()
+  expect(within(items[1]!).getByText('external').getAttribute('title')).toBe(
+    '/tmp/plan/notes.md',
+  )
+})
+
+test('each changed file says whether the run added, modified or deleted it', async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  fakeServer(
+    [
+      comment({
+        state: 'resolved',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/new.ts', 'src/App.tsx', 'src/old.ts'],
+            added: ['src/new.ts'],
+            deleted: ['src/old.ts'],
+          },
+        ],
+      }),
+    ],
+    { project: '/work/shop' },
+  )
+  openThread('c1')
+  renderWidget()
+
+  fireEvent.click(await screen.findByRole('button', { name: '3 files changed' }))
+  const list = within(screen.getByTestId('an-changed')).getByRole('list')
+  expect(
+    within(list)
+      .getAllByRole('img')
+      .map((icon) => icon.getAttribute('aria-label')),
+  ).toEqual(['Added', 'Modified', 'Deleted'])
+  // A deleted file has nothing left to open.
+  expect(
+    within(list)
+      .getAllByRole('link')
+      .map((link) => link.textContent),
+  ).toEqual(['src/new.ts', 'src/App.tsx'])
+})

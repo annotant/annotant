@@ -22,6 +22,13 @@ test('says what a running tool is doing', () => {
   )
 })
 
+test('says a file was deleted, not only its name', () => {
+  assert.equal(
+    activityOf(step({ kind: 'delete', label: 'src/old.ts', state: 'done' })),
+    'Deleted src/old.ts',
+  )
+})
+
 test('words the claim itself as starting, not as a tool', () => {
   assert.equal(
     activityOf(step({ kind: 'start', label: 'Started', state: 'running' })),

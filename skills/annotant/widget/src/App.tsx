@@ -131,6 +131,7 @@ import {
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
+import { editorLink, locate, type Editor } from './editor'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -181,6 +182,7 @@ const STEP_ICONS: Record<string, IconName> = {
   read: 'file-text',
   edit: 'pencil',
   write: 'file-plus',
+  delete: 'file-minus',
   multiedit: 'pencil',
   bash: 'terminal',
   search: 'search',
@@ -411,6 +413,112 @@ function Message({
     >
       {children}
       <DateTime className={dated ? 'an-message-time' : 'an-visually-hidden'} at={at} />
+    </div>
+  )
+}
+
+/** No file: `added` and `deleted` when the message has none. */
+const NONE: string[] = []
+
+/** What the run did to a file: its icon and the word that says it (its colour: `an-changed--*`). */
+const CHANGES = {
+  added: { icon: 'file-plus', label: 'Added' },
+  modified: { icon: 'file-text', label: 'Modified' },
+  deleted: { icon: 'file-minus', label: 'Deleted' },
+} as const
+
+/**
+ * The files the run behind Claude's message changed, under it: by name when
+ * it changed one, else folded into a count that opens on a click. Each but a
+ * deleted one opens in the project's editor, once the server said where the
+ * project is and unless `editor` is `false`; one out of the project is marked
+ * external.
+ */
+function ChangedFiles({
+  files,
+  added = NONE,
+  deleted = NONE,
+  editor,
+  editorIgnored,
+  root,
+}: {
+  files: string[]
+  added?: string[] | undefined
+  deleted?: string[] | undefined
+  editor: Editor | undefined
+  editorIgnored?: true | undefined
+  root: string | undefined
+}) {
+  const [open, setOpen] = useState(false)
+  const folds = files.length > 1
+  const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
+  return (
+    <div className="an-changed" data-testid="an-changed">
+      {folds && (
+        <button
+          type="button"
+          className="an-changed-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <Icon name="chevron-down" />
+          {count}
+        </button>
+      )}
+      {(!folds || open) && (
+        <ul aria-label={folds ? undefined : count}>
+          {files.map((file) => {
+            const { name, path, external } = locate(root, file)
+            const status = deleted.includes(file)
+              ? 'deleted'
+              : added.includes(file)
+                ? 'added'
+                : 'modified'
+            const change = CHANGES[status]
+            return (
+              <li key={file} className={`an-changed--${status}`}>
+                <span
+                  className="an-change"
+                  role="img"
+                  aria-label={change.label}
+                  title={change.label}
+                >
+                  <Icon name={change.icon} />
+                </span>
+                {/* A deleted file has nothing left to open. */}
+                {editor && path && status !== 'deleted' ? (
+                  <a
+                    href={editorLink(editor, path)}
+                    title={
+                      editor.assumed
+                        ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
+                        : `Open in ${editor.name}`
+                    }
+                  >
+                    <code>{name}</code>
+                  </a>
+                ) : (
+                  <code
+                    title={
+                      editorIgnored && status !== 'deleted'
+                        ? '"editor" in .annotant.json names no editor Annotant can open'
+                        : undefined
+                    }
+                  >
+                    {name}
+                  </code>
+                )}
+                {external && (
+                  // Out of the project: the badge tells where, on hover.
+                  <span className="an-external" title={path ?? file}>
+                    external
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
@@ -890,7 +998,13 @@ function focusedElement() {
 
 export default function App({ root }: { root: Element }) {
   const route = useRoute()
-  const { theme, repository } = useServerSettings()
+  const {
+    theme,
+    repository,
+    root: projectRoot,
+    editor,
+    editorIgnored,
+  } = useServerSettings()
   const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
@@ -2260,6 +2374,16 @@ export default function App({ root }: { root: Element }) {
                   <Markdown text={message.body} repository={repository} />
                 </div>
               )}
+              {message.changed?.length ? (
+                <ChangedFiles
+                  files={message.changed}
+                  added={message.added}
+                  deleted={message.deleted}
+                  editor={editor}
+                  editorIgnored={editorIgnored}
+                  root={projectRoot}
+                />
+              ) : null}
               <WrittenOn comment={comment} run={message.run} />
             </Message>
           ) : (
