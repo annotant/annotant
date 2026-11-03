@@ -364,9 +364,9 @@ code { font-family: var(--cb-mono); }
 .an-bubble--claude { width: 100%; background: var(--cb-bubble); color: var(--cb-text); }
 /* The files the run behind an answer wrote, under it: a quiet list, folded into a count when long. */
 .an-changed { display: flex; flex-direction: column; gap: 2px; align-self: stretch; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
-.an-changed ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.an-changed ul { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
 .an-changed li { min-width: 0; border: 1px solid transparent; border-radius: 8px; }
-.an-file-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 30px; padding: 3px 4px 3px 6px; }
+.an-file-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 4px 0 6px; }
 .an-file-path { min-width: 0; font-size: 12px; line-height: 16px; color: var(--cb-text); overflow-wrap: anywhere; }
 .an-file-dir { color: var(--cb-muted); }
 .an-file-fill { flex: 1; }
@@ -393,8 +393,8 @@ code { font-family: var(--cb-mono); }
 .an-file-action--off { opacity: .5; cursor: help; }
 .an-file-action--off:hover { background: none; }
 .an-changed .an-file-action svg { width: 12px; height: 12px; }
-.an-changed li.an-file--open { border-color: var(--cb-border); background: var(--cb-surface); overflow: hidden; }
-.an-file--open .an-file-head { background: var(--cb-surface-2); border-bottom: 1px solid var(--cb-border); }
+.an-changed li.an-file--open { margin: 4px 0; border-color: var(--cb-border); background: var(--cb-surface); overflow: hidden; }
+.an-file--open .an-file-head { min-height: 30px; background: var(--cb-surface-2); border-bottom: 1px solid var(--cb-border); }
 .an-file--open .an-file-action:hover { background: var(--cb-border); }
 .an-diff { max-height: 320px; overflow: auto; font: 12px/18px var(--cb-mono); color: var(--cb-text); }
 .an-diff--note { padding: 6px 10px; font-family: var(--cb-font); color: var(--cb-muted); }
