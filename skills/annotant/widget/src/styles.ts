@@ -366,7 +366,10 @@ code { font-family: var(--cb-mono); }
 .an-changed { display: flex; flex-direction: column; gap: 2px; align-self: stretch; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
 .an-changed ul { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
 .an-changed li { min-width: 0; border: 1px solid transparent; border-radius: 8px; }
-.an-file-head { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 4px 0 6px; }
+.an-file-head { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 4px 0 6px; border-radius: 7px; transition: background .15s; }
+/* The whole row of a closed file unfolds its diff, as its name does; its actions stay on top. */
+.an-file-head:has(.an-file-name):hover { background: var(--cb-surface-2); }
+.an-file-head .an-file-action, .an-file-head .an-external { position: relative; z-index: 1; }
 .an-file-path { min-width: 0; font-size: 12px; line-height: 16px; color: var(--cb-text); overflow-wrap: anywhere; }
 .an-file-dir { color: var(--cb-muted); }
 .an-file-fill { flex: 1; }
@@ -387,15 +390,14 @@ code { font-family: var(--cb-mono); }
 .an-file-name { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .an-file-name > svg { color: var(--cb-muted); transform: rotate(-90deg); transition: transform .15s; }
 .an-file-name[aria-expanded="true"] > svg { transform: none; }
-.an-file-name:hover .an-file-path { text-decoration: underline; text-underline-offset: 2px; }
+.an-file-name::after { content: ""; position: absolute; inset: 0; }
 .an-file-action { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; height: 24px; padding: 0 6px; border: none; border-radius: 6px; background: none; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
-.an-file-action:hover { color: var(--cb-text); background: var(--cb-surface-2); }
+.an-file-action:hover { color: var(--cb-text); background: var(--cb-border); }
 .an-file-action--off { opacity: .5; cursor: help; }
 .an-file-action--off:hover { background: none; }
 .an-changed .an-file-action svg { width: 12px; height: 12px; }
 .an-changed li.an-file--open { margin: 4px 0; border-color: var(--cb-border); background: var(--cb-surface); overflow: hidden; }
-.an-file--open .an-file-head { min-height: 30px; background: var(--cb-surface-2); border-bottom: 1px solid var(--cb-border); }
-.an-file--open .an-file-action:hover { background: var(--cb-border); }
+.an-file--open .an-file-head { min-height: 30px; border-radius: 0; background: var(--cb-surface-2); border-bottom: 1px solid var(--cb-border); }
 .an-diff { max-height: 320px; overflow: auto; font: 12px/18px var(--cb-mono); color: var(--cb-text); }
 .an-diff--note { padding: 6px 10px; font-family: var(--cb-font); color: var(--cb-muted); }
 .an-diff-hunk { min-width: 100%; width: max-content; }
