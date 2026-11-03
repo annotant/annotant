@@ -17,7 +17,7 @@ function renderOpen(layout: object = {}) {
     .mockImplementation(() => new Animation())
   onTestFinished(() => animate.mockRestore())
   const view = renderWidget()
-  return { ...view, panel: () => screen.getByTestId('annotant-panel') }
+  return { ...view, animate, panel: () => screen.getByTestId('annotant-panel') }
 }
 
 test('the panel moves to the left and back, kept for the next tabs', () => {
@@ -36,13 +36,22 @@ test('the panel moves to the left and back, kept for the next tabs', () => {
   expect(stored()).not.toHaveProperty('side')
 })
 
-test('the docked panel squeezes the page on its own side', () => {
-  renderOpen({ docked: true, width: 500, side: 'left' })
+test('the docked panel squeezes the page on its own side, and gives it back as it closes', () => {
+  const { animate } = renderOpen({ docked: true, width: 500, side: 'left' })
   const html = document.documentElement
   expect(html.style.paddingLeft).toBe('500px')
   expect(html.style.paddingRight).toBe('')
 
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  expect(html.style.paddingLeft).toBe('')
+  expect(animate.mock.calls.at(-1)?.[0]).toEqual([{ paddingLeft: '500px', offset: 0 }])
+  fireEvent.click(screen.getByRole('button', { name: 'Comments' }))
+  expect(html.style.paddingLeft).toBe('500px')
+
+  // Moved to the other side, the page is squeezed there at once.
+  animate.mockClear()
   fireEvent.click(screen.getByRole('button', { name: 'Move to the right' }))
+  expect(animate).not.toHaveBeenCalled()
   expect(html.style.paddingLeft).toBe('')
   expect(html.style.paddingRight).toBe('500px')
 
