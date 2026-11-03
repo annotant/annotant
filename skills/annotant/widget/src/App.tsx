@@ -135,7 +135,7 @@ import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
 import { editorLink, locate, type Editor } from './editor'
-import { FileDiffView } from './diff'
+import { FileDiffView, type LineCounts } from './diff'
 import { SettingsDialog } from './settings'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
@@ -478,6 +478,8 @@ function ChangedFiles({
     if (!next.delete(file)) next.add(file)
     setShown(next)
   }
+  // How many lines the run changed in each file whose diff was loaded.
+  const [counts, setCounts] = useState<Readonly<Record<string, LineCounts>>>({})
   // The file whose path was just copied, ticked for a moment.
   const [copied, setCopied] = useState<string>()
   const copyPath = async (file: string) => {
@@ -523,79 +525,117 @@ function ChangedFiles({
                 key={file}
                 className={`an-changed--${status}${shown.has(file) ? ' an-file--open' : ''}`}
               >
-                <span
-                  className="an-change"
-                  role="img"
-                  aria-label={change.label}
-                  title={change.label}
-                >
-                  <Icon name={change.icon} />
-                </span>
-                {/* The name unfolds the run's diff; a deleted folder has no lines. */}
-                {diffOf && !file.endsWith('/') ? (
+                <div className="an-file-head">
+                  <span
+                    className="an-change"
+                    role="img"
+                    aria-label={change.label}
+                    title={change.label}
+                  >
+                    <Icon name={change.icon} />
+                  </span>
+                  {/* The name unfolds the run's diff; a deleted folder has no lines. */}
+                  {diffOf && !file.endsWith('/') ? (
+                    <button
+                      type="button"
+                      className="an-file-name"
+                      // The visible path, whole: its folders are a span of their own.
+                      aria-label={name}
+                      aria-expanded={shown.has(file)}
+                      title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
+                      onClick={() => toggleDiff(file)}
+                    >
+                      <Icon name="chevron-down" />
+                      <FilePath name={name} />
+                    </button>
+                  ) : (
+                    <FilePath name={name} />
+                  )}
+                  {external && (
+                    // Out of the project: the badge tells where, on hover.
+                    <span className="an-external" title={path ?? file}>
+                      external
+                    </span>
+                  )}
+                  <span className="an-file-fill" />
+                  {counts[file] && <LineCountsView counts={counts[file]} />}
                   <button
                     type="button"
-                    className="an-file-name"
-                    aria-expanded={shown.has(file)}
-                    title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
-                    onClick={() => toggleDiff(file)}
-                  >
-                    <code>{name}</code>
-                  </button>
-                ) : (
-                  <code>{name}</code>
-                )}
-                {external && (
-                  // Out of the project: the badge tells where, on hover.
-                  <span className="an-external" title={path ?? file}>
-                    external
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className="an-file-action"
-                  aria-label={`Copy the path of ${name}`}
-                  title={copied === file ? 'Copied' : 'Copy the path'}
-                  onClick={() => void copyPath(file)}
-                >
-                  <Icon name={copied === file ? 'check' : 'copy'} />
-                </button>
-                {/* A deleted file has nothing left to open. */}
-                {editor && path && status !== 'deleted' ? (
-                  <a
                     className="an-file-action"
-                    href={editorLink(editor, path, firstLines?.[file])}
-                    aria-label={`Open ${name} in ${editor.name}`}
-                    title={
-                      editor.assumed
-                        ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
-                        : `Open in ${editor.name}`
-                    }
+                    aria-label={`Copy the path of ${name}`}
+                    title={copied === file ? 'Copied' : 'Copy the path'}
+                    onClick={() => void copyPath(file)}
                   >
-                    <Icon name="external" />
-                    Open
-                  </a>
-                ) : (
-                  editorIgnored &&
-                  status !== 'deleted' && (
-                    <span
-                      className="an-file-action an-file-action--off"
+                    <Icon name={copied === file ? 'check' : 'copy'} />
+                  </button>
+                  {/* A deleted file has nothing left to open. */}
+                  {editor && path && status !== 'deleted' ? (
+                    <a
+                      className="an-file-action"
+                      href={editorLink(editor, path, firstLines?.[file])}
+                      aria-label={`Open ${name} in ${editor.name}`}
                       title={
-                        '"editor" in .annotant.json names no editor Annotant can open'
+                        editor.assumed
+                          ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
+                          : `Open in ${editor.name}`
                       }
                     >
                       <Icon name="external" />
                       Open
-                    </span>
-                  )
+                    </a>
+                  ) : (
+                    editorIgnored &&
+                    status !== 'deleted' && (
+                      <span
+                        className="an-file-action an-file-action--off"
+                        title={
+                          '"editor" in .annotant.json names no editor Annotant can open'
+                        }
+                      >
+                        <Icon name="external" />
+                        Open
+                      </span>
+                    )
+                  )}
+                </div>
+                {diffOf && shown.has(file) && (
+                  <FileDiffView
+                    load={() => diffOf(file)}
+                    onCounts={(loaded) =>
+                      setCounts((current) => ({ ...current, [file]: loaded }))
+                    }
+                  />
                 )}
-                {diffOf && shown.has(file) && <FileDiffView load={() => diffOf(file)} />}
               </li>
             )
           })}
         </ul>
       )}
     </div>
+  )
+}
+
+/** A file's path, its folders dimmed so its name stands out. */
+function FilePath({ name }: { name: string }) {
+  const cut = name.lastIndexOf('/') + 1
+  return (
+    <code className="an-file-path">
+      {cut > 0 && <span className="an-file-dir">{name.slice(0, cut)}</span>}
+      {name.slice(cut)}
+    </code>
+  )
+}
+
+/** The lines a run added to a file (green) and removed from it (red), when any. */
+function LineCountsView({ counts }: { counts: LineCounts }) {
+  return (
+    <span
+      className="an-file-counts"
+      aria-label={`${counts.added} added, ${counts.removed} removed`}
+    >
+      {counts.added > 0 && <span className="an-file-added">+{counts.added}</span>}
+      {counts.removed > 0 && <span className="an-file-removed">−{counts.removed}</span>}
+    </span>
   )
 }
 

@@ -19,7 +19,7 @@ released to the `stable` branch.
   follow-up to their comment, keep the ones they had. (#224)
 - **See what each run did to a file.** A click on a file an answer lists
   shows that run's own diff of it, added lines green and removed
-  ones red: the file before the run's first write and after its last, not
+  ones red, with their line numbers and how many it added and removed: the file before the run's first write and after its last, not
   what you or another agent changed in it before or after the run. A file
   over 256 KB, not text, or outside the repository, shows none. Beside it, a
   button copies its path in the project, and _Open_ opens it in your editor

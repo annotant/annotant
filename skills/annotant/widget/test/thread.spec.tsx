@@ -777,6 +777,18 @@ test("a changed file's name shows its run's own diff; Open opens it at the first
     'removed:const b = 2',
     'added:const b = 3',
   ])
+  // Each line's number before and after the run.
+  expect(
+    [...diff.querySelectorAll('.an-diff-line')].map((line) =>
+      [...line.querySelectorAll('.an-diff-num')].map((cell) => cell.textContent),
+    ),
+  ).toEqual([
+    ['11', '11'],
+    ['12', ''],
+    ['', '12'],
+  ])
+  // Once loaded, the file's head counts the lines the run added and removed.
+  expect(within(first).getByLabelText('1 added, 1 removed').textContent).toBe('+1−1')
 
   fireEvent.click(within(first).getByRole('button', { name: 'src/big.json' }))
   expect(await within(first).findByText('Too large to show.')).toBeTruthy()
@@ -839,7 +851,7 @@ test('a changed file is no link when the project turned the editor off', async (
   openThread('c1')
   renderWidget()
 
-  await screen.findByText('src/App.tsx')
+  await screen.findByRole('button', { name: 'src/App.tsx' })
   expect(screen.queryByRole('link', { name: /^Open / })).toBeNull()
   expect(screen.queryByText('Open')).toBeNull()
 })
