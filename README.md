@@ -70,6 +70,13 @@ follow up; cancel to stop it.
   ("haiku · trivial"). A comment of images alone is not classified: it
   starts on the session's model at a medium effort. See
   [Models](docs/comments-file.md#models).
+- **You see where the agents write.** The panel's foot names the branch your
+  project is on (its commit on a detached HEAD), and its worktree when it is
+  not the main checkout, in amber on the default branch. Each answer of
+  Claude's names the branch its run changed files on, kept after a branch
+  switch; a run that started on one branch (or commit) and wrote on another is
+  flagged.
+  Outside a git repository, nothing shows.
 - **The widget follows your app's theme.** `init` finds how your app switches
   between light and dark (Tailwind's `darkMode`, `next-themes`, a `.dark`
   class or a `data-theme` attribute, the OS setting) and writes it as `theme`

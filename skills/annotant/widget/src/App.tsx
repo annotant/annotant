@@ -30,11 +30,14 @@ import {
   updateComment,
   useAllComments,
   useComments,
+  type GitNow,
+  useGitPlace,
   useRoute,
   useServerSettings,
 } from './api'
 import {
   APP_ROUTE,
+  type GitPlace,
   type NewImage,
   type ReviewAnchor,
   type ReviewArea,
@@ -48,6 +51,7 @@ import {
   type Status,
   answered,
   byPanelOrder,
+  folderName,
   gaveUp,
   gist,
   isActive,
@@ -58,7 +62,9 @@ import {
   modelOf,
   openingOf,
   paused,
+  placeName,
   statusOf,
+  writtenOn,
 } from './domain'
 import { fits } from './images'
 import { DebugPanel, DebugToggle } from './debug'
@@ -819,6 +825,91 @@ function ModelLabel({ comment }: { comment: ReviewComment }) {
   )
 }
 
+/** A git place: its branch (or commit), and its worktree's folder, the full path on hover. */
+function Place({ place }: { place: GitPlace }) {
+  return (
+    <>
+      <code>{placeName(place)}</code>
+      {place.worktree && (
+        <>
+          {' in '}
+          <code title={place.worktree}>{folderName(place.worktree)}</code>
+        </>
+      )}
+    </>
+  )
+}
+
+/**
+ * Where the agents write, at the panel's foot: the project's branch, and its
+ * worktree when it is not the main checkout. On the default branch, a hint,
+ * not a block.
+ */
+function GitLabel({ place }: { place: GitNow }) {
+  const name = placeName(place)
+  return (
+    <span
+      className={`an-git ${place.default ? 'an-git--default' : ''}`}
+      data-testid="an-git"
+      title={[
+        place.default
+          ? `Claude writes on ${name}, the default branch`
+          : `Claude writes on ${name}`,
+        place.worktree && `in the worktree ${place.worktree}`,
+      ]
+        .filter(Boolean)
+        .join(', ')}
+    >
+      <Icon name="git-branch" />
+      <span className="an-git-name">{name}</span>
+      {place.worktree && (
+        <span className="an-git-name">· {folderName(place.worktree)}</span>
+      )}
+      {place.default && <span className="an-visually-hidden">(default branch)</span>}
+    </span>
+  )
+}
+
+/**
+ * Where run `run` changed files, kept on the comment; flagged when its
+ * branch, commit or worktree changed during the run.
+ */
+function WrittenOn({
+  comment,
+  run,
+}: {
+  comment: ReviewComment
+  run?: string | undefined
+}) {
+  const wrote = writtenOn(comment, run)
+  if (!wrote) return null
+  const { place, from, switched } = wrote
+  return (
+    <div
+      className={`an-written ${from || switched ? 'an-written--moved' : ''}`}
+      data-testid="an-written"
+    >
+      <Icon name="git-branch" />
+      <span>
+        {from ? (
+          <>
+            Started on <Place place={from} />, changed files on <Place place={place} />
+          </>
+        ) : (
+          <>
+            Changed files on <Place place={place} />
+          </>
+        )}
+        {switched && (
+          <>
+            , and also on <Place place={switched} />
+          </>
+        )}
+      </span>
+    </div>
+  )
+}
+
 /** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
 function pagePath(url: string | undefined): string {
   if (!url) return ''
@@ -917,6 +1008,9 @@ export default function App({ root }: { root: Element }) {
   const dark = useDark(theme)
   const [saved] = useState(() => readSession<UiState>(UI_KEY))
   const [open, setOpen] = useState(saved?.open ?? false)
+  // Where the agents write: shown at the panel's foot while it is open, except
+  // while the send hint takes the foot.
+  const gitNow = useGitPlace(open)
   // Open since the page loaded, as the tab kept it: it shows up in place, without sliding in.
   const [restored, setRestored] = useState(open)
   // Closed, but still on screen while it leaves.
@@ -2290,6 +2384,7 @@ export default function App({ root }: { root: Element }) {
                   root={projectRoot}
                 />
               ) : null}
+              <WrittenOn comment={comment} run={message.run} />
             </Message>
           ) : (
             <Message
@@ -2348,6 +2443,7 @@ export default function App({ root }: { root: Element }) {
         (comment.state === 'working' ? (
           <div data-testid="an-working">
             <CurrentStep step={comment.progress?.at(-1)} />
+            <WrittenOn comment={comment} run={comment.events.at(-1)?.run} />
           </div>
         ) : watching ? (
           <Waiting notifiedAt={openingOf(comment)?.notifiedAt} reply={isReply(comment)} />
@@ -2379,6 +2475,7 @@ export default function App({ root }: { root: Element }) {
           ) : (
             'It had not started yet.'
           )}
+          <WrittenOn comment={comment} run={comment.cancellation?.run} />
         </div>
       )}
       {paused(comment) && (
@@ -2991,11 +3088,13 @@ export default function App({ root }: { root: Element }) {
                 Annotant v{ANNOTANT_VERSION}
               </a>
             </span>
-            {composing && overflowing && (
+            {composing && overflowing ? (
               <span className="an-panel-foot-hint">
                 {drafting && cancelDraft}
                 {sendHint}
               </span>
+            ) : (
+              gitNow && <GitLabel place={gitNow} />
             )}
           </footer>
         </section>

@@ -9,6 +9,7 @@
 // this claim, and each of its lines starts with it.
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
+import { gitPlace } from './lib/git.mjs'
 import { imagesDir } from './lib/images.mjs'
 import { findProject, positional } from './lib/project.mjs'
 import { StoreRefusal, createStore, readRoute } from './lib/store.mjs'
@@ -73,6 +74,10 @@ try {
     agent: process.env.ANNOTANT_AGENT || route.agent || undefined,
     model: process.env.ANNOTANT_MODEL || route.model || undefined,
     complexity: process.env.ANNOTANT_COMPLEXITY || route.complexity || undefined,
+    // Where the run starts, to flag one that writes on another branch.
+    git: await gitPlace(project.root, (why) =>
+      console.error(`annotant: cannot tell the git branch the run starts on: ${why}`),
+    ),
   })
   // The project found and the run started, for the agent and the logs.
   console.log(`claimed ${id} (${comment.route}) project=${project.root} run=${run}`)

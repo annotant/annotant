@@ -216,6 +216,29 @@ interface ReviewEvent {
   model?: string
   /** `working` only: how the classifier sorted the comment, which picked `model`. */
   complexity?: ReviewComplexity
+  /** `working` only: where the project was in git when the agent claimed it. */
+  git?: GitPlace
+}
+
+/**
+ * Where the project is in git: its branch, or its short `commit` on a
+ * detached HEAD, and `worktree`, its checkout's folder, when it is not the
+ * repository's main one.
+ */
+export interface GitPlace {
+  branch?: string
+  commit?: string
+  worktree?: string
+}
+
+/**
+ * Where a run changed files: recorded at its first write. `switched`: a later
+ * write found the project elsewhere.
+ */
+interface ReviewWrite extends GitPlace {
+  run: string
+  at: string
+  switched?: GitPlace
 }
 
 export interface ReviewComment {
@@ -232,6 +255,8 @@ export interface ReviewComment {
   events: ReviewEvent[]
   /** Last cancelled run; kept after a re-send so the next agent sees it. */
   cancellation?: ReviewCancellation
+  /** Where each run that changed files wrote them, in git. */
+  writes?: ReviewWrite[]
   /** Latest tool calls of the agent working on it; never stored in the file. */
   progress?: ReviewProgress[]
   /** Working only: its agent has changed, or is changing, a file in this run; never stored in the file. */
@@ -447,4 +472,39 @@ export function modelOf(comment: Pick<ReviewComment, 'events'>) {
   return event?.model
     ? { id: event.model, name: modelName(event.model), complexity: event.complexity }
     : undefined
+}
+
+/** A place's name: its branch, or its commit on a detached HEAD. */
+export const placeName = (place: GitPlace) => place.branch ?? place.commit ?? ''
+
+/** A worktree's label: its folder's name; the full path goes in a title. */
+export const folderName = (worktree: string) =>
+  worktree.split(/[\\/]/).findLast(Boolean) ?? worktree
+
+// The rule of scripts/lib/git.mjs, which records the moves.
+const samePlace = (a: GitPlace, b: GitPlace) =>
+  a.branch === b.branch && a.commit === b.commit && a.worktree === b.worktree
+
+/**
+ * Where run `run` changed files, with where it started when that was
+ * elsewhere (`from`), and where a later write found the project (`switched`):
+ * either says the branch changed during the run. None when the run recorded
+ * no write.
+ */
+export function writtenOn(
+  comment: Pick<ReviewComment, 'events' | 'writes'>,
+  run: string | undefined,
+) {
+  // A hand-edited file may hold anything: none rather than a broken thread.
+  const writes = Array.isArray(comment.writes) ? comment.writes : []
+  const write = run ? writes.find((one) => one.run === run) : undefined
+  if (!write) return undefined
+  const started = comment.events.find(
+    (event) => event.state === 'working' && event.run === run,
+  )?.git
+  return {
+    place: write,
+    ...(started && !samePlace(started, write) && { from: started }),
+    ...(write.switched && { switched: write.switched }),
+  }
 }

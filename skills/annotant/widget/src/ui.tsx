@@ -46,6 +46,8 @@ const PATHS = {
   check: 'M5 12l5 5 9-11',
   grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9h.01',
+  'git-branch':
+    'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9',
 } as const
 
 export type IconName = keyof typeof PATHS

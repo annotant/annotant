@@ -15,6 +15,15 @@ released to the `stable` branch.
   that opens on a click. A run that changed nothing shows nothing. A click on
   a file, unless it was deleted, opens it in VS Code, or the editor `editor`
   names in `.annotant.json`. (#220)
+- **The widget shows where the agents write.** The panel's foot names the git
+  branch your project is on (its short commit on a detached HEAD), and its
+  worktree's folder when it is not the main checkout (the full path on
+  hover), in amber on the default branch. Under each answer (and under a run
+  at work, or stopped), the thread names the branch its run changed files on,
+  recorded at its first file written or deleted, so a later branch switch or
+  a reload keeps it; a run that started on one branch (or
+  commit) and wrote on another, or switched between two writes, is flagged. Nothing shows
+  outside a git repository. (#238)
 
 ## 0.4.0 - 2026-10-30
 

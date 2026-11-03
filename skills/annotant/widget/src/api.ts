@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { NewReviewComment, ReviewComment, ReviewCommentPatch } from './domain'
+import type {
+  GitPlace,
+  NewReviewComment,
+  ReviewComment,
+  ReviewCommentPatch,
+} from './domain'
 import { parseEditor, type Editor } from './editor'
 import { parseRepository, type Repository } from './links'
 import { parseTheme, type ThemeSetting } from './theme'
@@ -8,6 +13,7 @@ const API = new URL('api/comments', new URL('.', import.meta.url)).href
 const EVENTS = new URL('api/events', new URL('.', import.meta.url)).href
 const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
 const HEALTH = new URL('api/health', new URL('.', import.meta.url)).href
+const GIT = new URL('api/git', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -259,6 +265,76 @@ export function useServerSettings() {
     }
   }, [])
   return settings
+}
+
+/** Where the project is in git now, and whether that is its default branch. */
+export type GitNow = GitPlace & { default?: true }
+
+/** The server's answer, when it says a place; anything else says none. */
+function parseGitNow(value: unknown): GitNow | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const text = (key: string) => {
+    const field: unknown = Reflect.get(value, key)
+    return typeof field === 'string' && field ? field : undefined
+  }
+  const branch = text('branch')
+  const commit = text('commit')
+  const worktree = text('worktree')
+  const named = branch ? { branch } : commit ? { commit } : undefined
+  if (!named) return undefined
+  return {
+    ...named,
+    ...(worktree && { worktree }),
+    // Only a branch is a default one.
+    ...(branch && Reflect.get(value, 'default') === true && { default: true }),
+  }
+}
+
+/**
+ * Where the agents write: the project's branch and worktree, read again on
+ * each change the server pushes, when the reader comes back to the page (they
+ * may have switched branch in a terminal) and every POLL_MS, while `enabled`
+ * (the panel is open). Undefined outside a git repository, until the server
+ * answers, and when it fails: never a branch that may be stale.
+ */
+export function useGitPlace(enabled: boolean) {
+  const [place, setPlace] = useState<GitNow>()
+  useEffect(() => {
+    if (!enabled) return undefined
+    let live = true
+    // Each read numbered: an answer slower than a later one is dropped, never
+    // shown over it.
+    let asked = 0
+    let shown = 0
+    const show = (read: number, now: GitNow | undefined) => {
+      if (!live || read < shown) return
+      shown = read
+      setPlace((current) =>
+        JSON.stringify(current) === JSON.stringify(now) ? current : now,
+      )
+    }
+    // No server, or an older one: no branch, rather than one that may be stale.
+    const load = () => {
+      const read = ++asked
+      void request<unknown>(GIT).then(
+        (answer) => show(read, parseGitNow(answer)),
+        () => show(read, undefined),
+      )
+    }
+    load()
+    const timer = setInterval(load, POLL_MS)
+    window.addEventListener(CHANGED, load)
+    window.addEventListener('focus', load)
+    return () => {
+      live = false
+      clearInterval(timer)
+      window.removeEventListener(CHANGED, load)
+      window.removeEventListener('focus', load)
+      // Opened again, the panel waits for a fresh answer.
+      setPlace(undefined)
+    }
+  }, [enabled])
+  return place
 }
 
 export async function createComment(input: NewReviewComment): Promise<ReviewComment> {

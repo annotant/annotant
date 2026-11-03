@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
@@ -293,6 +294,28 @@ test('prints a thread under the cap whole', async (t) => {
   const { elided, bodies } = await claimThread(t, 19)
   assert.equal(elided, undefined)
   assert.equal(bodies.length, 19)
+})
+
+test('records where the project is in git on the run it opens, and nothing outside git', async (t) => {
+  const root = await tempProject(t)
+  const comments = store.createStore(projects.project(root))
+  const create = () =>
+    comments.create({
+      route: '/',
+      anchor: { section: '', quote: '', occurrence: 0 },
+      body: 'Make it blue',
+    })
+  const claim = (id) =>
+    run(process.execPath, [path.join(SCRIPTS, 'claim.mjs'), id, '--project', root])
+  const plain = await create()
+  assert.equal((await claim(plain.id)).code, 0)
+  execFileSync('git', ['init', '-q', '-b', 'feature/blue'], { cwd: root })
+  const tracked = await create()
+  assert.equal((await claim(tracked.id)).code, 0)
+  const events = async (id) =>
+    (await comments.readAll()).find((one) => one.id === id)?.events.at(-1)
+  assert.equal((await events(plain.id))?.git, undefined)
+  assert.deepEqual((await events(tracked.id))?.git, { branch: 'feature/blue' })
 })
 
 test('records the agent the hooks name in the run it opens', async (t) => {

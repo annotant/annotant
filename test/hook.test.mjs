@@ -1,7 +1,8 @@
 // scripts/hook.mjs, run as Claude Code runs a comment's agent's hooks: the
 // event as JSON on stdin, a deny as JSON on stdout.
 import assert from 'node:assert/strict'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { before, test } from 'node:test'
 import { SCRIPTS, run, tempDir, tempProject } from './helpers.mjs'
@@ -158,6 +159,145 @@ test("records a claimed run's steps, and ends the run on resolve", async (t) => 
   // Its locks went with the run.
   await w.claim(1)
   assert.equal(await w.tool(1, 'Edit', edit(path.join(w.root, 'src/App.tsx'))), undefined)
+})
+
+/**
+ * Runs git in `dir`, without the user's signing or hooks.
+ * @param {string} dir
+ * @param {string[]} args
+ */
+const git = (dir, ...args) =>
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'core.hooksPath=/dev/null',
+      ...args,
+    ],
+    { cwd: dir },
+  )
+
+test('records the branch a run wrote on, and a switch during the run', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/blue')
+  git(repo, 'commit', '-q', '--allow-empty', '-m', 'first')
+  const w = await world(t, 1, { lockRoot: repo })
+  const writes = async () => (await w.comments.readAll())[0]?.writes
+  const file = path.join(w.root, 'src/App.tsx')
+  await w.tool(0, 'Edit', edit(file))
+  // Before the claim, no run to record it in.
+  assert.equal(await writes(), undefined)
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(file))
+  assert.deepEqual(
+    (await writes())?.map((write) => ({
+      run: write.run,
+      branch: write.branch,
+      switched: write.switched,
+    })),
+    [{ run: 'r1', branch: 'feature/blue', switched: undefined }],
+  )
+  git(repo, 'switch', '-q', '-c', 'main')
+  // A failed write changed nothing.
+  await w.tool(0, 'Edit', edit(file), { error: 'String to replace not found' })
+  assert.equal((await writes())?.[0]?.switched, undefined)
+  await w.tool(0, 'Write', { file_path: file, content: 'b' })
+  assert.deepEqual((await writes())?.[0]?.switched, { branch: 'main' })
+})
+
+test('a file rm deleted records the branch as a write does', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/cleanup')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const old = path.join(w.root, 'src/old.ts')
+  await mkdir(path.dirname(old), { recursive: true })
+  await writeFile(old, 'x')
+  await w.tool(0, 'Bash', { command: 'rm src/old.ts' }, { between: () => rm(old) })
+  assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
+})
+
+test("a notebook edit is listed in the answer's files, with its branch", async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/analysis')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'NotebookEdit', {
+    notebook_path: path.join(w.root, 'src/report.ipynb'),
+    new_source: 'print(1)',
+  })
+  await w.comments.answer(w.id(0), 'Done.')
+  const [comment] = await w.comments.readAll()
+  assert.deepEqual(comment?.messages.at(-1)?.changed, ['src/report.ipynb'])
+  assert.equal(comment?.writes?.[0]?.branch, 'feature/analysis')
+})
+
+test('a build records no branch: it changes no file of its own', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'Bash', { command: 'npm run build' })
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('an rm whose first path is out of the repository records the branch of the next', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/cleanup')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const scratch = path.join(await tempDir(t), 'scratch.txt')
+  const old = path.join(w.root, 'src/old.ts')
+  await mkdir(path.dirname(old), { recursive: true })
+  await writeFile(scratch, 'x')
+  await writeFile(old, 'x')
+  await w.tool(
+    0,
+    'Bash',
+    { command: `rm ${scratch} src/old.ts` },
+    { between: () => Promise.all([rm(scratch), rm(old)]) },
+  )
+  assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
+})
+
+test('records no branch for a file written outside the repository', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'Write', {
+    file_path: path.join(await tempDir(t), 'notes.md'),
+    content: 'b',
+  })
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('a write the comments file cannot record its branch for still ends done', async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'main')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  const folder = path.dirname(w.project.commentsFile)
+  await chmod(folder, 0o555)
+  // Removed with the project by then, once the test passed.
+  t.after(() => chmod(folder, 0o755).catch(() => undefined))
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  assert.equal((await w.progress(0)).at(-1)?.state, 'done')
+  await chmod(folder, 0o755)
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
+})
+
+test('records no branch outside a git repository', async (t) => {
+  const w = await world(t)
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(path.join(w.root, 'src/App.tsx')))
+  assert.equal((await w.comments.readAll())[0]?.writes, undefined)
 })
 
 test("refuses a file another comment's agent holds, after the wait", async (t) => {

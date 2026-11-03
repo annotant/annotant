@@ -278,10 +278,17 @@ code { font-family: var(--cb-mono); }
 .an-composer-cancel { margin-left: -10px; }
 /* The hint row, moved into the foot while the content overflows. */
 .an-panel-foot-hint { display: inline-flex; align-items: center; gap: 12px; }
+.an-git { display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-family: var(--cb-mono); font-size: 12px; }
+.an-git svg, .an-written svg { flex-shrink: 0; width: 14px; height: 14px; }
+.an-git-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-git--default { color: var(--cb-amber-fg); }
+.an-written { display: flex; align-items: flex-start; gap: 4px; margin-top: 4px; font-size: 12px; color: var(--cb-muted); }
+.an-written code { overflow-wrap: anywhere; }
+.an-written--moved { padding: 4px 6px; border-radius: var(--cb-radius); background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
 .an-panel-foot-hint .an-composer-cancel { margin-left: 0; }
 /* Away from its box, the hint would only be noise: shown while the box has the focus. */
 .an-panel:not(:has(.an-composer-box:focus-within)) .an-panel-foot-hint .an-send-hint { visibility: hidden; }
-.an-composer-brand { display: inline-flex; align-items: center; gap: 8px; }
+.an-composer-brand { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 /* The mascot's head: the images are cropped to it. */
 .an-composer-brand img { width: 24px; height: 22px; }
 .an-composer-brand a { color: inherit; text-decoration: none; }

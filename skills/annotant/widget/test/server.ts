@@ -87,7 +87,8 @@ export function comment({
  * and records each PATCH. `reachable: false` fails the page's list, as when no session runs;
  * `theme` is the app's light and dark switch, as `.annotant.json` gives it;
  * `repository`, the project's, as its `origin` remote gives it; `project`, its
- * root, and `editor`, as `.annotant.json` names it.
+ * root, and `editor`, as `.annotant.json` names it; `git`, where the project
+ * is in git, as `/api/git` answers (none: an older server's 404).
  */
 export function fakeServer(
   comments: ReviewComment[],
@@ -97,12 +98,14 @@ export function fakeServer(
     repository,
     project,
     editor,
+    git,
   }: {
     reachable?: boolean
     theme?: unknown
     repository?: unknown
     project?: unknown
     editor?: unknown
+    git?: unknown
   } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
@@ -110,6 +113,9 @@ export function fakeServer(
     const url = new URL(input)
     if (url.pathname.endsWith('/api/health'))
       return Response.json({ theme, repository, project, editor })
+    if (url.pathname.endsWith('/api/git')) {
+      return git === undefined ? new Response(null, { status: 404 }) : Response.json(git)
+    }
     if (init?.method === 'PATCH') {
       const id = url.pathname.split('/').at(-1) ?? ''
       const body = typeof init.body === 'string' ? init.body : ''

@@ -170,6 +170,32 @@ test("tells the widget the project's repository, from its origin remote", async 
   })
 })
 
+test('tells the widget the branch the agents write to, and that it is the default', async () => {
+  // No origin/HEAD: `main`, once it has a commit, is the default branch.
+  execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: root })
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      'first',
+    ],
+    { cwd: root },
+  )
+  assert.deepEqual(await json(await fetch(`${base}/api/git`)), {
+    branch: 'main',
+    default: true,
+  })
+})
+
 test('serves the widget', async () => {
   const response = await fetch(`${base}/widget.js`)
   assert.equal(response.status, 200)
