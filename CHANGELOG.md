@@ -9,6 +9,8 @@ released to the `stable` branch.
 
 ## 0.5.0 - 2026-11-03
 
+https://github.com/user-attachments/assets/e60cafed-0576-4b2a-9231-3501bceba75a
+
 ### Added
 
 - **See what each run changed.** Under Claude's answer or question, the
