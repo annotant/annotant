@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
@@ -1624,9 +1624,16 @@ test('writes the instructions the widget saves to .annotant.json, its other keys
       'Copy is in Canadian French.',
     )
 
-    // None removes the key.
+    // None removes the key, and says so too.
+    const cleared = output.length
     assert.equal((await saveInstructions('')).status, 200)
+    assert.equal(await nextLine('SETTINGS', cleared), 'SETTINGS changed')
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), JSON.parse(config))
+    // No temporary file left beside it.
+    assert.deepEqual(
+      (await readdir(root)).filter((name) => name.endsWith('.tmp')),
+      [],
+    )
   } finally {
     await writeFile(file, config)
   }
@@ -1651,6 +1658,7 @@ test('refuses instructions over 4000 characters, not text, or from another origi
 })
 
 test('refuses instructions with control, zero-width or bidi characters', async () => {
+  const config = await readFile(path.join(root, '.annotant.json'), 'utf8')
   for (const instructions of ['Use tabs.‮.shs lacol', 'Use​ tabs.', 'Use \x1b[2Ktabs.']) {
     const refused = await fetch(`${base}/api/settings`, {
       method: 'POST',
@@ -1659,6 +1667,48 @@ test('refuses instructions with control, zero-width or bidi characters', async (
     })
     assert.equal(refused.status, 422)
     assert.match((await json(refused)).error, /control or invisible characters/)
+  }
+  assert.equal(await readFile(path.join(root, '.annotant.json'), 'utf8'), config)
+})
+
+test('says why a .annotant.json it cannot use is refused, and leaves it as it is', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  try {
+    for (const { text, reason } of [
+      { text: '{ "port": 1, }', reason: /\.annotant\.json is not valid JSON/ },
+      { text: '[]', reason: /\.annotant\.json must hold a JSON object/ },
+      { text: 'null', reason: /\.annotant\.json must hold a JSON object/ },
+    ]) {
+      await writeFile(file, text)
+      for (const answer of [
+        await fetch(`${base}/api/settings`),
+        await saveInstructions('Use tabs.'),
+      ]) {
+        assert.equal(answer.status, 422, text)
+        assert.match((await json(answer)).error, reason)
+      }
+      assert.equal(await readFile(file, 'utf8'), text)
+    }
+
+    // A folder it cannot write to: the reason, and no temporary file.
+    await writeFile(file, config)
+    await chmod(root, 0o555)
+    const refused = await saveInstructions('Use tabs.')
+    await chmod(root, 0o755)
+    assert.equal(refused.status, 422)
+    assert.match(
+      (await json(refused)).error,
+      /\.annotant\.json cannot be written: EACCES/,
+    )
+    assert.equal(await readFile(file, 'utf8'), config)
+    assert.deepEqual(
+      (await readdir(root)).filter((name) => name.endsWith('.tmp')),
+      [],
+    )
+  } finally {
+    await chmod(root, 0o755)
+    await writeFile(file, config)
   }
 })
 

@@ -321,7 +321,8 @@ floats or is docked, hold for every tab of the app and the next sessions.
   their own rules, which they cannot override (`editable`, no writes from
   Bash). Saving writes them to `.annotant.json` at once, and Claude Code
   tells you: each agent reads them when it starts, so the next comments get
-  them and the agents already working keep the ones they had. 4000 characters
+  them; the agents already working, and a follow-up to their comment, keep
+  the ones they had. 4000 characters
   at most; `.annotant.json` is usually committed, so the instructions are
   your team's.
 - **Keyboard shortcuts**, ⌘⇧ on macOS and Ctrl+Shift elsewhere, wherever the

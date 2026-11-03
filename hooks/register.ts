@@ -868,8 +868,10 @@ async function onLine(
   const [kind = '', id = ''] = line.split(' ', 2)
   if (kind === 'READY') return settle(line)
   if (kind === 'SETTINGS') {
+    // The page's own scripts can save them too: the text shows a change the
+    // person did not make.
     $.ui.toast(
-      `Annotant: the instructions for the agents of ${basename(watched.root)} changed in the widget (.annotant.json); the next comments' agents follow them.`,
+      `Annotant: the instructions for the agents of ${basename(watched.root)} changed through its server (.annotant.json): ${await instructionsPreview($, watched.root)}. The next comments' agents follow them.`,
     )
     return
   }
@@ -1159,6 +1161,21 @@ async function statusText($: $) {
     )
   }
   return lines.join('\n')
+}
+
+/** The start of `.annotant.json`'s instructions, for a toast. */
+async function instructionsPreview($: $, root: string) {
+  try {
+    const config: { instructions?: unknown } = JSON.parse(
+      await $.fs.read(`${root}/.annotant.json`),
+    )
+    const text = typeof config.instructions === 'string' ? config.instructions.trim() : ''
+    if (!text) return 'none now'
+    const line = text.split('\n', 1)[0] ?? ''
+    return `"${line.length > 80 || line !== text ? `${line.slice(0, 80)}…` : line}"`
+  } catch (error) {
+    return `cannot be read (${String(error)})`
+  }
 }
 
 const hasConfig = ($: $, dir: string) =>

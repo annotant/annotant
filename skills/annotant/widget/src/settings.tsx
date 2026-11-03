@@ -5,7 +5,7 @@ import { Button, IconButton, Spinner, Textarea, toast } from './ui'
 /**
  * The project's settings, over the panel: today the instructions for the
  * agents. Saving writes them to `.annotant.json` at once (lib/settings.mjs);
- * each agent reads them when it starts. Escape or ✕ close it.
+ * each agent reads them when it starts, and a follow-up resumes its agent. Escape or ✕ close it.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<ProjectSettings | null>()
@@ -45,7 +45,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       const next = await saveSettings(text)
       setSettings(next)
       setText(next.instructions)
-      toast("Saved: the next comments' agents follow these instructions.")
+      toast(
+        next.instructions.trim()
+          ? "Saved: the next comments' agents follow these instructions."
+          : "Saved: the next comments' agents get no instructions.",
+      )
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Request failed', true)
     } finally {
@@ -99,8 +103,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </p>
             <p className="an-settings-hint">
               Saved to <code>.annotant.json</code> at once. Each agent reads them when it
-              starts: the next comments get them, the agents already working keep the ones
-              they had.
+              starts: the next comments get them; the agents already working, and a
+              follow-up to their comment, keep the ones they had.
             </p>
             <Textarea
               ref={field}

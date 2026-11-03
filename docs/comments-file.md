@@ -338,12 +338,15 @@ The widget's settings dialog (the gear in the panel's header) shows them and
 edits them. Saving there (`POST /api/settings`) writes them to
 `.annotant.json` at once, its other keys kept (none removes the key), and the
 server prints `SETTINGS changed` for the hooks, which tell the reader in
-Claude Code: the app's own scripts run beside the widget and could save them
-too. Each agent reads `.annotant.json` when it starts, so the next comments'
-agents follow them and those already working keep the ones they had. Text
-with control, zero-width or bidi characters is refused (422), so what an
-agent reads is what the reader sees. Saving the instructions it already holds
-writes nothing. `GET /api/settings` and the save answer `{ instructions, max }`.
+Claude Code, with the start of the new text: the app's own scripts run beside
+the widget and could save them too. Each agent reads `.annotant.json` when it
+starts, so the next comments' agents follow them; those already working, and
+a follow-up that resumes one, keep the ones they had. Text with control,
+zero-width or bidi characters is refused (422), so what an agent reads is
+what the reader sees. Saving the instructions it already holds writes
+nothing. `GET /api/settings` and the save answer `{ instructions, max }`; a
+`.annotant.json` that cannot be read or written, is not valid JSON or not an
+object is refused (422) with the reason, and left as it is.
 
 ## The step files
 

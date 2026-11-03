@@ -40,6 +40,29 @@ test('saving sends the instructions, and says the next agents follow them', asyn
   await waitFor(() => expect(save.hasAttribute('disabled')).toBe(true))
 })
 
+test('clearing the instructions says the agents get none', async () => {
+  fakeServer([], { settings: { instructions: 'Use tabs.', max: 4000 } })
+  openPanel()
+  renderWidget()
+
+  const field = await openSettings()
+  fireEvent.change(field, { target: { value: '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(
+    await screen.findByText(/next comments' agents get no instructions/),
+  ).toBeTruthy()
+})
+
+test('instructions saved with a line break at the end are not a change', async () => {
+  fakeServer([], { settings: { instructions: 'Use tabs.\n', max: 4000 } })
+  openPanel()
+  renderWidget()
+
+  await openSettings()
+  expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true)
+})
+
 test('instructions over the limit cannot be saved', async () => {
   fakeServer([], { settings: { instructions: '', max: 10 } })
   openPanel()

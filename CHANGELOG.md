@@ -14,8 +14,9 @@ released to the `stable` branch.
   agent (`instructions` in `.annotant.json`), such as "we use Tailwind, never
   inline styles" or "copy is in Canadian French". Agents follow them after
   their own rules, which they cannot override. Saving writes them to
-  `.annotant.json` at once, and Claude Code says so: the next comments' agents
-  follow them, those already working keep the ones they had. (#224)
+  `.annotant.json` at once, and Claude Code says so with the start of the new
+  text: the next comments' agents follow them; those already working, and a
+  follow-up to their comment, keep the ones they had. (#224)
 - **See what each run did to a file.** Beside each file an answer lists, a
   `+-` button shows that run's own diff of it, added lines green and removed
   ones red: the file before the run's first write and after its last, not

@@ -710,10 +710,10 @@ async function handle(req, res) {
 
   // The settings dialog: what `.annotant.json` holds, written there on a save.
   if (url.pathname === '/api/settings') {
-    if (req.method === 'GET') return send(res, 200, await readSettings(project), cors)
-    if (req.method === 'POST') {
-      const input = await readJson(req)
+    if (req.method === 'GET' || req.method === 'POST') {
+      const input = req.method === 'POST' ? await readJson(req) : undefined
       try {
+        if (req.method === 'GET') return send(res, 200, await readSettings(project), cors)
         const { settings, changed } = await saveSettings(project, input)
         // For the hooks: they tell the reader in Claude Code.
         if (changed) console.log('SETTINGS changed')
