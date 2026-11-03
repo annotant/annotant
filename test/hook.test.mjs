@@ -223,6 +223,21 @@ test('a file rm deleted records the branch as a write does', async (t) => {
   assert.equal((await w.comments.readAll())[0]?.writes?.[0]?.branch, 'feature/cleanup')
 })
 
+test("a notebook edit is listed in the answer's files, with its branch", async (t) => {
+  const repo = await tempDir(t)
+  git(repo, 'init', '-q', '-b', 'feature/analysis')
+  const w = await world(t, 1, { lockRoot: repo })
+  await w.claim(0)
+  await w.tool(0, 'NotebookEdit', {
+    notebook_path: path.join(w.root, 'src/report.ipynb'),
+    new_source: 'print(1)',
+  })
+  await w.comments.answer(w.id(0), 'Done.')
+  const [comment] = await w.comments.readAll()
+  assert.deepEqual(comment?.messages.at(-1)?.changed, ['src/report.ipynb'])
+  assert.equal(comment?.writes?.[0]?.branch, 'feature/analysis')
+})
+
 test('a build records no branch: it changes no file of its own', async (t) => {
   const repo = await tempDir(t)
   git(repo, 'init', '-q', '-b', 'main')
