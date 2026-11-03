@@ -26,6 +26,8 @@ import { drawingImage } from './drawing'
 import {
   createComment,
   deleteComment,
+  fetchDiff,
+  type FileDiff,
   imageUrl,
   updateComment,
   useAllComments,
@@ -133,6 +135,7 @@ import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
 import { editorLink, locate, type Editor } from './editor'
+import { FileDiffView } from './diff'
 import ant from './assets/ant.webp'
 import antThinking from './assets/ant-thinking.webp'
 
@@ -449,6 +452,8 @@ function ChangedFiles({
   files,
   added = NONE,
   deleted = NONE,
+  firstLines,
+  diffOf,
   editor,
   editorIgnored,
   root,
@@ -456,11 +461,22 @@ function ChangedFiles({
   files: string[]
   added?: string[] | undefined
   deleted?: string[] | undefined
+  /** The first line the run changed in each file: where the editor opens it. */
+  firstLines?: Record<string, number> | undefined
+  /** The run's diff of a file; none without a run to ask for it. */
+  diffOf?: ((file: string) => Promise<FileDiff>) | undefined
   editor: Editor | undefined
   editorIgnored?: true | undefined
   root: string | undefined
 }) {
   const [open, setOpen] = useState(false)
+  // The files whose diff is open.
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set())
+  const toggleDiff = (file: string) => {
+    const next = new Set(shown)
+    if (!next.delete(file)) next.add(file)
+    setShown(next)
+  }
   const folds = files.length > 1
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'} changed`
   return (
@@ -499,7 +515,7 @@ function ChangedFiles({
                 {/* A deleted file has nothing left to open. */}
                 {editor && path && status !== 'deleted' ? (
                   <a
-                    href={editorLink(editor, path)}
+                    href={editorLink(editor, path, firstLines?.[file])}
                     title={
                       editor.assumed
                         ? `Open in ${editor.name} (another editor: "editor" in .annotant.json)`
@@ -525,6 +541,20 @@ function ChangedFiles({
                     external
                   </span>
                 )}
+                {/* A deleted folder has no lines to show. */}
+                {diffOf && !file.endsWith('/') && (
+                  <button
+                    type="button"
+                    className="an-diff-toggle"
+                    aria-expanded={shown.has(file)}
+                    aria-label={`${shown.has(file) ? 'Hide' : 'Show'} the diff of ${name}`}
+                    title={shown.has(file) ? 'Hide the diff' : 'Show the diff'}
+                    onClick={() => toggleDiff(file)}
+                  >
+                    <Icon name="diff" />
+                  </button>
+                )}
+                {diffOf && shown.has(file) && <FileDiffView load={() => diffOf(file)} />}
               </li>
             )
           })}
@@ -2387,6 +2417,12 @@ export default function App({ root }: { root: Element }) {
                   files={message.changed}
                   added={message.added}
                   deleted={message.deleted}
+                  firstLines={message.firstLines}
+                  diffOf={
+                    message.run
+                      ? (file) => fetchDiff(comment.id, message.run ?? '', file)
+                      : undefined
+                  }
                   editor={editor}
                   editorIgnored={editorIgnored}
                   root={projectRoot}

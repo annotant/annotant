@@ -93,7 +93,8 @@ export function comment({
  * `theme` is the app's light and dark switch, as `.annotant.json` gives it;
  * `repository`, the project's, as its `origin` remote gives it; `project`, its
  * root, and `editor`, as `.annotant.json` names it; `git`, where the project
- * is in git, as `/api/git` answers (none: an older server's 404).
+ * is in git, as `/api/git` answers (none: an older server's 404); `diffs`, each
+ * run's diff of a file by `<comment>/<run>/<file>` (none: 404).
  */
 export function fakeServer(
   comments: ReviewComment[],
@@ -104,6 +105,7 @@ export function fakeServer(
     project,
     editor,
     git,
+    diffs = {},
   }: {
     reachable?: boolean
     theme?: unknown
@@ -111,6 +113,7 @@ export function fakeServer(
     project?: unknown
     editor?: unknown
     git?: unknown
+    diffs?: Record<string, unknown>
   } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
@@ -118,6 +121,13 @@ export function fakeServer(
     const url = new URL(input)
     if (url.pathname.endsWith('/api/health'))
       return Response.json({ theme, repository, project, editor })
+    const diffOf = /\/api\/comments\/([^/]+)\/runs\/([^/]+)\/diff$/.exec(url.pathname)
+    if (diffOf) {
+      const diff = diffs[`${diffOf[1]}/${diffOf[2]}/${url.searchParams.get('file')}`]
+      return diff === undefined
+        ? new Response(null, { status: 404 })
+        : Response.json(diff)
+    }
     if (url.pathname.endsWith('/api/git')) {
       return git === undefined ? new Response(null, { status: 404 }) : Response.json(git)
     }

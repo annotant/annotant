@@ -363,6 +363,47 @@ export async function updateComment(
 export const imageUrl = (id: string, name: string) =>
   `${IMAGES}${encodeURIComponent(id)}/${encodeURIComponent(name)}`
 
+/** One line of a run's diff of a file: kept, added or removed. */
+interface DiffLine {
+  kind: 'context' | 'added' | 'removed'
+  text: string
+}
+
+/**
+ * A run's diff of a file: its hunks, like `diff -u`'s, or why it is not shown;
+ * `diffs.mjs` in the scripts is the reference.
+ */
+export type FileDiff =
+  | {
+      hunks: {
+        oldStart: number
+        oldLines: number
+        newStart: number
+        newLines: number
+        lines: DiffLine[]
+      }[]
+    }
+  | { skipped: 'large' | 'binary' }
+  /** The run kept none: before this was recorded, or cut short. */
+  | { missing: true }
+
+/**
+ * What run `run` of comment `id` did to `file`, as its message's `changed`
+ * names it. A 404 is a server without the route: an error, not "none kept".
+ */
+export async function fetchDiff(
+  id: string,
+  run: string,
+  file: string,
+): Promise<FileDiff> {
+  const url = `${API}/${encodeURIComponent(id)}/runs/${encodeURIComponent(run)}/diff?file=${encodeURIComponent(file)}`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(await failure(response))
+  // The server is ours: its JSON has the shape asked for.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return (await response.json()) as FileDiff
+}
+
 export async function deleteComment(id: string): Promise<void> {
   await request<void>(`${API}/${id}`, { method: 'DELETE' })
   changed()

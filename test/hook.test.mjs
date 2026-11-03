@@ -617,7 +617,12 @@ test("refuses Annotant's own files, whatever `editable` covers", async (t) => {
     await w.tool(0, 'Edit', edit(path.join(w.root, 'package.json'))),
     undefined,
   )
-  for (const file of ['.annotant.json', '.annotant/comments.json']) {
+  for (const file of [
+    '.annotant.json',
+    '.annotant/comments.json',
+    // What the reader sees a run did.
+    `.annotant/diffs/${w.id(0)}/r1/0123456789abcdef.json`,
+  ]) {
     assert.match(
       (await w.tool(0, 'Edit', edit(path.join(w.root, file)))) ?? '',
       /is Annotant's own file/,
@@ -690,10 +695,23 @@ test('records the absolute path of a file written outside the repository', async
   const w = await world(t, 1, { lockRoot: repo })
   await w.claim(0)
   const notes = path.join(outside, 'notes.md')
-  assert.equal(await w.tool(0, 'Write', { file_path: notes, content: 'x' }), undefined)
+  assert.equal(
+    await w.tool(
+      0,
+      'Write',
+      { file_path: notes, content: 'x' },
+      { between: () => writeFile(notes, 'x\n') },
+    ),
+    undefined,
+  )
   const step = (await w.progress(0)).at(-1)
   assert.equal(step.label, 'notes.md')
   assert.equal(step.external, notes)
+  // Its content, out of the repository, is never copied into the project.
+  const diffs = await import('../skills/annotant/scripts/lib/diffs.mjs')
+  assert.deepEqual(await diffs.readDiff(w.project, w.id(0), 'r1', notes), {
+    missing: true,
+  })
   // Inside the repository, the path from the project says where it is.
   await w.tool(0, 'Edit', edit(path.join(repo, 'scanner/x.py')))
   assert.equal((await w.progress(0)).at(-1).external, undefined)
@@ -888,4 +906,73 @@ test("records what the hooks module notes of the agent's thinking, in the run", 
 test('never stands in the way of the tool when it cannot read its input', async (t) => {
   const w = await world(t)
   assert.equal(await w.hook(0, 'pre', 'not json'), undefined)
+})
+
+test("keeps each run's own diff of a file, whatever happened to it around the run", async (t) => {
+  const diffs = await import('../skills/annotant/scripts/lib/diffs.mjs')
+  const w = await world(t, 1)
+  const file = path.join(w.root, 'src/App.tsx')
+  await mkdir(path.dirname(file), { recursive: true })
+  await writeFile(file, 'a\nb\nc\n')
+  const resolve = () =>
+    w.tool(
+      0,
+      'Bash',
+      { command: `node ${SCRIPTS}resolve.mjs ${w.id(0)} --project . "Done."` },
+      { between: () => w.comments.answer(w.id(0), 'Done.') },
+    )
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(file), { between: () => writeFile(file, 'a\nB\nc\n') })
+  // A failed edit changes nothing: the side after stays the last write's.
+  await w.tool(0, 'Edit', edit(file), { error: 'String not found' })
+  const gone = path.join(w.root, 'src/old.ts')
+  await writeFile(gone, 'x\n')
+  await w.tool(0, 'Bash', { command: 'rm src/old.ts' }, { between: () => rm(gone) })
+  await resolve()
+  // The reader edits the file, then sends the comment again.
+  await writeFile(file, 'reader\na\nB\nc\n')
+  await w.setState(0, 'open')
+  await w.claim(0)
+  await w.tool(0, 'Edit', edit(file), {
+    between: () => writeFile(file, 'reader\na\nB\nC\n'),
+  })
+  await resolve()
+
+  const answers = (await w.comments.list(undefined))
+    .find((one) => one.id === w.id(0))
+    ?.messages.filter((message) => message.author === 'claude')
+  assert.deepEqual(
+    answers?.map((answer) => ({
+      run: answer.run,
+      changed: answer.changed,
+      firstLines: answer.firstLines,
+    })),
+    [
+      // A deleted file has no line to open at.
+      {
+        run: 'r1',
+        changed: ['src/App.tsx', 'src/old.ts'],
+        firstLines: { 'src/App.tsx': 2 },
+      },
+      { run: 'r2', changed: ['src/App.tsx'], firstLines: { 'src/App.tsx': 4 } },
+    ],
+  )
+  const changes = async (/** @type {string} */ ran, /** @type {string} */ name) => {
+    const diff = await diffs.readDiff(w.project, w.id(0), ran, name)
+    return diff && 'hunks' in diff
+      ? diff.hunks.flatMap((hunk) =>
+          hunk.lines.filter((line) => line.kind !== 'context').map((line) => line.text),
+        )
+      : diff
+  }
+  // Each run's own change, not the reader's line between them.
+  assert.deepEqual(await changes('r1', 'src/App.tsx'), ['b', 'B'])
+  assert.deepEqual(await changes('r2', 'src/App.tsx'), ['c', 'C'])
+  assert.deepEqual(await changes('r1', 'src/old.ts'), ['x'])
+  // Deleting the comment deletes its diffs.
+  await w.comments.remove(w.id(0))
+  assert.equal(
+    existsSync(diffs.snapshotPath(w.project, w.id(0), 'r1', 'src/App.tsx')),
+    false,
+  )
 })

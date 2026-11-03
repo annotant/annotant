@@ -20,6 +20,7 @@ import {
   isDevWidget,
   servedProject,
 } from './lib/project.mjs'
+import { RUN_ID, readDiff } from './lib/diffs.mjs'
 import { errorCode } from './lib/errors.mjs'
 import { defaultBranch, gitPlace } from './lib/git.mjs'
 import { originOf } from './lib/remote.mjs'
@@ -637,6 +638,18 @@ async function handle(req, res) {
       'cache-control': 'private, max-age=86400, immutable',
     })
     return res.end(data)
+  }
+
+  // What run `run` did to one of the files it changed (`file`, as the message's
+  // `changed` names it): its line diff, from the sides the hooks kept
+  // (lib/diffs.mjs). Loaded only when the reader opens the file's diff.
+  const [, diffOf, diffRun] =
+    /^\/api\/comments\/([\w-]+)\/runs\/([^/]+)\/diff$/.exec(url.pathname) ?? []
+  if (req.method === 'GET' && diffOf && diffRun) {
+    const file = url.searchParams.get('file')
+    if (!RUN_ID.test(diffRun) || !file)
+      return send(res, 404, { error: 'not found' }, cors)
+    return send(res, 200, await readDiff(project, diffOf, diffRun, file), cors)
   }
 
   // `theme` tells the widget how the app switches between light and dark

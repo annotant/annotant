@@ -692,7 +692,116 @@ test('a question lists the file its run changed by name', async () => {
       .getAllByRole('listitem')
       .map((item) => item.textContent),
   ).toEqual(['a.ts'])
-  expect(within(screen.getByTestId('an-changed')).queryByRole('button')).toBeNull()
+  expect(
+    within(screen.getByTestId('an-changed')).queryByRole('button', {
+      name: /files? changed/,
+    }),
+  ).toBeNull()
+})
+
+test("a changed file shows its run's own diff, and opens at the first line it changed", async () => {
+  const at = '2026-01-01T10:00:00.000Z'
+  const { fetch } = fakeServer(
+    [
+      comment({
+        state: 'answered',
+        messages: [
+          {
+            author: 'claude',
+            body: 'Done.',
+            at,
+            run: 'r1',
+            changed: ['src/data.ts', 'src/gone.ts', 'src/big.json'],
+            deleted: ['src/gone.ts'],
+            firstLines: { 'src/data.ts': 12 },
+          },
+          { author: 'reader', body: 'Again', at },
+          {
+            author: 'claude',
+            body: 'Done again.',
+            at,
+            run: 'r2',
+            changed: ['src/data.ts'],
+          },
+        ],
+      }),
+    ],
+    {
+      project: '/work/shop',
+      diffs: {
+        'c1/r1/src/data.ts': {
+          hunks: [
+            {
+              oldStart: 11,
+              oldLines: 2,
+              newStart: 11,
+              newLines: 2,
+              lines: [
+                { kind: 'context', text: 'const a = 1' },
+                { kind: 'removed', text: 'const b = 2' },
+                { kind: 'added', text: 'const b = 3' },
+              ],
+            },
+          ],
+        },
+        'c1/r1/src/big.json': { skipped: 'large' },
+        'c1/r2/src/data.ts': { missing: true },
+      },
+    },
+  )
+  openThread('c1')
+  renderWidget()
+
+  const [first, second] = await screen.findAllByTestId('an-changed')
+  if (!first || !second) throw new Error('two lists expected')
+  fireEvent.click(within(first).getByRole('button', { name: '3 files changed' }))
+  expect(
+    (await within(first).findByRole('link', { name: 'src/data.ts' })).getAttribute(
+      'href',
+    ),
+  ).toBe('vscode://file/work/shop/src/data.ts:12')
+  // No diff loaded before the reader asks for one.
+  expect(fetch.mock.calls.some(([url]) => url.includes('/diff'))).toBe(false)
+
+  const show = within(first).getByRole('button', { name: 'Show the diff of src/data.ts' })
+  fireEvent.click(show)
+  expect(show.getAttribute('aria-expanded')).toBe('true')
+  const diff = await within(first).findByTestId('an-diff')
+  expect(diff.textContent).toContain('@@ -11,2 +11,2 @@')
+  const kinds = [...diff.querySelectorAll('.an-diff-line')].map(
+    (line) =>
+      `${line.className.split('--')[1]}:${line.querySelector('.an-diff-text')?.textContent}`,
+  )
+  expect(kinds).toEqual([
+    'context:const a = 1',
+    'removed:const b = 2',
+    'added:const b = 3',
+  ])
+
+  fireEvent.click(
+    within(first).getByRole('button', { name: 'Show the diff of src/big.json' }),
+  )
+  expect(await within(first).findByText('Too large to show.')).toBeTruthy()
+  // A deleted file: no link. A server without the route: said, not "none kept".
+  expect(within(first).queryByRole('link', { name: 'src/gone.ts' })).toBeNull()
+  fireEvent.click(
+    within(first).getByRole('button', { name: 'Show the diff of src/gone.ts' }),
+  )
+  expect((await within(first).findByRole('alert')).textContent).toBe(
+    'The diff could not be loaded: Request failed (404)',
+  )
+
+  // The second run kept none: it says so, and its link opens at line 1.
+  fireEvent.click(
+    within(second).getByRole('button', { name: 'Show the diff of src/data.ts' }),
+  )
+  expect(await within(second).findByText('No diff was kept for this file.')).toBeTruthy()
+  expect(
+    within(second).getByRole('link', { name: 'src/data.ts' }).getAttribute('href'),
+  ).toBe('vscode://file/work/shop/src/data.ts:1')
+
+  fireEvent.click(show)
+  expect(within(first).queryByTestId('an-diff')).toBeNull()
 })
 
 test("each changed file opens in the project's editor", async () => {

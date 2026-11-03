@@ -8,12 +8,13 @@ Annotant keeps two kinds of files for a project:
 | `<id>.jsonl` | In the state folder, `<state>/<hash>/progress/` | The steps of the run in progress on comment `<id>` | The hooks (`hooks/register.ts`) |
 | `<id>.history.jsonl` | Next to it | The steps of every run that ended, with a dev build of the widget only | The store, when a run ends |
 | `images/<id>/m<n>-<k>.<ext>` | Beside `comments.json` | The images the reader attached to message `m<n>` of comment `<id>` | The store, from the widget's request |
+| `diffs/<id>/<run>/<key>.json` | Beside `comments.json` | A file of the repository run `<run>` of comment `<id>` changed, before its first write and after its last | The hooks, around the run's writes |
 
 `<state>` is `ANNOTANT_STATE_DIR`, else `$XDG_CACHE_HOME/annotant`, else
 `~/.cache/annotant`. `<hash>` is the first 12 hex digits of the SHA-1 of the
 project's root: each project has its own folder. Deleting a comment deletes
-its step files and its images; `comments.json` never holds a step nor an
-image's bytes.
+its step files, its images and its diffs; `comments.json` never holds a step,
+an image's bytes nor a file's content.
 
 The reference for the comments file is
 [`skills/annotant/scripts/lib/format.mjs`](../skills/annotant/scripts/lib/format.mjs):
@@ -111,6 +112,7 @@ copy.
 | `options` | `{ label, description? }[]`, a question only | 2 to 6, distinct labels; the reader may answer in their own words instead. |
 | `multiple` | `true`, with `options` | The reader may pick several. |
 | `changed` | string[], Claude only | The files the run it closes (an answer or a question) changed, each once: those its file tools wrote (`edit`, `write`, `multiedit`, not failed; a write from Bash is refused) and those `rm`, `git rm` or `unlink` deleted (`delete` steps). Relative to the project (`../api/x.ts` out of it, in the repository), a file outside the repository by its absolute path, a deleted folder with a `/` at its end (the files the run changed in it left out); absent when it changed none. The widget lists them under the message, folded into a count past one, each a link to the project's editor (none for a deleted file), its icon green when added, orange when modified, red when deleted; one out of the project shows an _external_ badge, its full path on hover. |
+| `firstLines` | object, with `changed` | The first line the run changed in each file it kept a diff of (see [Diffs](#diffs)), from 1: `{ "src/pages/Home.tsx": 12 }`. The editor link opens the file there, at line 1 for a file with no key: deleted, too large or not text, outside the repository, with no line changed, or from a run before this was recorded. Absent when no file has one. |
 | `added`, `deleted` | string[], with `changed` | Those of `changed` the run created (a `write` with `created`) or deleted (a `delete` step), by what it did last: a file it added then deleted is no change, one it deleted then wrote again is modified. Absent when empty. |
 | `choices` | string[], reader only | The options they picked, also written at the start of `body`. |
 | `images` | string[], reader only | The images they attached, file names in `images/<id>/` (see [Images](#images)). |
@@ -390,6 +392,44 @@ full paths to the comment's line for the hooks (`NEW`, `OPEN`, `FOLLOWUP`,
 `EDIT`): ` images=["/…/.annotant/images/<id>/m1-1.png"]`, at the end of the
 line, for the images of the message it carries. The agent opens them with
 Read. Deleting the comment deletes its folder.
+
+## Diffs
+
+What each run did to each file of the repository it changed: the file before
+the run's first write of it and after its last. What the reader or other
+agents changed in it before the run started or after it ended is not in it;
+what they changed between two of its writes is (the reader takes no lock).
+The hooks keep the side before in `pre`: for an Edit, Write, MultiEdit or
+NotebookEdit once its lock is held, and for a file `rm`, `git rm` or `unlink`
+names (not a link, nor a folder). They keep the side after in `post`, once a
+write ended (not failed), or a file is gone. They write both beside the
+comments file, as `diffs/<comment id>/<run>/<key>.json`, `<key>` the first 16
+hex digits of the SHA-1 of the file as `changed` names it:
+
+```jsonc
+{ "file": "src/data.ts", "before": "…", "after": "…" }
+```
+
+`before` is `null` for a file the run created, `after` for one it deleted. A
+side over 256 KB, or not text (a NUL byte, or not UTF-8), keeps neither:
+`"skipped": "large"` or `"binary"`. A file outside the repository is never
+copied: its content may be anything. The snapshots hold what the project's
+files hold, `.env` included: `diffs/` gets a `.gitignore` of its own, and
+agents may not write in it, as the comments file. Deleting the comment
+deletes its folder.
+
+When the run ends on an answer or a question, the store adds `firstLines` to
+the message. The server serves a file's diff at
+`GET /api/comments/<id>/runs/<run>/diff?file=<file>`, only when the reader
+opens it under the answer, computed on the spot: `{ hunks }`, like `diff -u`'s
+(`oldStart`, `oldLines`, `newStart`, `newLines`, from 1, the line before when
+a side has none, and `lines` of `{ kind: "context" | "added" | "removed",
+text }`, three lines of context; a change of the line break at the end alone
+is not seen); `{ skipped }`; or `{ missing: true }` when the run kept none (a
+run before this was recorded, a file outside the repository, a write cut
+short). A run id the store never makes (`r<n>`), or no `file`, is a 404. The
+widget shows it under the file, added lines green and removed ones red, in a
+box that scrolls past 320 pixels.
 
 ## Hand-overs
 

@@ -356,7 +356,7 @@ code { font-family: var(--cb-mono); }
 /* The files the run behind an answer wrote, under it: a quiet list, folded into a count when long. */
 .an-changed { display: flex; flex-direction: column; gap: 2px; max-width: 100%; font-size: 12px; color: var(--cb-muted); }
 .an-changed ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.an-changed li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.an-changed li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .an-changed li code { overflow-wrap: anywhere; }
 .an-external { flex-shrink: 0; padding: 0 6px; border: 1px solid var(--cb-border); border-radius: 999px; font-size: 11px; line-height: 16px; cursor: help; }
 .an-changed li a { min-width: 0; color: inherit; text-decoration: none; }
@@ -370,6 +370,20 @@ code { font-family: var(--cb-mono); }
 .an-changed--deleted code { text-decoration: line-through; }
 .an-changed-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
 .an-changed-toggle:hover { color: var(--cb-text); }
+/* A file's diff, as that run changed it: under the file, scrolling when long. */
+.an-diff-toggle { display: inline-flex; padding: 2px; border: none; border-radius: 4px; background: none; color: inherit; cursor: pointer; }
+.an-diff-toggle:hover, .an-diff-toggle[aria-expanded="true"] { color: var(--cb-text); background: var(--cb-bubble); }
+.an-diff { flex-basis: 100%; max-height: 320px; overflow: auto; border: 1px solid var(--cb-border); border-radius: 6px; font: 12px/1.5 var(--cb-mono); color: var(--cb-text); }
+.an-diff--note { padding: 4px 8px; font-family: inherit; color: var(--cb-muted); }
+.an-diff-hunk { min-width: max-content; }
+.an-diff-head { padding: 0 8px; background: var(--cb-bubble); color: var(--cb-muted); }
+.an-diff-line { display: flex; white-space: pre; }
+.an-diff-sign { flex-shrink: 0; width: 2ch; text-align: center; user-select: none; }
+.an-diff-text { padding-right: 8px; }
+.an-diff-line--added { background: var(--cb-green-bg); }
+.an-diff-line--added .an-diff-sign { color: var(--cb-green); }
+.an-diff-line--removed { background: var(--cb-red-bg); }
+.an-diff-line--removed .an-diff-sign { color: var(--cb-red); }
 .an-changed-toggle svg { transform: rotate(-90deg); transition: transform .15s; }
 .an-changed-toggle[aria-expanded="true"] svg { transform: none; }
 .an-ask { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--cb-amber-border); border-radius: 14px; background: var(--cb-amber-bg); color: var(--cb-amber-ink); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
