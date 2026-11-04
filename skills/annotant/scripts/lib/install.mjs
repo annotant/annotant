@@ -1,7 +1,7 @@
 // What in a project's install no longer matches this plugin, from its files
 // alone: `.annotant.json` and the files its `loader` lists. detect.mjs reports
 // it for `update`. It only reads files.
-import { readFileSync, statSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { errorCode } from './errors.mjs'
 import { WIDGET_VERSION } from './project.mjs'
@@ -44,19 +44,24 @@ function loaderSource(root, file) {
   const relative = path.relative(root, at)
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
     return { problem: 'is outside the project' }
-  let stats
+  // One descriptor for the check and the read: the file cannot change in
+  // between. O_NONBLOCK: opening a FIFO with no writer would block.
+  let fd
   try {
-    stats = statSync(at)
+    fd = openSync(at, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch (error) {
     const code = String(errorCode(error))
     return { problem: code === 'ENOENT' ? 'is gone' : `cannot be read (${code})` }
   }
-  if (!stats.isFile()) return { problem: 'is not a file' }
-  if (stats.size > MAX_BYTES) return { problem: 'is too big to be a client entry' }
   try {
-    return { source: readFileSync(at, 'utf8') }
+    const stats = fstatSync(fd)
+    if (!stats.isFile()) return { problem: 'is not a file' }
+    if (stats.size > MAX_BYTES) return { problem: 'is too big to be a client entry' }
+    return { source: readFileSync(fd, 'utf8') }
   } catch (error) {
     return { problem: `cannot be read (${String(errorCode(error))})` }
+  } finally {
+    closeSync(fd)
   }
 }
 

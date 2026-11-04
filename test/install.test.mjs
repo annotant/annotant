@@ -1,6 +1,7 @@
 // lib/install.mjs tells, from a project's files, what in its install no
 // longer matches what init writes; detect.mjs reports it for `update`.
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -187,4 +188,12 @@ test('detect.mjs reports the drift of an installed project', async (t) => {
     ),
     ['loader-port'],
   )
+})
+
+test('does not block on a FIFO listed as a loader', async (t) => {
+  const root = await tempDir(t, 'annotant-install-')
+  execFileSync('mkfifo', [path.join(root, 'pipe')])
+  assert.deepEqual(installDrift(root, { ...CURRENT, loader: ['pipe'] }), [
+    { kind: 'file-missing', file: 'pipe', detail: '"pipe" is not a file' },
+  ])
 })
