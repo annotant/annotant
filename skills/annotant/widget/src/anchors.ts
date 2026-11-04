@@ -1025,6 +1025,41 @@ export function drawnOnShows(root: Element, area: ReviewArea): boolean {
   return !drawnOn.length || drawnOn.some((node) => stillShows(root, node))
 }
 
+/** The elements a drawing was drawn on (`covers`, `pointsAt`) still on the page as recorded. */
+export function drawnOnElements(root: Element, area: ReviewArea): Element[] {
+  const drawnOn = [...area.covers, ...(area.pointsAt ? [area.pointsAt] : [])]
+  return drawnOn.flatMap((node) => {
+    const element = stillShows(root, node) && nodeIn(root, node)
+    return element ? [element] : []
+  })
+}
+
+/**
+ * Whether something else of the page lies over what a drawing was drawn on
+ * at one of `points`: a modal, a drawer, a sticky header come over it since.
+ * `layers` are what it was drawn on, the closest first (the elements it
+ * covers and points at, then what holds them); at a point, the first layer
+ * with an element there, or something in one, is the one looked at, and it
+ * is covered when the topmost of the page's elements is in none of that
+ * layer. A point over none of them tells nothing; the widget is not the
+ * page. Hit-testing skips what lets clicks through (`pointer-events: none`),
+ * as an overlay or as what it covers.
+ */
+export function coveredAt(layers: Element[][], points: DrawnPoint[]): boolean {
+  return points.some(({ x, y }) => {
+    const stack = document
+      .elementsFromPoint(x, y)
+      .filter((element) => !element.closest(WIDGET))
+    for (const layer of layers) {
+      const under = stack.findIndex((hit) =>
+        layer.some((element) => element.contains(hit)),
+      )
+      if (under >= 0) return under > 0
+    }
+    return false
+  })
+}
+
 /** `element`'s box while it is laid out: none once gone or hidden. */
 function shownBox(element: Element | undefined) {
   const box = element && boxOf(element)
