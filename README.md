@@ -190,6 +190,8 @@ The `stable` branch holds the released versions; `main` is where development
 happens and does not work without a build. Get new versions with `claude
 plugin marketplace update annotant`, or turn on auto-update for the
 marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
+When a new version is out, a dot shows on the widget's menu (`⋯`), and the
+menu links to its release notes.
 After an update, `/annotant:annotant update` migrates a project installed
 by an older version.
 
@@ -464,6 +466,10 @@ each agent, with no restart:
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
+- The server's only request to the internet asks GitHub's API for the newest
+  release (`api.github.com/repos/annotant/annotant/releases/latest`), at most
+  once a day, when the widget loads; it sends nothing about your project. Set
+  `ANNOTANT_UPDATE_CHECK=0` in your environment to turn it off.
 - Comments hold page text and HTML excerpts; they stay in your project folder,
   with the images attached to them (`.annotant/images/`), which the server
   checks are images by their bytes.

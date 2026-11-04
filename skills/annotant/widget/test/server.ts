@@ -107,6 +107,7 @@ export function fakeServer(
     git,
     diffs = {},
     settings = { instructions: '', max: 4000 },
+    release,
   }: {
     reachable?: boolean
     theme?: unknown
@@ -117,6 +118,8 @@ export function fakeServer(
     diffs?: Record<string, unknown>
     /** What /api/settings answers; a save changes it, as the server does. */
     settings?: { instructions: string; max: number }
+    /** What /api/release answers (none: an older server's 404). */
+    release?: unknown
   } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
@@ -146,6 +149,10 @@ export function fakeServer(
         settings = { ...settings, instructions: instructions.trim() }
       return Response.json(settings)
     }
+    if (url.pathname.endsWith('/api/release'))
+      return release === undefined
+        ? new Response(null, { status: 404 })
+        : Response.json(release)
     if (url.pathname.endsWith('/api/git')) {
       return git === undefined ? new Response(null, { status: 404 }) : Response.json(git)
     }

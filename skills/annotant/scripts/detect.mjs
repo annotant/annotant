@@ -5,6 +5,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
+import { installDrift } from './lib/install.mjs'
 import { CONFIG_FILE, WIDGET_VERSION } from './lib/project.mjs'
 
 const argv = process.argv.slice(2)
@@ -391,7 +392,12 @@ const report = {
   },
   legacyInstall: ['.code-buddy.json', '.live-feedback.json'].find(exists),
   installed: installed
-    ? { version: installed.version, current: WIDGET_VERSION, config: installed }
+    ? {
+        version: installed.version,
+        current: WIDGET_VERSION,
+        config: installed,
+        drift: installDrift(root, installed),
+      }
     : undefined,
   suggestedServerPort: installed?.port ?? (await freePort()),
 }
