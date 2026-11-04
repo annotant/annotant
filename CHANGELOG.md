@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Changed
+
+- **`/annotant:annotant update` finds what drifted.** Beyond the config's
+  `version`, it checks that the loader is still in the files `.annotant.json`
+  lists, that it asks the server's port and that it keeps its
+  `data-annotant-loader` marker, then fixes what is off.
+
 ## 0.5.0 - 2026-11-03
 
 https://github.com/user-attachments/assets/e60cafed-0576-4b2a-9231-3501bceba75a
