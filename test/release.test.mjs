@@ -45,10 +45,10 @@ test('reads a release from what GitHub answers, and refuses anything else', () =
   assert.deepEqual(parseRelease(GITHUB_060), RELEASE_060)
   assert.equal(parseRelease({ ...GITHUB_060, tag_name: 'nightly' }), undefined)
   assert.equal(parseRelease({ ...GITHUB_060, tag_name: 'v0.6.0-rc.1' }), undefined)
-  // Its notes must be the project's release page.
-  assert.equal(
+  // Its notes are the project's release page, whatever link the answer holds.
+  assert.deepEqual(
     parseRelease({ ...GITHUB_060, html_url: 'https://evil.example/v0.6.0' }),
-    undefined,
+    RELEASE_060,
   )
   assert.equal(parseRelease(null), undefined)
 })
@@ -113,9 +113,10 @@ test('ANNOTANT_UPDATE_CHECK=0 asks nothing', async (t) => {
 
 test('a cache it cannot read is asked again', async (t) => {
   const cacheFile = await cacheIn(t)
-  await writeFile(cacheFile, '{"nextAt":"soon","release":{"version":"9.9.9"}}')
+  await writeFile(cacheFile, '{"nextAt":"soon","version":[9,9,9]}')
   const { fetch, asked } = fakeFetch([GITHUB_060])
   assert.deepEqual(await latestRelease({ cacheFile, fetch, env: {} }), RELEASE_060)
   assert.equal(asked.length, 1)
-  assert.deepEqual(JSON.parse(await readFile(cacheFile, 'utf8')).release, RELEASE_060)
+  // Only the version's numbers are kept.
+  assert.deepEqual(JSON.parse(await readFile(cacheFile, 'utf8')).version, [0, 6, 0])
 })

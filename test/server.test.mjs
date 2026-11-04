@@ -165,7 +165,7 @@ test('tells the widget the newest release, from its cache while it is fresh', as
   // Fresh for a day: the server does not ask GitHub during the test.
   await writeFile(
     path.join(state, 'release.json'),
-    JSON.stringify({ nextAt: Date.now() + 86_400_000, release }),
+    JSON.stringify({ nextAt: Date.now() + 86_400_000, version: [9, 9, 9] }),
   )
   assert.deepEqual(await json(await fetch(`${base}/api/release`)), release)
 })
