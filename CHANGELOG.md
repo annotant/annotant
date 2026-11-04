@@ -14,6 +14,13 @@ released to the `stable` branch.
   lists, that it asks the server's port and that it keeps its
   `data-annotant-loader` marker, then fixes what is off.
 
+### Fixed
+
+- **A drawing hides under what opens over it.** While a modal, a drawer or
+  a sticky header lies over what you drew on, the drawing's lines no longer
+  stay on top of it; they come back once it closes. A drawing made on the
+  modal itself still shows. (#294)
+
 ## 0.5.0 - 2026-11-03
 
 https://github.com/user-attachments/assets/e60cafed-0576-4b2a-9231-3501bceba75a

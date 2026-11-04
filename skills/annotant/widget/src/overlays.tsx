@@ -13,6 +13,8 @@ import {
   boxOf,
   coveredBy,
   type DrawnPoint,
+  coveredAt,
+  drawnOnElements,
   drawnOnShows,
   elementFromAnchor,
   aroundOf,
@@ -301,18 +303,47 @@ function findAreas(root: Element, comments: ReviewComment[]) {
     if (!drawnOnShows(root, area)) return []
     const holder = holderOf(root, area)
     const around = aroundOf(root, area)
-    return [{ comment, area, holder, around, clippers: clippersOf(holder ?? null) }]
+    // What it was drawn on, then what holds it: hidden while something comes over them.
+    const drawnOn = area.strokes
+      ? [drawnOnElements(root, area), [holder, around].filter((element) => !!element)]
+      : []
+    return [
+      { comment, area, holder, around, drawnOn, clippers: clippersOf(holder ?? null) },
+    ]
   })
+}
+
+/** How many points of a drawing's lines are hit-tested. */
+const COVER_SAMPLES = 16
+
+/** Points along a drawing's lines, in the viewport, those that show. */
+function linePoints(area: ReviewArea, frame: Box, shown: Box): DrawnPoint[] {
+  const points = (area.strokes ?? []).flat()
+  const step = Math.max(1, Math.ceil(points.length / COVER_SAMPLES))
+  const scaleX = area.width ? frame.width / area.width : 1
+  const scaleY = area.height ? frame.height / area.height : 1
+  return points
+    .filter((_, at) => at % step === 0)
+    .map(([x, y]) => ({ x: frame.left + x * scaleX, y: frame.top + y * scaleY }))
+    .filter(
+      ({ x, y }) =>
+        x >= shown.left &&
+        x <= shown.left + shown.width &&
+        y >= shown.top &&
+        y <= shown.top + shown.height,
+    )
 }
 
 const holdersOf = (found: ReturnType<typeof findAreas>) =>
   found.flatMap(({ holder, around }) => [holder, around])
 
 function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
-  return found.flatMap(({ comment, area, holder, around, clippers }) => {
+  return found.flatMap(({ comment, area, holder, around, drawnOn, clippers }) => {
     const frame = framedArea(area, holder, around)
     const shown = frame && within(frame, clipOf(clippers))
-    return shown ? [{ comment, area, frame, shown }] : []
+    // Its lines would circle what a reader no longer sees there.
+    if (!shown || coveredAt(drawnOn, linePoints(area, frame, shown))) return []
+    return [{ comment, area, frame, shown }]
   })
 }
 
@@ -323,7 +354,8 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
  * written a file, while it works or once stopped, the page under an area may
  * have changed: it greys out, as what the reader pointed at, not what is
  * there now. Once none of what a drawing was drawn on is on the page, its
- * lines go.
+ * lines go; while something of the page comes over it under one of its lines
+ * (a modal), they hide.
  */
 export function AreaMarks({
   root,
