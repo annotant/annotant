@@ -15,23 +15,38 @@ export type Loaded =
  * The run's diff of each of `files` (a folder has none), each loaded once,
  * from the first render where `active` holds: the list shows each file's
  * counts before the reader opens it, and opening it again loads nothing.
- * `retry` loads again a file whose diff failed.
+ * `retry` loads again a file whose diff failed; a new `version` loads them all
+ * again.
  */
 export function useDiffs(
   files: string[],
   load: ((file: string) => Promise<FileDiff>) | undefined,
   active: boolean,
+  /** Changes when the files may have changed again: each one loads again. */
+  version?: string,
 ): { diffs: Readonly<Record<string, Loaded>>; retry: (file: string) => void } {
   const [diffs, setDiffs] = useState<Readonly<Record<string, Loaded>>>({})
   // The files asked for, so that each loads once, unless `retry` asks again.
   const asked = useRef(new Set<string>())
+  const loadedFor = useRef(version)
+  // Each file's latest call: an earlier one that answers late is dropped.
+  const calls = useRef(new Map<string, number>())
   const request = useCallback(
     (file: string, ask: (file: string) => Promise<FileDiff>) => {
       if (file.endsWith('/') || asked.current.has(file)) return
       asked.current.add(file)
+      const call = (calls.current.get(file) ?? 0) + 1
+      calls.current.set(file, call)
       const set = (loaded: Loaded) =>
-        setDiffs((current) => ({ ...current, [file]: loaded }))
-      set({ state: 'loading' })
+        setDiffs((current) =>
+          calls.current.get(file) === call ? { ...current, [file]: loaded } : current,
+        )
+      // Loaded again, a diff stays on screen until the new one is there.
+      setDiffs((current) =>
+        current[file]?.state === 'done'
+          ? current
+          : { ...current, [file]: { state: 'loading' } },
+      )
       void (async () => {
         try {
           set({ state: 'done', diff: await ask(file) })
@@ -46,10 +61,15 @@ export function useDiffs(
     [],
   )
   useEffect(() => {
+    if (loadedFor.current !== version) {
+      // A run at work wrote again: what was loaded may be out of date.
+      loadedFor.current = version
+      asked.current.clear()
+    }
     // `load` is a new function each render: `asked` keeps each file to one call.
     if (!active || !load) return
     for (const file of files) request(file, load)
-  }, [active, files, load, request])
+  }, [active, files, load, request, version])
   const retry = (file: string) => {
     if (!load || diffs[file]?.state !== 'failed') return
     asked.current.delete(file)

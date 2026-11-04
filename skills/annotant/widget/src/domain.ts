@@ -272,6 +272,13 @@ export interface ReviewComment {
   progress?: ReviewProgress[]
   /** Working only: its agent has changed, or is changing, a file in this run; never stored in the file. */
   edited?: true
+  /**
+   * Working only: the files this run has changed so far, as a message's
+   * `changed`, `added` and `deleted` name them; never stored in the file.
+   */
+  changed?: string[]
+  added?: string[]
+  deleted?: string[]
   /** Every step of every run, with `history=1` only: the debug panel's. */
   history?: ReviewProgress[]
   /**
@@ -524,6 +531,18 @@ export const placeName = (place: GitPlace) => place.branch ?? place.commit ?? ''
 /** A worktree's label: its folder's name; the full path goes in a title. */
 export const folderName = (worktree: string) =>
   worktree.split(/[\\/]/).findLast(Boolean) ?? worktree
+
+/** The kinds of step that write a file, as scripts/lib/store.mjs counts them. */
+const WRITE_KINDS = new Set(['edit', 'write', 'multiedit', 'delete'])
+
+/**
+ * When the run at work last wrote a file, among the steps shown: what its
+ * diffs are loaded again on. None when no write is among them.
+ */
+export const lastWrite = (steps: readonly ReviewProgress[] | undefined) => {
+  const step = steps?.findLast((one) => WRITE_KINDS.has(one.kind))
+  return step && `${step.id ?? ''}@${step.at}:${step.state ?? ''}`
+}
 
 // The rule of scripts/lib/git.mjs, which records the moves.
 const samePlace = (a: GitPlace, b: GitPlace) =>

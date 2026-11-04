@@ -141,8 +141,11 @@ test("Claude's answer says the branch its run changed files on, kept on the comm
   renderWidget()
 
   const written = await screen.findByTestId('an-written')
-  expect(written.textContent).toBe('Changed files on feature/blue in shop-blue')
-  expect(within(written).getByText('shop-blue').title).toBe('/home/me/shop-blue')
+  // The branch alone: the worktree, named after it, would say it again.
+  expect(written.textContent).toBe('Changed files on feature/blue')
+  expect(within(written).getByText('feature/blue').title).toBe(
+    'In the worktree /home/me/shop-blue',
+  )
   expect(written.className).not.toContain('an-written--moved')
 })
 
@@ -178,6 +181,50 @@ test('a run that started on one branch and wrote on another is flagged', async (
     'Started on feature/blue, changed files on main, and also on abc1234',
   )
   expect(written.className).toContain('an-written--moved')
+})
+
+test('a run that moved to another worktree on the same branch still says so', async () => {
+  fakeServer([
+    answeredOn({
+      events: [
+        { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+        {
+          at: '2026-01-01T10:01:00.000Z',
+          state: 'working',
+          by: 'agent',
+          run: 'r1',
+          git: { branch: 'feature/blue', worktree: '/home/me/shop' },
+        },
+        { at: '2026-01-01T10:05:00.000Z', state: 'resolved', by: 'agent', run: 'r1' },
+      ],
+      writes: [
+        {
+          run: 'r1',
+          at: '2026-01-01T10:02:00.000Z',
+          branch: 'feature/blue',
+          worktree: '/home/me/shop-blue',
+          switched: { branch: 'feature/blue', worktree: '/home/me/shop-green' },
+        },
+      ],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  const written = await screen.findByTestId('an-written')
+  expect(written.textContent).toBe(
+    'Started on feature/blue in another worktree, changed files on feature/blue, and also on feature/blue in another worktree',
+  )
+  expect(written.className).toContain('an-written--moved')
+  expect(
+    within(written)
+      .getAllByText('feature/blue')
+      .map((name) => name.title),
+  ).toEqual([
+    'In the worktree /home/me/shop',
+    'In the worktree /home/me/shop-blue',
+    'In the worktree /home/me/shop-green',
+  ])
 })
 
 test('a run that recorded no write says no branch', async () => {
