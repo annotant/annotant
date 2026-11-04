@@ -71,8 +71,8 @@ follow up; cancel to stop it.
   starts on the session's model at a medium effort. See
   [Models](docs/comments-file.md#models).
 - **You see where the agents write.** The panel's foot names the branch your
-  project is on (its commit on a detached HEAD), and its worktree when it is
-  not the main checkout, in amber on the default branch. Each answer of
+  project is on (its commit on a detached HEAD), its worktree on hover when it
+  is not the main checkout, in amber on the default branch. Each answer of
   Claude's names the branch its run changed files on, its worktree's path on
   hover, kept after a branch switch; a run that started on one branch (or
   commit), or in another worktree, and wrote elsewhere is flagged.

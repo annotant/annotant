@@ -3,13 +3,14 @@ import { expect, test } from 'vitest'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 
-test('the panel shows the branch the agents write to, and its worktree', async () => {
+test('the panel names the branch the agents write to, its worktree on hover', async () => {
   fakeServer([], { git: { branch: 'feature/blue', worktree: '/home/me/shop-blue' } })
   openPanel()
   renderWidget()
 
   const label = await screen.findByTestId('an-git')
-  expect(label.textContent).toBe('feature/blue· shop-blue')
+  // The branch alone: the worktree, often named after it, would say it again.
+  expect(label.textContent).toBe('feature/blue')
   expect(label.title).toBe(
     'Claude writes on feature/blue, in the worktree /home/me/shop-blue',
   )

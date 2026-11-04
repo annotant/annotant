@@ -13,8 +13,8 @@ released to the `stable` branch.
   the thread lists the files the run has changed so far, as under an answer,
   and the list grows as it writes; once it answers, they move under its
   message. A file's counts and diff load again each time the run writes.
-- **The branch alone.** Where a run changed files names its branch (or
-  commit) only; its worktree's path shows on hover. A run that moved to
+- **The branch alone.** The panel's foot, and where a run changed files,
+  name the branch (or commit) only; the worktree's path shows on hover. A run that moved to
   another worktree on the same branch still says so. (#303)
 
 ### Fixed

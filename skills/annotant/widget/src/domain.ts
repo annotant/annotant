@@ -528,10 +528,6 @@ export function modelOf(comment: Pick<ReviewComment, 'events'>) {
 /** A place's name: its branch, or its commit on a detached HEAD. */
 export const placeName = (place: GitPlace) => place.branch ?? place.commit ?? ''
 
-/** A worktree's label: its folder's name; the full path goes in a title. */
-export const folderName = (worktree: string) =>
-  worktree.split(/[\\/]/).findLast(Boolean) ?? worktree
-
 /** The kinds of step that write a file, as scripts/lib/store.mjs counts them. */
 const WRITE_KINDS = new Set(['edit', 'write', 'multiedit', 'delete'])
 

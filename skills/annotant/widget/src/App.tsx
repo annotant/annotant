@@ -53,7 +53,6 @@ import {
   type Status,
   answered,
   byPanelOrder,
-  folderName,
   gaveUp,
   gist,
   isActive,
@@ -984,9 +983,9 @@ function Place({ place }: { place: GitPlace }) {
 }
 
 /**
- * Where the agents write, at the panel's foot: the project's branch, and its
- * worktree when it is not the main checkout. On the default branch, a hint,
- * not a block.
+ * Where the agents write, at the panel's foot: the project's branch alone;
+ * its worktree, when it is not the main checkout, on hover. On the default
+ * branch, a hint, not a block.
  */
 function GitLabel({ place }: { place: GitNow }) {
   const name = placeName(place)
@@ -1005,9 +1004,6 @@ function GitLabel({ place }: { place: GitNow }) {
     >
       <Icon name="git-branch" />
       <span className="an-git-name">{name}</span>
-      {place.worktree && (
-        <span className="an-git-name">· {folderName(place.worktree)}</span>
-      )}
       {place.default && <span className="an-visually-hidden">(default branch)</span>}
     </span>
   )
