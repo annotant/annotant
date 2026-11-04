@@ -35,6 +35,7 @@ import {
   type GitNow,
   useGitPlace,
   useRoute,
+  useNewerRelease,
   useServerSettings,
 } from './api'
 import {
@@ -72,7 +73,7 @@ import {
 } from './domain'
 import { fits } from './images'
 import { DebugPanel, DebugToggle } from './debug'
-import { readSession, writeSession } from './session'
+import { readLocal, readSession, writeLocal, writeSession } from './session'
 import {
   type Box,
   type Side,
@@ -161,6 +162,10 @@ const clampWidth = (value: number) =>
   )
 const PENDING_CENTER_MS = 5000
 const FLASH_MS = 1500
+// The release whose dot the reader saw, kept for every tab of the app.
+const RELEASE_SEEN_KEY = 'annotant:release-seen'
+// How a release reaches this session (README, Updating).
+const UPDATE_COMMAND = 'claude plugin marketplace update annotant'
 const UI_KEY = 'annotant:ui'
 const CENTER_KEY = 'annotant:center'
 // What the reader had in progress when the page reloaded (the app's dev server
@@ -1263,6 +1268,11 @@ export default function App({ root }: { root: Element }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // The menu's button, which opened the settings: the focus goes back to it once they close.
   const settingsButton = useRef<HTMLButtonElement>(null)
+  // A newer release: an item in the menu, and a dot on its button until the
+  // menu opens, once per version and app.
+  const release = useNewerRelease(ANNOTANT_VERSION)
+  const [releaseSeen, setReleaseSeen] = useState(() => readLocal(RELEASE_SEEN_KEY))
+  const releaseNew = release && releaseSeen !== release.version ? release : undefined
 
   // The cards' relative dates move on while the panel is open: one timer for
   // every card, and the time gone by while it was closed shows as it opens.
@@ -3015,7 +3025,23 @@ export default function App({ root }: { root: Element }) {
               <MenuButton
                 ref={settingsButton}
                 label="More actions"
+                dot={releaseNew && `Annotant ${releaseNew.version} is out`}
+                onOpen={() => {
+                  if (!releaseNew) return
+                  writeLocal(RELEASE_SEEN_KEY, releaseNew.version)
+                  setReleaseSeen(releaseNew.version)
+                }}
                 items={[
+                  ...(release
+                    ? [
+                        {
+                          icon: 'arrow-up' as const,
+                          label: `Annotant ${release.version} is out: what's new`,
+                          detail: UPDATE_COMMAND,
+                          onSelect: () => window.open(release.url, '_blank', 'noopener'),
+                        },
+                      ]
+                    : []),
                   {
                     icon: docked ? 'collapse-horizontal' : 'expand-horizontal',
                     label: docked ? 'Narrow panel' : 'Widen panel to half the page',

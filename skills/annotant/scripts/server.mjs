@@ -23,6 +23,7 @@ import {
 import { RUN_ID, readDiff } from './lib/diffs.mjs'
 import { errorCode } from './lib/errors.mjs'
 import { defaultBranch, gitPlace } from './lib/git.mjs'
+import { latestRelease } from './lib/release.mjs'
 import { originOf } from './lib/remote.mjs'
 import { SettingsRefusal, readSettings, saveSettings } from './lib/settings.mjs'
 import {
@@ -122,6 +123,9 @@ if (!existsSync(WIDGET)) {
 const LOCAL_ORIGIN =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|[\w-]+\.localhost)(:\d+)?$/
 const allowedOrigins = new Set(config.devOrigins ?? [])
+// The question to GitHub under way: the widgets loading at once share it.
+/** @type {Promise<import('./lib/release.mjs').Release | undefined> | undefined} */
+let asking
 
 /** @param {string | undefined} origin */
 const isAllowed = (origin) =>
@@ -671,6 +675,13 @@ async function handle(req, res) {
       },
       cors,
     )
+  }
+
+  // The newest release of Annotant (lib/release.mjs), asked only once a widget
+  // wants it: the widget says when it is newer than itself. `{}` when unknown.
+  if (req.method === 'GET' && url.pathname === '/api/release') {
+    asking ??= latestRelease().finally(() => (asking = undefined))
+    return send(res, 200, (await asking) ?? {}, cors)
   }
 
   // The branch (or commit) and worktree the agents write to (lib/git.mjs).

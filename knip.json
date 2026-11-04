@@ -16,8 +16,9 @@
         "test/hooks.test.ts"
       ],
       "node": false,
-      // `typecheck` runs the TypeScript the workspaces install, hoisted to the root.
-      "ignoreBinaries": ["tsc"],
+      // `typecheck` runs the TypeScript the workspaces install, hoisted to the root;
+      // mkfifo is the system's, for test/install.test.mjs.
+      "ignoreBinaries": ["tsc", "mkfifo"],
       // claude-code and claude-code/testing: modules Claude Code provides to the hooks, not packages.
       "ignoreDependencies": ["claude-code"]
     },
