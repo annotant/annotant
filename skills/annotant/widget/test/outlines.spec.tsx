@@ -50,7 +50,7 @@ const marks = () => Array.from(document.querySelectorAll('.an-mark'))
 const lines = () =>
   Array.from(document.querySelectorAll<HTMLElement>('.annotant-layer > *'))
 
-test('an element is in progress until its thread is first resolved', async () => {
+test('an element is in progress until its thread is first resolved or handled', async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([
@@ -88,7 +88,7 @@ test('an element keeps its in-progress look once its thread is opened', async ()
   expect(marks().map((mark) => mark.className)).toEqual(['an-mark'])
 })
 
-test('a text is in progress until its thread is first resolved', async () => {
+test('a text is in progress until its thread is first resolved or handled', async () => {
   const highlights = stubHighlights()
   layout()
   document.body.replaceChildren()
@@ -389,4 +389,114 @@ test('a rainbow follows its text when the element holding it changes size', asyn
   resize(document.querySelector('h1'))
 
   await waitFor(() => expect(lines()[0]?.style.left).toBe('60px'))
+})
+
+const ANSWER = {
+  author: 'claude' as const,
+  body: 'Done.',
+  at: '2026-01-01T10:01:00.000Z',
+}
+/** Claude's answer from a run that changed a file: what the message asked for is handled. */
+const CHANGED = { ...ANSWER, changed: ['src/App.tsx'] }
+const QUESTION = { ...ANSWER, body: 'Which one?', question: true }
+
+test('an element or a text goes once Claude answers with files changed', async () => {
+  stubHighlights()
+  layout()
+  document.body.replaceChildren()
+  fakeServer([
+    comment({ id: 'c1', element: TITLE, state: 'answered', messages: [CHANGED] }),
+    comment({ id: 'c2', quote: 'Playground', state: 'answered', messages: [CHANGED] }),
+    // Kept: an answer that changed nothing, a question.
+    comment({
+      id: 'c3',
+      body: 'c3',
+      element: TITLE,
+      state: 'answered',
+      messages: [ANSWER],
+    }),
+    comment({
+      id: 'c4',
+      body: 'c4',
+      element: TITLE,
+      state: 'asking',
+      messages: [QUESTION],
+    }),
+    comment({
+      id: 'c5',
+      body: 'c5',
+      quote: 'Playground',
+      state: 'answered',
+      messages: [ANSWER],
+    }),
+  ])
+  renderWidget()
+
+  await waitFor(() => expect(marks()).toHaveLength(2))
+  expect(lines()).toHaveLength(1)
+  expect(pins().map((pin) => pin.getAttribute('title'))).toEqual(['c3', 'c4', 'c5'])
+})
+
+test('an element picked in a follow-up is marked until Claude answers it with files changed', async () => {
+  layout()
+  document.body.replaceChildren()
+  const reply = {
+    author: 'reader' as const,
+    body: 'This one now',
+    at: '2026-01-01T10:02:00.000Z',
+    elements: [PICKED],
+  }
+  const later = '2026-01-01T10:03:00.000Z'
+  fakeServer([
+    // The anchor handled, the follow-up's element takes the mark.
+    comment({ id: 'c1', body: 'c1', element: TITLE, messages: [CHANGED, reply] }),
+    // Handled in turn: nothing left to mark.
+    comment({
+      id: 'c2',
+      element: TITLE,
+      state: 'answered',
+      messages: [CHANGED, reply, { ...CHANGED, at: later }],
+    }),
+    // Sent during the run, which answered without reading it: still to do.
+    comment({
+      id: 'c3',
+      body: 'c3',
+      state: 'answered',
+      messages: [
+        { ...reply, during: 'r1' },
+        { ...CHANGED, at: later },
+      ],
+    }),
+    // Asked about: still to do.
+    comment({
+      id: 'c4',
+      body: 'c4',
+      state: 'asking',
+      messages: [CHANGED, reply, { ...QUESTION, at: later }],
+    }),
+    // Sent during a run, got by its agent after an answer of an earlier run: still to do.
+    comment({
+      id: 'c5',
+      body: 'c5',
+      messages: [
+        { ...reply, during: 'r2', readAt: later },
+        { ...CHANGED, at: reply.at },
+      ],
+    }),
+    // Resolved, reopened with an element, then handled: nothing left to mark.
+    comment({
+      id: 'c6',
+      state: 'answered',
+      messages: [
+        { ...CHANGED, at: '2026-01-01T10:00:02.000Z' },
+        { ...reply, at: '2026-01-01T10:00:03.000Z' },
+        { ...CHANGED, at: later },
+      ],
+      events: [...reopened, { at: later, state: 'answered', by: 'agent', run: 'r2' }],
+    }),
+  ])
+  renderWidget()
+
+  await waitFor(() => expect(marks()).toHaveLength(4))
+  expect(pins().map((pin) => pin.getAttribute('title'))).toEqual(['c1', 'c3', 'c4', 'c5'])
 })

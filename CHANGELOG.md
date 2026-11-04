@@ -20,6 +20,11 @@ released to the `stable` branch.
   `version`, it checks that the loader is still in the files `.annotant.json`
   lists, that it asks the server's port and that it keeps its
   `data-annotant-loader` marker, then fixes what is off.
+- **A mark goes once Claude has made the change.** The page stops marking
+  what a message pointed at (an element, a text, an area or a drawing) as
+  soon as Claude answers it with files changed, without waiting for you to
+  resolve the thread. A question, an answer that changed nothing or a
+  stopped run keeps it. (#301)
 
 ### Fixed
 

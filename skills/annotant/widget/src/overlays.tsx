@@ -28,11 +28,11 @@ import {
   type ReviewBox,
   gist,
   isAsking,
+  anchorMarked,
   markedElement,
   outdated,
   pickedMark,
   type ReviewComment,
-  wasResolved,
 } from './domain'
 import { type Clipper, clipOf, clippersOf, type Edges, within } from './clips'
 import { setInlineStyle } from './inline'
@@ -176,8 +176,9 @@ function measureElements(found: ReturnType<typeof findElements>): Mark[] {
 
 /**
  * Frames around the elements that open comments point at, until their thread
- * is first resolved: a follow-up, often about something else, does not bring
- * them back, unless it picks an element, which is then framed in their place.
+ * is first resolved, or Claude answered with files changed: a follow-up, often
+ * about something else, does not bring them back, unless it picks an element,
+ * which is then framed in their place, under the same rule.
  * A bubble on each opens the comment's thread.
  */
 export function ElementMarks({
@@ -298,7 +299,7 @@ function findAreas(root: Element, comments: ReviewComment[]) {
   return comments.flatMap((comment) => {
     const { area } = comment.anchor
     // An element picked since takes the area's place.
-    if (wasResolved(comment) || !area || pickedMark(comment)) return []
+    if (!anchorMarked(comment) || !area || pickedMark(comment)) return []
     // Its chip still shows the drawing, and the picture sent with it.
     if (!drawnOnShows(root, area)) return []
     const holder = holderOf(root, area)
@@ -349,7 +350,7 @@ function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
 
 /**
  * Frames around the areas comments were drawn on, as around an element,
- * until their thread is first resolved; a bubble on each opens its thread.
+ * while `anchorMarked`; a bubble on each opens its thread.
  * A drawing has no frame: its lines carry the rainbow. Once its agent has
  * written a file, while it works or once stopped, the page under an area may
  * have changed: it greys out, as what the reader pointed at, not what is
@@ -440,11 +441,11 @@ function textParts(
   })
 }
 
-/** The ranges of the comments on a text never resolved, read from the page's text once. */
+/** The ranges of the comments on a text still marked, read from the page's text once. */
 function findQuotes(root: Element, comments: ReviewComment[]) {
   const quoted = comments.filter(
     (comment) =>
-      !wasResolved(comment) &&
+      anchorMarked(comment) &&
       !comment.anchor.element &&
       !pickedMark(comment) &&
       comment.anchor.quote,
@@ -545,7 +546,7 @@ function measureQuotes(found: ReturnType<typeof findQuotes>): QuotePin[] {
 }
 
 /**
- * A rainbow behind each commented text, until its thread is first resolved, and a
+ * A rainbow behind each commented text, while `anchorMarked`, and a
  * bubble above its start, which opens the comment's thread.
  */
 export function QuoteBubbles({

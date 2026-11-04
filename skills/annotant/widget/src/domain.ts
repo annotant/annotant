@@ -329,8 +329,8 @@ type Lifecycle = Pick<ReviewComment, 'state'>
 /**
  * The element the reader picked last, in their latest message that holds
  * one, when it is still to mark: picked since the thread was last
- * resolved, on a thread not resolved now. It takes the place of the comment's
- * anchor on the page.
+ * resolved, on a thread not resolved now, and not yet `handled`. It takes
+ * the place of the comment's anchor on the page.
  */
 export function pickedMark(
   // Without its thread when the server sent it broken: the page's marks are
@@ -343,13 +343,48 @@ export function pickedMark(
     (message) => message.author === 'reader' && message.elements?.length,
   )
   if (!picked || (resolved && picked.at <= resolved.at)) return undefined
+  if (handled(comment.messages, picked)) return undefined
   return picked.elements?.[0]
 }
 
 /**
+ * Claude has dealt with `target`, a message of the reader's: after it, an
+ * answer (not a question) from a run that changed files. What the message
+ * pointed at may no longer be on the page as it was: the page stops marking
+ * it. A message no agent got yet (`isPending`) waits on the next one.
+ */
+function handled(
+  messages: readonly ReviewMessage[] | undefined,
+  target: ReviewMessage | undefined,
+): boolean {
+  const from = messages && target ? messages.indexOf(target) : -1
+  if (!messages || !target || from < 0 || isPending(target)) return false
+  // A message added during a run counts from when its agent got it.
+  const since = Date.parse(target.readAt ?? target.at)
+  // A date that does not read compares false: the mark stays.
+  return messages
+    .slice(from + 1)
+    .some(
+      (message) =>
+        message.author === 'claude' &&
+        !message.question &&
+        !!message.changed?.length &&
+        Date.parse(message.at) >= since,
+    )
+}
+
+/**
+ * The page marks the comment's anchor: until its thread is first resolved,
+ * or Claude has `handled` the comment's first message (any answer with files
+ * changed after it, a follow-up's included).
+ */
+export const anchorMarked = (
+  comment: Pick<ReviewComment, 'events'> & { messages?: ReviewMessage[] },
+) => !wasResolved(comment) && !handled(comment.messages, comment.messages?.[0])
+
+/**
  * The element page `route` marks for a comment: the one picked last, when it
- * was picked there, else the element it is anchored to, until its thread is
- * first resolved.
+ * was picked there, else the element it is anchored to, while `anchorMarked`.
  */
 export function markedElement(
   comment: Parameters<typeof pickedMark>[0] & Pick<ReviewComment, 'anchor'>,
@@ -357,14 +392,14 @@ export function markedElement(
 ): ReviewElement | undefined {
   const picked = pickedMark(comment)
   if (picked) return picked.route === route ? picked : undefined
-  return wasResolved(comment) ? undefined : comment.anchor.element
+  return anchorMarked(comment) ? comment.anchor.element : undefined
 }
 
 /**
  * Resolved once already: Claude's later answers wait on the reader, and the
  * page no longer marks what the comment is about.
  */
-export const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
+const wasResolved = (comment: Pick<ReviewComment, 'events'>) =>
   comment.events.some((event) => event.state === 'resolved')
 
 /**
