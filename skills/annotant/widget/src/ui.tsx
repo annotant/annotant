@@ -136,6 +136,8 @@ export function IconButton({
 export interface MenuItem {
   icon: IconName
   label: string
+  /** A second, quieter line under the label. */
+  detail?: string | undefined
   onSelect: () => void
 }
 
@@ -155,10 +157,16 @@ const MENU_KEYS: Record<string, (at: number, count: number) => number> = {
 export function MenuButton({
   label,
   items,
+  dot,
+  onOpen,
   ref,
 }: {
   label: string
   items: readonly MenuItem[]
+  /** Something new in the menu: a dot on its button, and these words for a screen reader. */
+  dot?: string | undefined
+  /** The menu opened: what the dot told is seen. */
+  onOpen?: (() => void) | undefined
   /** Its button: what opens from the menu gives the focus back to it. React 19 passes it with the props. */
   ref: Ref<HTMLButtonElement>
 }) {
@@ -205,8 +213,13 @@ export function MenuButton({
         // The focus stays where it is: in the menu, so that a click closing it is not a blur
         // reopening it (Safari focuses no button on a click).
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen(!open)}
+        aria-description={dot}
+        onClick={() => {
+          if (!open) onOpen?.()
+          setOpen(!open)
+        }}
       />
+      {dot && <span className="an-menu-dot" aria-hidden="true" />}
       {open && (
         <div
           // Its first item takes the focus as it opens.
@@ -229,7 +242,14 @@ export function MenuButton({
               }}
             >
               <Icon name={item.icon} />
-              {item.label}
+              {item.detail ? (
+                <span className="an-menu-text">
+                  {item.label}
+                  <small>{item.detail}</small>
+                </span>
+              ) : (
+                item.label
+              )}
             </button>
           ))}
         </div>

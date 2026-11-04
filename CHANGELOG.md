@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **Know when a new version is out.** A dot on the widget's menu (`⋯`) says a
+  newer Annotant is released; the menu links to its notes, with the command
+  that gets it. The server asks GitHub at most once a day;
+  `ANNOTANT_UPDATE_CHECK=0` turns it off.
+
 ### Changed
 
 - **`/annotant:annotant update` finds what drifted.** Beyond the config's

@@ -282,6 +282,11 @@ code { font-family: var(--cb-mono); }
 }
 .an-menu-item:hover, .an-menu-item:focus-visible { background: var(--cb-surface-2); outline: none; }
 .an-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--cb-muted); }
+/* An item with a second line: what to run, say, under what is new. */
+.an-menu-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.an-menu-text small { font-size: 11px; color: var(--cb-muted); font-family: var(--cb-mono); }
+/* Something new in the menu, until it opens. */
+.an-menu-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--cb-accent); box-shadow: 0 0 0 2px var(--cb-surface); pointer-events: none; }
 .an-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 0; }
 /* Closes the body: the message box right after the content, stuck to the bottom once the content
    overflows. It carries the body's bottom padding, so nothing scrolls visibly beneath it. */

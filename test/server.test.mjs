@@ -157,6 +157,19 @@ test("tells the widget the app's light and dark switch", async () => {
   assert.deepEqual(health.theme, { on: 'html', attribute: 'class', dark: 'dark' })
 })
 
+test('tells the widget the newest release, from its cache while it is fresh', async () => {
+  const release = {
+    version: '9.9.9',
+    url: 'https://github.com/annotant/annotant/releases/tag/v9.9.9',
+  }
+  // Fresh for a day: the server does not ask GitHub during the test.
+  await writeFile(
+    path.join(state, 'release.json'),
+    JSON.stringify({ nextAt: Date.now() + 86_400_000, release }),
+  )
+  assert.deepEqual(await json(await fetch(`${base}/api/release`)), release)
+})
+
 test('tells the widget the editor its files open in', async () => {
   const health = await json(await fetch(`${base}/api/health`))
   assert.equal(health.editor, 'cursor')
