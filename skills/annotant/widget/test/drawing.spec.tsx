@@ -740,6 +740,89 @@ test('a drawing loses its lines once nothing it was drawn on is on the page', as
   expect(screen.getByRole('button', { name: /1 line/ })).toBeTruthy()
 })
 
+/** A modal over the whole window, laid out last: on top of the page. */
+function openModal(html = '') {
+  const modal = document.createElement('div')
+  modal.setAttribute('data-box', '0,0,1280,800')
+  modal.innerHTML = html
+  document.querySelector('main')?.append(modal)
+  return modal
+}
+
+test('a drawing hides while a modal covers what it was drawn on, and shows once it closes', async () => {
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
+  await screen.findByTestId('an-area-mark')
+
+  const modal = openModal('<p data-box="400,300,400,100">Delete version?</p>')
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+
+  modal.remove()
+  expect(await screen.findByTestId('an-area-mark')).toBeTruthy()
+})
+
+test('a drawing hides as soon as something covers part of what it was drawn on', async () => {
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
+  await screen.findByTestId('an-area-mark')
+
+  // A drawer over card B only: the end of the arrow.
+  const drawer = document.createElement('aside')
+  drawer.setAttribute('data-box', '0,340,1280,460')
+  document.querySelector('main')?.append(drawer)
+
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+})
+
+test('a drawing made on a modal shows while the modal is open', async () => {
+  const ON_MODAL = { selector: '.modal > p', tag: 'p', text: 'Delete version?' }
+  renderCards([comment({ area: { ...DRAWING, covers: [ON_MODAL] } })])
+  openModal(
+    '<section class="modal" data-box="0,0,1280,800"><p data-box="80,240,300,140">Delete version?</p></section>',
+  )
+
+  await new Promise((done) => setTimeout(done, 50))
+  expect(await screen.findByTestId('an-area-mark')).toBeTruthy()
+})
+
+test('a drawing hides under a modal opened in what holds it', async () => {
+  const within = {
+    selector: 'section',
+    tag: 'section',
+    text: 'Card A Card B',
+    offset: { top: 142, left: 92 },
+    size: { width: 1000, height: 400 },
+  }
+  renderCards([
+    comment({ area: { ...DRAWING, within, covers: [CARD_A], pointsAt: CARD_B } }),
+  ])
+  await screen.findByTestId('an-area-mark')
+
+  const modal = document.createElement('div')
+  modal.setAttribute('data-box', '0,100,1000,400')
+  document.querySelector('section')?.append(modal)
+
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+})
+
+test("the widget's own boxes over a drawing do not hide it", async () => {
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
+  await screen.findByTestId('an-area-mark')
+
+  const popover = document.createElement('div')
+  popover.setAttribute('data-annotant', '')
+  popover.setAttribute('data-box', '0,0,1280,800')
+  document.querySelector('main')?.append(popover)
+
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+})
+
+test('a drawing with nothing over it shows, its lines over the cards', async () => {
+  renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
+  await screen.findByTestId('an-area-mark')
+  await new Promise((done) => setTimeout(done, 50))
+  expect(screen.getByTestId('an-area-mark')).toBeTruthy()
+})
+
 test('a drawing does not follow what took the place of what it was drawn on', async () => {
   renderCards([comment({ area: { ...DRAWING, covers: [CARD_A] } })])
   await screen.findByTestId('an-area-mark')
