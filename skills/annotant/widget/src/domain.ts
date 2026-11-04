@@ -536,12 +536,18 @@ export const folderName = (worktree: string) =>
 const WRITE_KINDS = new Set(['edit', 'write', 'multiedit', 'delete'])
 
 /**
- * When the run at work last wrote a file, among the steps shown: what its
- * diffs are loaded again on. None when no write is among them.
+ * The run at work's last finished write among the steps shown, and whether a
+ * step came after it (its hooks had kept the file as it wrote it by then):
+ * what its diffs load again on. None when no such write is among them.
  */
 export const lastWrite = (steps: readonly ReviewProgress[] | undefined) => {
-  const step = steps?.findLast((one) => WRITE_KINDS.has(one.kind))
-  return step && `${step.id ?? ''}@${step.at}:${step.state ?? ''}`
+  const at =
+    steps?.findLastIndex(
+      (one) =>
+        WRITE_KINDS.has(one.kind) && one.state !== 'running' && one.state !== 'failed',
+    ) ?? -1
+  const step = steps?.[at]
+  return step && `${step.id ?? ''}@${step.at}${at < (steps?.length ?? 0) - 1 ? '+' : ''}`
 }
 
 // The rule of scripts/lib/git.mjs, which records the moves.

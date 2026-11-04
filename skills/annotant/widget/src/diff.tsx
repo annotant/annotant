@@ -51,9 +51,16 @@ export function useDiffs(
         try {
           set({ state: 'done', diff: await ask(file) })
         } catch (error) {
-          set({
+          const failed: Loaded = {
             state: 'failed',
             error: error instanceof Error ? error.message : String(error),
+          }
+          // A reload that failed keeps the diff it was to replace.
+          setDiffs((current) => {
+            if (calls.current.get(file) !== call) return current
+            if (current[file]?.state !== 'done') return { ...current, [file]: failed }
+            console.warn(`annotant: the diff of ${file} could not load again`, error)
+            return current
           })
         }
       })()
@@ -61,7 +68,8 @@ export function useDiffs(
     [],
   )
   useEffect(() => {
-    if (loadedFor.current !== version) {
+    // None: its last write is out of the steps shown, not a new one.
+    if (version !== undefined && loadedFor.current !== version) {
       // A run at work wrote again: what was loaded may be out of date.
       loadedFor.current = version
       asked.current.clear()

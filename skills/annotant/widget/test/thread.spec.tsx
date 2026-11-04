@@ -1367,3 +1367,73 @@ test('the files a run at work has changed show under its step, and the list grow
   expect(screen.getAllByTestId('an-changed')).toHaveLength(1)
   expect(screen.getByRole('button', { name: '2 files changed' })).toBeTruthy()
 })
+
+/** An edit of `src/App.tsx` that ended, at `at`. */
+const write = (id: string, at: number) =>
+  ({ at, id, kind: 'edit', label: 'src/App.tsx', state: 'done' }) as const
+
+/** A diff that adds `count` lines. */
+const added = (count: number) =>
+  Response.json({
+    hunks: [
+      {
+        oldStart: 1,
+        oldLines: 0,
+        newStart: 1,
+        newLines: count,
+        lines: Array.from({ length: count }, () => ({ kind: 'added', text: 'x' })),
+      },
+    ],
+  })
+
+test('a diff loaded again never shows an older answer, nor a failure over a loaded one', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const events = fakeEvents()
+  const comments = [
+    comment({
+      state: 'working',
+      events: [
+        { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+        { at: '2026-01-01T10:01:00.000Z', state: 'working', by: 'agent', run: 'r1' },
+      ],
+      progress: [write('t1', 1)],
+      edited: true,
+      changed: ['src/App.tsx'],
+    }),
+  ]
+  const { fetch } = fakeServer(comments)
+  const original = fetch.getMockImplementation()
+  // Each diff the widget asks for waits for the test to answer it.
+  const answers: ((response: Response) => void)[] = []
+  fetch.mockImplementation(async (input: string, init?: RequestInit) =>
+    input.includes('/diff')
+      ? new Promise<Response>((resolve) => answers.push(resolve))
+      : (original?.(input, init) ?? Response.json([])),
+  )
+  const step = async (progress: ReturnType<typeof write>[]) => {
+    comments[0] = { ...comments[0]!, progress }
+    const asked = answers.length
+    events.send('changed')
+    await waitFor(() => expect(answers).toHaveLength(asked + 1))
+  }
+  openThread('c1')
+  renderWidget()
+
+  await waitFor(() => expect(answers).toHaveLength(1))
+  await act(async () => answers[0]?.(added(1)))
+  expect(await screen.findByLabelText('1 added, 0 removed')).toBeTruthy()
+
+  // A step after the write: the file as the hooks kept it, asked again.
+  await step([write('t1', 1), write('t2', 2)])
+  // It writes again before that answer: the newer one wins, whatever the order.
+  await step([write('t1', 1), write('t2', 2), write('t3', 3)])
+  await act(async () => answers[2]?.(added(3)))
+  expect(await screen.findByLabelText('3 added, 0 removed')).toBeTruthy()
+  await act(async () => answers[1]?.(added(2)))
+  expect(screen.getByLabelText('3 added, 0 removed')).toBeTruthy()
+
+  // A reload that fails keeps the diff on screen.
+  await step([write('t1', 1), write('t2', 2), write('t3', 3), write('t4', 4)])
+  await act(async () => answers[3]?.(new Response(null, { status: 500 })))
+  expect(screen.getByLabelText('3 added, 0 removed')).toBeTruthy()
+})
