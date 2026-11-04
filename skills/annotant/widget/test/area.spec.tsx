@@ -859,3 +859,50 @@ test("each message shows its own target: hovering a reply's area chip outlines i
   fireEvent.mouseLeave(chip)
   expect(screen.queryByTestId('an-area-target')).toBeNull()
 })
+
+const ANSWER = {
+  author: 'claude' as const,
+  body: 'Done.',
+  at: '2026-01-01T10:01:00.000Z',
+}
+/** Claude's answer from a run that changed a file: what the area asked for is handled. */
+const CHANGED = { ...ANSWER, changed: ['src/App.tsx'] }
+
+test('an area goes once Claude answers with files changed', async () => {
+  renderCards([
+    comment({ id: 'c1', area: DRAWN, state: 'answered', messages: [CHANGED] }),
+    // An area sent with a follow-up: the thread is answered, not resolved.
+    comment({
+      id: 'c2',
+      area: DRAWN,
+      state: 'answered',
+      messages: [
+        ANSWER,
+        {
+          author: 'reader',
+          body: 'This gap too',
+          at: '2026-01-01T10:02:00.000Z',
+          area: { ...DRAWN, route: '/' },
+        },
+        { ...CHANGED, at: '2026-01-01T10:03:00.000Z' },
+      ],
+    }),
+    // Kept: an answer that changed nothing, a question, a stop.
+    comment({ id: 'c3', body: 'c3', area: DRAWN, state: 'answered', messages: [ANSWER] }),
+    comment({
+      id: 'c4',
+      body: 'c4',
+      area: DRAWN,
+      state: 'asking',
+      messages: [{ ...ANSWER, body: 'Which one?', question: true }],
+    }),
+    { ...stopped(['src/App.tsx']), id: 'c5' },
+  ])
+
+  await waitFor(() => expect(screen.getAllByTestId('an-area-mark')).toHaveLength(3))
+  expect(
+    screen
+      .getAllByRole('button', { name: /^Open the comment on/ })
+      .map((pin) => pin.getAttribute('title')),
+  ).toEqual(['c3', 'c4', 'Make the title bigger'])
+})

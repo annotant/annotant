@@ -239,8 +239,9 @@ next sessions.
 - **Point at element** starts a comment with that element in its message
   box, as an image would be: the comment is about the page, and the element
   goes with its message. It stays outlined while you write, then a bubble
-  marks it until the thread is first resolved. A reply that picks an element
-  afterwards moves the mark to it. Hovering an element chip outlines it on the
+  marks it until Claude answers it with files changed, or the thread is first
+  resolved. A reply that picks an element afterwards moves the mark to it,
+  under the same rule. Hovering an element chip outlines it on the
   page, clicking it scrolls to it (navigating first if it lives on another
   page).
 - **Draw area** to frame a part of the page no single element holds: the gap
@@ -269,7 +270,8 @@ next sessions.
   within the window.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or an area, on a drawing's lines or behind a text, marks
-  a comment Claude has yet to resolve; once its thread is first resolved, the mark goes away.
+  a comment Claude has yet to deal with; once Claude answers it with files
+  changed, or its thread is first resolved, the mark goes away.
 - **Paste, drop or choose images** (a screenshot, a mockup) in the message
   box of a comment or a reply, with its image button: they go with the
   message, or alone, and Claude opens them. As many as you like, PNG, JPEG,

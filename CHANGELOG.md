@@ -7,6 +7,14 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Changed
+
+- **A mark goes once Claude has made the change.** The page stops marking
+  what a message pointed at (an element, a text, an area or a drawing) as
+  soon as Claude answers it with files changed, without waiting for you to
+  resolve the thread. A question, an answer that changed nothing or a
+  stopped run keeps it. (#301)
+
 ### Fixed
 
 - **A drawing hides under what opens over it.** While a modal, a drawer or
