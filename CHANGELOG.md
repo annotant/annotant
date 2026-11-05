@@ -25,6 +25,13 @@ released to the `stable` branch.
   soon as Claude answers it with files changed, without waiting for you to
   resolve the thread. A question, an answer that changed nothing or a
   stopped run keeps it. (#301)
+- **See the files a run changes while it works.** Under its current step,
+  the thread lists the files the run has changed so far, as under an answer,
+  and the list grows as it writes; once it answers, they move under its
+  message. A file's counts and diff load again each time the run writes.
+- **The branch alone.** The panel's foot, and where a run changed files,
+  name the branch (or commit) only; the worktree's path shows on hover. A run that moved to
+  another worktree on the same branch still says so. (#303)
 
 ### Fixed
 

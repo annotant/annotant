@@ -54,13 +54,13 @@ import {
   type Status,
   answered,
   byPanelOrder,
-  folderName,
   gaveUp,
   gist,
   isActive,
   isAsking,
   isPending,
   isReply,
+  lastWrite,
   latestAttached,
   latestText,
   modelOf,
@@ -446,7 +446,8 @@ const CHANGES = {
 } as const
 
 /**
- * The files the run behind Claude's message changed, under it: by name when
+ * The files the run behind Claude's message changed, under it, or the run at
+ * work has changed so far, under its current step: by name when
  * it changed one, else folded into a count that opens on a click. Once the
  * list shows, each file's diff loads, for the lines it added and removed on
  * its row; a click on the row unfolds the diff. Each file's path copies, and
@@ -463,6 +464,7 @@ function ChangedFiles({
   editor,
   editorIgnored,
   root,
+  version,
 }: {
   files: string[]
   added?: string[] | undefined
@@ -474,11 +476,13 @@ function ChangedFiles({
   editor: Editor | undefined
   editorIgnored?: true | undefined
   root: string | undefined
+  /** A run at work: changes when it writes again, and its diffs load again. */
+  version?: string | undefined
 }) {
   const [open, setOpen] = useState(false)
   const folds = files.length > 1
   // Loaded once the list shows, for the counts on each file's row.
-  const { diffs, retry } = useDiffs(files, diffOf, !folds || open)
+  const { diffs, retry } = useDiffs(files, diffOf, !folds || open, version)
   // The files whose diff is open.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set())
   const toggleDiff = (file: string) => {
@@ -974,25 +978,19 @@ function ModelLabel({ comment }: { comment: ReviewComment }) {
   )
 }
 
-/** A git place: its branch (or commit), and its worktree's folder, the full path on hover. */
+/** A git place: its branch (or commit) alone; its worktree's path on hover. */
 function Place({ place }: { place: GitPlace }) {
   return (
-    <>
-      <code>{placeName(place)}</code>
-      {place.worktree && (
-        <>
-          {' in '}
-          <code title={place.worktree}>{folderName(place.worktree)}</code>
-        </>
-      )}
-    </>
+    <code title={place.worktree && `In the worktree ${place.worktree}`}>
+      {placeName(place)}
+    </code>
   )
 }
 
 /**
- * Where the agents write, at the panel's foot: the project's branch, and its
- * worktree when it is not the main checkout. On the default branch, a hint,
- * not a block.
+ * Where the agents write, at the panel's foot: the project's branch alone;
+ * its worktree, when it is not the main checkout, on hover. On the default
+ * branch, a hint, not a block.
  */
 function GitLabel({ place }: { place: GitNow }) {
   const name = placeName(place)
@@ -1011,9 +1009,6 @@ function GitLabel({ place }: { place: GitNow }) {
     >
       <Icon name="git-branch" />
       <span className="an-git-name">{name}</span>
-      {place.worktree && (
-        <span className="an-git-name">· {folderName(place.worktree)}</span>
-      )}
       {place.default && <span className="an-visually-hidden">(default branch)</span>}
     </span>
   )
@@ -1033,6 +1028,9 @@ function WrittenOn({
   const wrote = writtenOn(comment, run)
   if (!wrote) return null
   const { place, from, switched } = wrote
+  // The branch alone does not show a move between worktrees on the same branch.
+  const elsewhere = (other: GitPlace) =>
+    placeName(other) === placeName(place) && ' in another worktree'
   return (
     <div
       className={`an-written ${from || switched ? 'an-written--moved' : ''}`}
@@ -1042,7 +1040,8 @@ function WrittenOn({
       <span>
         {from ? (
           <>
-            Started on <Place place={from} />, changed files on <Place place={place} />
+            Started on <Place place={from} />
+            {elsewhere(from)}, changed files on <Place place={place} />
           </>
         ) : (
           <>
@@ -1052,11 +1051,18 @@ function WrittenOn({
         {switched && (
           <>
             , and also on <Place place={switched} />
+            {elsewhere(switched)}
           </>
         )}
       </span>
     </div>
   )
+}
+
+/** The diffs of the run at work on `comment`, as far as it got. */
+function workingDiff(comment: ReviewComment) {
+  const current = comment.events.at(-1)?.run
+  return current ? (file: string) => fetchDiff(comment.id, current, file) : undefined
 }
 
 /** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
@@ -2620,6 +2626,18 @@ export default function App({ root }: { root: Element }) {
         (comment.state === 'working' ? (
           <div data-testid="an-working">
             <CurrentStep step={comment.progress?.at(-1)} />
+            {comment.changed?.length ? (
+              <ChangedFiles
+                files={comment.changed}
+                added={comment.added}
+                deleted={comment.deleted}
+                diffOf={workingDiff(comment)}
+                editor={editor}
+                editorIgnored={editorIgnored}
+                root={projectRoot}
+                version={lastWrite(comment.progress)}
+              />
+            ) : null}
             <WrittenOn comment={comment} run={comment.events.at(-1)?.run} />
           </div>
         ) : watching ? (

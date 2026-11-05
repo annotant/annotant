@@ -605,14 +605,20 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         )
         return Promise.all(
           comments.map(async (c) => {
-            /** @type {CommentV2 & { progress?: unknown[], edited?: true, history?: unknown[] }} */
+            /** @type {CommentV2 & { progress?: unknown[], edited?: true, changed?: string[], added?: string[], deleted?: string[], history?: unknown[] }} */
             const listed = { ...c }
             // Only a run in progress has steps to show.
             if (c.state === 'working') {
               const steps = await readProgress(project, c.id)
               if (steps.length) listed.progress = steps.slice(-PROGRESS_SHOWN)
-              // Its first write may be out of the steps shown.
-              if (writtenBy(steps).length) listed.edited = true
+              // From all its steps: its first write may be out of the ones shown.
+              const { changed, added, deleted } = changesOf(steps)
+              if (changed.length) {
+                listed.edited = true
+                listed.changed = changed
+                if (added.length) listed.added = added
+                if (deleted.length) listed.deleted = deleted
+              }
             }
             if (history) {
               // The runs that ended, then the one in progress.
