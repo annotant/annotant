@@ -10,6 +10,13 @@ import type {
 
 const PAGE = '/'
 
+/** A `models` the server shows as written by hand. */
+const isCustom = (models: unknown) =>
+  typeof models === 'object' &&
+  models !== null &&
+  'strategy' in models &&
+  models.strategy === 'custom'
+
 type Fields = Partial<Omit<ReviewComment, 'anchor' | 'messages'>> &
   Partial<ReviewAnchor> & {
     /** The reader's comment, the thread's first message. */
@@ -117,13 +124,15 @@ export function fakeServer(
     git?: unknown
     diffs?: Record<string, unknown>
     /** What /api/settings answers; a save changes it, as the server does. */
-    settings?: { instructions: string; max: number }
+    settings?: { instructions: string; max: number; models?: unknown }
     /** What /api/release answers (none: an older server's 404). */
     release?: unknown
   } = {},
 ) {
   const patches: { id: string; patch: ReviewCommentPatch }[] = []
   const saved: string[] = []
+  /** The models each save sent. */
+  const savedModels: unknown[] = []
   const fetch = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input)
     if (url.pathname.endsWith('/api/health'))
@@ -138,14 +147,28 @@ export function fakeServer(
     if (url.pathname.endsWith('/api/settings')) {
       if (init?.method !== 'POST') return Response.json(settings)
       const body = typeof init.body === 'string' ? init.body : ''
-      const { instructions }: { instructions: string } = JSON.parse(body)
-      saved.push(instructions)
-      if (instructions.includes('\u202e'))
+      const { instructions, models }: { instructions?: string; models?: unknown } =
+        JSON.parse(body)
+      if (instructions !== undefined) saved.push(instructions)
+      if (models !== undefined) savedModels.push(models)
+      // Refused whole, as the server does: nothing changes.
+      if (instructions?.includes('\u202e'))
         return Response.json(
           { error: 'The instructions hold control or invisible characters.' },
           { status: 422 },
         )
-      if (instructions.trim() !== settings.instructions.trim())
+      if (models !== undefined && isCustom(settings.models))
+        return Response.json(
+          {
+            error: 'models in .annotant.json was written by hand: change it in the file.',
+          },
+          { status: 422 },
+        )
+      if (models !== undefined) settings = { ...settings, models }
+      if (
+        instructions !== undefined &&
+        instructions.trim() !== settings.instructions.trim()
+      )
         settings = { ...settings, instructions: instructions.trim() }
       return Response.json(settings)
     }
@@ -187,7 +210,16 @@ export function fakeServer(
     )
   })
   vi.stubGlobal('fetch', fetch)
-  return { patches, saved, fetch }
+  return {
+    patches,
+    saved,
+    savedModels,
+    fetch,
+    /** `.annotant.json` edited by hand, as the dialog is open. */
+    edit: (next: typeof settings) => {
+      settings = next
+    },
+  }
 }
 
 /** Opens the panel on a thread, as the reader left it. */

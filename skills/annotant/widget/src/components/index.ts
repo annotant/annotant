@@ -4,6 +4,7 @@ import { CHIP_CSS } from './Chip'
 import { COMPOSER_CSS } from './Composer'
 import { ICON_BUTTON_CSS } from './IconButton'
 import { MENU_BUTTON_CSS } from './MenuButton'
+import { SELECT_CSS } from './Select'
 import { SPINNER_CSS } from './Spinner'
 import { TEXTAREA_CSS } from './Textarea'
 import { TOASTS_CSS } from './Toasts'
@@ -19,6 +20,7 @@ export { DateTime } from './DateTime'
 export { Icon, type IconName } from './Icon'
 export { IconButton } from './IconButton'
 export { MenuButton } from './MenuButton'
+export { Select, type SelectOption } from './Select'
 export { Spinner } from './Spinner'
 export { Textarea } from './Textarea'
 export { Toasts, toast } from './Toasts'
@@ -39,6 +41,7 @@ export const COMPONENTS_CSS = [
   TEXTAREA_CSS,
   CHECKBOX_CSS,
   TOGGLE_CSS,
+  SELECT_CSS,
   SPINNER_CSS,
   COMPOSER_CSS,
   TOASTS_CSS,

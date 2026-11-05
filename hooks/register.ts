@@ -5,9 +5,10 @@
 // in the background, with no model turn, so the session stays free for any
 // other work. Follow-ups and edits go to that agent; a stop ends it.
 //
-// Before a comment's agent starts, they pick its model: a classifier sorts the
-// comment (trivial, standard, hard) and `.annotant.json`'s `models` maps the
-// label to a model, which claim.mjs records on the run for the widget.
+// Before a comment's agent starts, they pick its model from `.annotant.json`'s
+// `models`, read again for each agent: one model for every comment, or a
+// classifier sorts the comment (trivial, standard, hard) and `models` maps the
+// label to a model. claim.mjs records it on the run for the widget.
 //
 // Claude Code runs none of this module's hooks for an agent it starts, so each
 // comment's agent is a type of its own, `annotant:an-<id>`, whose settings
@@ -35,9 +36,19 @@ type Project = {
   lockRoot: string
   commentsFile: string
   progressDir: string
-  /** A model (`haiku`, an id, or `inherit`) per label. */
-  models: Partial<Record<Complexity, string>>
+  /** `.annotant.json`'s when the watch started: used when reading it again fails. */
+  models: Models
 }
+/** The efforts Claude Code takes for an agent: another is left out, not sent. */
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+type Effort = (typeof EFFORTS)[number]
+/** A model (`haiku`, an id, or `inherit`) and the effort it runs at, none the model's own. */
+type Choice = { model: string; effort?: Effort }
+/**
+ * How a comment's model is picked: `fixed`, one choice for every comment, no
+ * classifier; else a choice per label.
+ */
+type Models = { fixed: Choice } | { labels: Partial<Record<Complexity, Choice>> }
 type Step = Record<string, unknown>
 
 const noWorkers: Record<string, Worker> = {}
@@ -52,13 +63,15 @@ const WORKER = 'annotant:worker'
 /** A comment's agent type: `an-` and the comment's short id. */
 const COMMENT_AGENT = /^annotant:an-[\w-]+$/
 const COMPLEXITIES: readonly Complexity[] = ['trivial', 'standard', 'hard']
-/** The parent's model: today's behaviour, no routing. */
+/** The session's model: the agent is given none of its own. */
 const INHERIT = 'inherit'
-/** Without `models` in `.annotant.json`. */
-const DEFAULT_MODELS: Project['models'] = {
-  trivial: 'haiku',
-  standard: INHERIT,
-  hard: 'opus',
+/** Without `models` in `.annotant.json` (lib/settings.mjs's default too). */
+const DEFAULT_MODELS: Models = {
+  labels: {
+    trivial: { model: 'haiku' },
+    standard: { model: 'sonnet' },
+    hard: { model: 'opus' },
+  },
 }
 // What the classifier reads before the comment, so its labels mean the same
 // every time. The comment itself is data: the engine's classifier prompt says so.
@@ -246,18 +259,95 @@ async function loadProjectOnce($: $, root: string): Promise<Project> {
   }
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** A model alone (`"opus"`), or `{ "model": "opus", "effort": "high" }`; else none. */
+function choiceOf(value: unknown): Choice | undefined {
+  if (typeof value === 'string') return value.trim() ? { model: value.trim() } : undefined
+  if (!isRecord(value) || typeof value.model !== 'string' || !value.model.trim())
+    return undefined
+  const effort = EFFORTS.find((one) => one === value.effort)
+  return { model: value.model.trim(), ...(effort && { effort }) }
+}
+
+/** An object of `model` and maybe `effort` alone: one choice, as lib/settings.mjs reads it. */
+const isOneChoice = (value: Record<string, unknown>) =>
+  'model' in value &&
+  Object.keys(value).every((key) => key === 'model' || key === 'effort')
+
 /**
- * `.annotant.json`'s `models`, whole: a label it leaves out inherits, so
- * `{ "trivial": "inherit" }` turns routing off. Absent: the default.
+ * `.annotant.json`'s `models`: one choice (`"opus"`, or `{ "model", "effort" }`)
+ * for every comment, or an object of labels read whole, where a label it
+ * leaves out inherits, so `{ "trivial": "inherit" }` turns routing off.
+ * Absent or null: the default. Anything else: the session's model, no routing.
  */
-function modelsOf(value: unknown): Project['models'] {
-  if (typeof value !== 'object' || value === null) return DEFAULT_MODELS
-  const models: Project['models'] = {}
-  for (const [label, model] of Object.entries(value)) {
-    const known = COMPLEXITIES.find((one) => one === label)
-    if (known && typeof model === 'string' && model.trim()) models[known] = model.trim()
+function modelsOf(value: unknown): Models {
+  if (value === undefined || value === null) return DEFAULT_MODELS
+  if (typeof value === 'string' || (isRecord(value) && isOneChoice(value))) {
+    const choice = choiceOf(value)
+    return choice ? { fixed: choice } : { labels: {} }
   }
-  return models
+  if (!isRecord(value)) return { labels: {} }
+  const labels: Partial<Record<Complexity, Choice>> = {}
+  for (const [label, choice] of Object.entries(value)) {
+    const known = COMPLEXITIES.find((one) => one === label)
+    const picked = choiceOf(choice)
+    if (known && picked) labels[known] = picked
+  }
+  return { labels }
+}
+
+/** `.annotant.json`'s `models` now, or why the file cannot be read or is not an object. */
+async function readModels(
+  $: $,
+  root: string,
+): Promise<{ models: Models } | { failed: string }> {
+  let config: unknown
+  try {
+    config = JSON.parse(await $.fs.read(`${root}/.annotant.json`))
+  } catch (error) {
+    return { failed: error instanceof Error ? error.message : String(error) }
+  }
+  if (!isRecord(config)) return { failed: 'it does not hold a JSON object' }
+  return { models: modelsOf(config.models) }
+}
+
+/** Per watched project: the `models` last read, and why the last read failed, if it did. */
+const lastModels = new WeakMap<Project, { models: Models; failed?: string }>()
+
+/**
+ * `.annotant.json`'s `models` now: the settings dialog may have changed it
+ * since the watch started. A file that cannot be read keeps the models last
+ * read (the watch's at first), and the reader is told once per failure.
+ */
+async function currentModels($: $, project: Project, id: string) {
+  const now = await readModels($, project.root)
+  const last = lastModels.get(project) ?? { models: project.models }
+  if ('models' in now) {
+    lastModels.set(project, { models: now.models })
+    return now.models
+  }
+  await debug($, 'main', id, `.annotant.json unreadable, models kept: ${now.failed}`)
+  if (last.failed !== now.failed) {
+    lastModels.set(project, { models: last.models, failed: now.failed })
+    $.ui.toast(
+      `Annotant cannot read .annotant.json in ${basename(project.root)} (${now.failed}): the next comments' agents start on the models it last read, ${describeModels(last.models)}.`,
+    )
+  }
+  return last.models
+}
+
+/** A model and its effort, for the reader: `opus at high effort`. */
+const modelWords = (choice: Choice | undefined) =>
+  `${!choice || choice.model === INHERIT ? "the session's model" : choice.model}${choice?.effort ? ` at ${choice.effort} effort` : ''}`
+
+/** `models` in a few words, for the reader: `haiku for trivial, …` or one model. */
+function describeModels(models: Models) {
+  if ('fixed' in models) return `${modelWords(models.fixed)} for every comment`
+  return COMPLEXITIES.map(
+    (label) => `${modelWords(models.labels[label])} for ${label}`,
+  ).join(', ')
 }
 
 function loadProject($: $, root: string): Promise<Project> {
@@ -316,7 +406,8 @@ async function classify($: $, text: string): Promise<Complexity | undefined> {
 
 /**
  * A comment of images alone, which the classifier cannot read: the session's
- * model, at this effort, routing on or off.
+ * model at this effort, routing on or off; the fixed model and effort, when
+ * `models` names them, at this effort when it names none.
  */
 const IMAGES_ONLY_EFFORT = 'medium'
 
@@ -330,17 +421,28 @@ async function routeComment(
   id: string,
 ): Promise<{ complexity?: Complexity; model?: string; effort?: string }> {
   const comment = await readComment($, project, id)
+  const models = await currentModels($, project, id)
+  if ('fixed' in models) {
+    const { model, effort } = models.fixed
+    const images = comment && onlyImages(comment) ? IMAGES_ONLY_EFFORT : undefined
+    return {
+      ...(model !== INHERIT && { model }),
+      ...((effort ?? images) && { effort: effort ?? images }),
+    }
+  }
   if (comment && onlyImages(comment)) return { effort: IMAGES_ONLY_EFFORT }
-  const routing = COMPLEXITIES.some(
-    (label) => (project.models[label] ?? INHERIT) !== INHERIT,
-  )
+  const routing = COMPLEXITIES.some((label) => {
+    const choice = models.labels[label]
+    return !!choice && (choice.model !== INHERIT || !!choice.effort)
+  })
   const text = routing && comment && classifiedText(comment)
   if (!text) return {}
   const complexity = await classify($, text)
-  const model = complexity && project.models[complexity]
+  const choice = complexity && models.labels[complexity]
   return {
     ...(complexity && { complexity }),
-    ...(model && model !== INHERIT && { model }),
+    ...(choice && choice.model !== INHERIT && { model: choice.model }),
+    ...(choice && choice.effort && { effort: choice.effort }),
   }
 }
 
@@ -870,6 +972,15 @@ async function onLine(
   if (kind === 'SETTINGS') {
     // The page's own scripts can save them too: the text shows a change the
     // person did not make.
+    if (id === 'models') {
+      const now = await readModels($, watched.root)
+      $.ui.toast(
+        'models' in now
+          ? `Annotant: the models for the agents of ${basename(watched.root)} changed through its server (.annotant.json): ${describeModels(now.models)}. The next comments' agents start on them.`
+          : `Annotant: the models for the agents of ${basename(watched.root)} changed through its server, but .annotant.json cannot be read now: the next comments' agents keep the models last read.`,
+      )
+      return
+    }
     $.ui.toast(
       `Annotant: the instructions for the agents of ${basename(watched.root)} changed through its server (.annotant.json): ${await instructionsPreview($, watched.root)}. The next comments' agents follow them.`,
     )
