@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
-import { Composer } from '../src/ui'
+import { Composer } from '../src/components'
 
 function renderComposer({ disabled = false, initial = '' } = {}) {
   const onSubmit = vi.fn()

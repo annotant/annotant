@@ -39,7 +39,7 @@ import { setInlineStyle } from './inline'
 import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
 import { fieldOf } from './shortcuts'
 import { pageIsDark } from './theme'
-import { Icon, type IconName } from './ui'
+import { Icon, type IconName } from './components'
 
 const WIDGET = '[data-annotant]'
 

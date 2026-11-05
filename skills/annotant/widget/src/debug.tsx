@@ -20,7 +20,7 @@ import {
   type ReviewState,
 } from './domain'
 import { readSession, writeSession } from './session'
-import { Chip, IconButton } from './ui'
+import { Chip, IconButton } from './components'
 
 const DEBUG_CSS = `
 .an-debug { position: fixed; left: 16px; bottom: 16px; width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 720px); display: flex; flex-direction: column; background: var(--cb-surface); color: var(--cb-text); border: 1px solid var(--cb-border); border-radius: 12px; box-shadow: 0 12px 32px rgba(19, 41, 75, .18); font-size: 12px; overflow: hidden; }

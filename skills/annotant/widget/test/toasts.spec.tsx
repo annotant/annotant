@@ -1,6 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { Toasts, toast } from '../src/ui'
+import { Toasts, toast } from '../src/components'
 
 afterEach(() => {
   act(() => {
