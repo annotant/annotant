@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { DateTime, dateFormat, relativeDate } from '../src/ui'
+import { DateTime } from '../src/components'
+import { dateFormat, relativeDate } from '../src/dates'
 import { comment, fakeServer, openPanel, openThread } from './server'
 import { renderWidget } from './widget'
 

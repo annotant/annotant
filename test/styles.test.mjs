@@ -89,7 +89,7 @@ test('keeps every text of both palettes at AA contrast', async () => {
 })
 
 test('gives each state its own chip colour', async () => {
-  const css = await source('styles.ts')
+  const css = await source('components/Chip.tsx')
   const tones = ['open', 'claimed', 'asking', 'answered', 'resolved', 'stopped'].map(
     (tone) => {
       const declarations = rule(css, `.an-chip--${tone}`)

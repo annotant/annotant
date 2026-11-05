@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchSettings, saveSettings, type ProjectSettings } from './api'
-import { Button, IconButton, Spinner, Textarea, toast } from './ui'
+import { Button, IconButton, Spinner, Textarea, toast } from './components'
 
 /**
  * The project's settings, over the panel: today the instructions for the
