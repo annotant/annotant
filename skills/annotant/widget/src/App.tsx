@@ -116,7 +116,7 @@ import {
   Toggle,
   ToolButton,
   toast,
-} from './ui'
+} from './components'
 import { activityOf, isOngoing, stepKey } from './activity'
 import {
   SHORTCUT_LIST,

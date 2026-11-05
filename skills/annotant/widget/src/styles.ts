@@ -1,5 +1,6 @@
 import figtree from './assets/fonts/figtree-latin.woff2'
 import figtreeItalic from './assets/fonts/figtree-latin-italic.woff2'
+import { COMPONENTS_CSS } from './components'
 
 /** Width of one rainbow behind a commented text, before its colours start over. */
 export const RAINBOW_PERIOD = 720
@@ -74,6 +75,10 @@ export const WIDGET_CSS = `
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
   --cb-amber-border: #f2d9a8;
+  /* A follow-up Claude answered: the reader checks it, no question holds a run.
+     Calmer than the amber of a question, apart from the blues and the green. */
+  --cb-violet: #6a3fbf;
+  --cb-violet-bg: #f3eefc;
   --cb-bubble: #eff3f8;
   /* The syntax of code in diffs and answers: 4.5:1 on the surface, the diff's
      green and red, the bubble, and a code block's tint on it. */
@@ -118,6 +123,8 @@ export const WIDGET_CSS = `
   --cb-amber-fg: #f2c46b;
   --cb-amber-ink: #f7e5bd;
   --cb-amber-border: #5e4919;
+  --cb-violet: #c4a8ff;
+  --cb-violet-bg: #2a2042;
   --cb-bubble: #232c3a;
   --cb-code-keyword: #d4a5ff;
   --cb-code-string: #8fdca2;
@@ -131,60 +138,7 @@ export const WIDGET_CSS = `
 button, textarea, input { font: inherit; color: inherit; }
 p { margin: 0; white-space: pre-wrap; }
 code { font-family: var(--cb-mono); }
-
-.an-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 36px; padding: 0 14px; border-radius: var(--cb-radius);
-  border: 1px solid transparent; cursor: pointer; font-weight: 600;
-  background: var(--cb-accent); color: var(--cb-on-accent); white-space: nowrap;
-  transition: background .15s, border-color .15s, color .15s;
-}
-.an-btn:hover { background: var(--cb-accent-strong); }
-.an-btn:disabled { cursor: default; background: var(--cb-accent-weak); color: var(--cb-disabled); }
-.an-btn--secondary { background: var(--cb-surface); color: var(--cb-accent); border-color: var(--cb-border); }
-.an-btn--secondary:hover { background: var(--cb-surface-2); border-color: var(--cb-accent); }
-.an-btn--tertiary { background: transparent; color: var(--cb-accent); }
-.an-btn--tertiary:hover { background: var(--cb-surface-2); }
-.an-btn--sm { height: 28px; padding: 0 10px; font-size: 13px; }
-.an-btn svg { width: 16px; height: 16px; }
-
-.an-icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
-  background: transparent; color: var(--cb-text); cursor: pointer;
-}
-.an-icon-btn:hover { background: var(--cb-surface-2); }
-.an-icon-btn:disabled { cursor: default; opacity: .35; background: transparent; }
-.an-icon-btn svg { width: 18px; height: 18px; }
-.an-icon-btn--danger { color: var(--cb-red); width: 22px; height: 22px; }
-.an-icon-btn--danger svg { width: 14px; height: 14px; }
-
-.an-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.an-chip--open { background: var(--cb-accent-weak); color: var(--cb-accent); }
-.an-chip--claimed { background: var(--cb-accent-tint); color: var(--cb-accent-strong); }
-.an-chip--asking, .an-chip--answered { background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
-.an-chip--resolved { background: var(--cb-green-bg); color: var(--cb-green); }
-.an-chip--stopped { background: var(--cb-red-bg); color: var(--cb-red); }
-.an-chip--small { height: 18px; padding: 0 7px; border-radius: 9px; font-size: 11px; vertical-align: 1px; }
-
-.an-textarea {
-  width: 100%; min-height: 96px; resize: vertical; padding: 10px 12px;
-  border: 1px solid var(--cb-border); border-radius: var(--cb-radius);
-  background: var(--cb-surface-2); outline: none;
-}
-.an-textarea:focus { border-color: var(--cb-accent); }
-.an-textarea::placeholder { color: var(--cb-muted); font-style: italic; }
-
-.an-checkbox { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--cb-accent); }
-.an-checkbox input { width: 16px; height: 16px; margin: 0; accent-color: var(--cb-accent); }
-
-.an-toggle { align-self: flex-start; display: inline-flex; padding: 2px; border: 1px solid var(--cb-border); border-radius: 6px; }
-.an-toggle button { border: 0; background: transparent; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-.an-toggle button[aria-checked='true'] { background: var(--cb-accent-weak); color: var(--cb-accent); }
-
-.an-spinner { animation: an-spin .8s linear infinite; flex-shrink: 0; }
-@keyframes an-spin { to { transform: rotate(360deg); } }
-
+${COMPONENTS_CSS}
 .an-dock {
   position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 2px;
   padding: 3px; border: 1px solid var(--cb-border); border-radius: 10px;
@@ -200,9 +154,6 @@ code { font-family: var(--cb-mono); }
 .an-grip:hover { color: var(--cb-text); background: var(--cb-surface-2); }
 .an-grip svg { width: 18px; height: 18px; stroke-width: 3; }
 .an-dock[data-moving] .an-grip { cursor: grabbing; }
-.an-tool { border-radius: 7px; }
-.an-tool:not(.an-tool--idle) { background: var(--cb-accent-weak); border-color: transparent; }
-.an-tool:not(.an-tool--idle):hover { background: var(--cb-accent-tint); }
 /* Its grip moves the whole strip: hovered, it rings all of it. */
 .an-dock:has(.an-grip:hover), .an-dock[data-moving] {
   box-shadow: 0 0 0 2px rgba(var(--cb-accent-rgb), .35), 0 4px 16px rgba(0,0,0,.15);
@@ -223,8 +174,6 @@ code { font-family: var(--cb-mono); }
   border: 2px solid var(--cb-surface); border-radius: 10px; background: var(--cb-yellow);
   color: var(--cb-on-yellow); font-size: 11px; font-weight: 700; line-height: 1;
 }
-.an-tool--idle { width: 30px; height: 30px; padding: 0; justify-content: center; border-color: transparent; }
-.an-tool--idle svg { width: 18px; height: 18px; }
 .an-selection { position: fixed; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
 
 .an-panel {
@@ -264,63 +213,17 @@ code { font-family: var(--cb-mono); }
 .an-settings-section { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .an-settings-section h3 { margin: 0; }
 .an-settings-model { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; font-size: 13px; }
-/* Select (ui.tsx): the browser's arrow hidden, ours drawn clear of the edge. */
-.an-select { position: relative; display: inline-flex; align-items: center; min-width: 0; }
-.an-select select {
-  appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; height: 30px; margin: 0;
-  padding: 0 32px 0 10px; border: 1px solid var(--cb-border); border-radius: 6px;
-  background: var(--cb-surface-2); color: inherit; font: inherit; font-size: 13px;
-  line-height: 28px; text-overflow: ellipsis; cursor: pointer; outline: none;
-  transition: border-color .12s ease, box-shadow .12s ease;
-}
-.an-select select:hover { border-color: var(--cb-muted); }
-.an-select select:focus-visible { border-color: var(--cb-accent); box-shadow: 0 0 0 3px var(--cb-accent-weak); }
-.an-select svg { position: absolute; right: 10px; width: 14px; height: 14px; color: var(--cb-muted); pointer-events: none; }
-.an-select select:hover + svg, .an-select select:focus-visible + svg { color: var(--cb-text); }
-.an-select[data-disabled] select { cursor: not-allowed; opacity: .55; }
 .an-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .an-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--cb-border); }
 .an-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .an-title h2 { margin: 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .an-header-actions { display: flex; align-items: center; gap: 2px; }
-/* What the header uses less often, in a menu under its last but one button. */
-.an-menu-wrap { position: relative; display: inline-flex; }
-.an-menu-btn svg { stroke-width: 3; }
-.an-menu {
-  position: absolute; top: calc(100% + 4px); right: 0; z-index: 4; min-width: 220px;
-  display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--cb-border);
-  border-radius: 8px; background: var(--cb-surface); box-shadow: 0 8px 24px rgba(0,0,0,.15);
-  animation: an-fade-in .12s ease-out;
-}
-.an-menu-item {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0;
-  border-radius: 6px; background: none; color: var(--cb-text); font: inherit; font-size: 13px;
-  text-align: left; white-space: nowrap; cursor: pointer;
-}
-.an-menu-item:hover, .an-menu-item:focus-visible { background: var(--cb-surface-2); outline: none; }
-.an-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--cb-muted); }
-/* An item with a second line: what to run, say, under what is new. */
-.an-menu-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.an-menu-text small { font-size: 11px; color: var(--cb-muted); font-family: var(--cb-mono); }
-/* Something new in the menu, until it opens. */
-.an-menu-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--cb-accent); box-shadow: 0 0 0 2px var(--cb-surface); pointer-events: none; }
 .an-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 0; }
 /* Closes the body: the message box right after the content, stuck to the bottom once the content
    overflows. It carries the body's bottom padding, so nothing scrolls visibly beneath it. */
 .an-body-end { position: sticky; bottom: 0; z-index: 3; display: flex; flex-direction: column; gap: 10px; margin-top: -6px; padding: 6px 0 20px; background: var(--cb-surface); }
 /* The mascot, version and project link, pinned at the panel's foot. */
 .an-panel-foot { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 20px 12px; border-top: 1px solid var(--cb-border); font-size: 13px; color: var(--cb-muted); }
-.an-composer-box { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 12px; border: 1px solid var(--cb-border); border-radius: 12px; background: var(--cb-surface); transition: border-color .15s; }
-.an-composer-box:focus-within { border-color: var(--cb-accent); }
-/* The images pasted or dropped, on a row of their own above the text. */
-.an-attachments { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
-.an-attachment { position: relative; }
-.an-attachment img { display: block; width: 56px; height: 56px; object-fit: cover; border: 1px solid var(--cb-border); border-radius: 6px; }
-.an-attachment-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 999px; background: var(--cb-text); color: var(--cb-surface); }
-.an-attachment-remove:hover { background: var(--cb-red); }
-.an-attachment-remove svg { width: 12px; height: 12px; }
-/* The target slot, above the images and the text: what to point at, or the one target's card. */
-.an-target-slot { flex-basis: 100%; min-width: 0; padding-bottom: 6px; border-bottom: 1px solid var(--cb-border); }
 .an-target-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; color: var(--cb-muted); }
 .an-target-tool { padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; font: inherit; color: var(--cb-accent); cursor: pointer; }
 .an-target-tool:hover, .an-target-tool:focus-visible { background: var(--cb-surface-2); }
@@ -334,13 +237,6 @@ code { font-family: var(--cb-mono); }
 .an-target-title svg { flex-shrink: 0; width: 14px; height: 14px; color: var(--cb-accent); }
 .an-target-detail { font-size: 12px; color: var(--cb-muted); }
 .an-target .an-btn[aria-pressed="true"] { background: var(--cb-accent-weak); }
-.an-attach { flex-shrink: 0; width: 36px; height: 36px; }
-.an-composer-box textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 160px; padding: 7px 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; font-size: 15px; line-height: 1.45; }
-.an-composer-box textarea::placeholder { color: var(--cb-muted); }
-.an-send { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px; background: var(--cb-accent); color: var(--cb-on-accent); cursor: pointer; transition: background .15s; }
-.an-send:hover { background: var(--cb-accent-strong); }
-.an-send:disabled { cursor: default; background: var(--cb-accent-weak); color: var(--cb-disabled); }
-.an-send svg { width: 18px; height: 18px; }
 .an-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--cb-muted); }
 .an-composer-cancel { margin-left: -10px; }
 /* The hint row, moved into the foot while the content overflows. */
@@ -534,7 +430,7 @@ code { font-family: var(--cb-mono); }
 @keyframes an-dot-3 { 0% { opacity: 0; } 66.6% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .an-current-line--out { display: none; }
-  .an-current-line--in, .an-dots i, .an-step-icon, .an-spinner { animation: none; }
+  .an-current-line--in, .an-dots i, .an-step-icon { animation: none; }
   .an-changed-toggle svg, .an-file-name > svg { transition: none; }
   /* The panel fades, and changes width at once. */
   .an-panel { animation-name: an-fade-in; transition: none; }
@@ -607,11 +503,6 @@ code { font-family: var(--cb-mono); }
 .an-sketch-tools .an-sketch-done { border-color: var(--cb-accent); background: var(--cb-accent); color: var(--cb-on-accent); }
 .an-hint { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: var(--cb-surface); font-size: 13px; pointer-events: none; }
 
-.an-toasts { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); }
-.an-toasts > div { display: flex; flex-direction: column; gap: 8px; }
-.an-toasts > :not(:empty) ~ :not(:empty) { margin-top: 8px; }
-.an-toast { padding: 10px 14px; border-radius: var(--cb-radius); background: var(--cb-text); color: var(--cb-surface); font-size: 13px; box-shadow: var(--cb-shadow); }
-.an-toast--error { background: var(--cb-red); }
 `
 
 /**

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { test } from 'node:test'
 
 // Read as text: styles.ts imports fonts, which only the bundler loads.
@@ -65,6 +65,7 @@ const TEXT_ON = {
   'orange-ink': ['surface'],
   'amber-fg': ['amber-bg'],
   'amber-ink': ['amber-bg', 'surface'],
+  violet: ['violet-bg', 'surface'],
 }
 
 test('keeps every text of both palettes at AA contrast', async () => {
@@ -85,4 +86,42 @@ test('keeps every text of both palettes at AA contrast', async () => {
       }
     }
   }
+})
+
+test('gives each state its own chip colour', async () => {
+  const css = await source('components/Chip.tsx')
+  const tones = ['open', 'claimed', 'asking', 'answered', 'resolved', 'stopped'].map(
+    (tone) => {
+      const declarations = rule(css, `.an-chip--${tone}`)
+      assert.ok(declarations, `.an-chip--${tone} has a rule of its own`)
+      const background = /background: var\(--cb-([\w-]+)\)/.exec(declarations)?.[1]
+      assert.ok(background, `.an-chip--${tone} takes its background from a token`)
+      return background
+    },
+  )
+  assert.equal(new Set(tones).size, tones.length, `chip backgrounds: ${tones.join(', ')}`)
+})
+
+test("puts every component's styles in the stylesheet the widget injects", async () => {
+  // Each component keeps its CSS beside it (components/<Name>.tsx); the index
+  // joins them, and WIDGET_CSS takes the whole, which main.tsx injects.
+  const folder = new URL('../skills/annotant/widget/src/components/', import.meta.url)
+  const files = (await readdir(folder)).filter((file) => file.endsWith('.tsx'))
+  const index = await source('components/index.ts')
+  const joined = new Set(
+    (/export const COMPONENTS_CSS = \[([^\]]*)\]/.exec(index)?.[1] ?? '')
+      .replace(/\/\/.*$|\/\*[^]*?\*\//gm, '')
+      .match(/\w+_CSS/g),
+  )
+  const exported = (
+    await Promise.all(files.map((file) => source(`components/${file}`)))
+  ).flatMap((text) => [...text.matchAll(/export const (\w+_CSS) = `/g)].map(([, n]) => n))
+  assert.ok(exported.length, 'the components export their styles')
+  for (const name of exported) {
+    assert.ok(joined.has(name), `${name} is in COMPONENTS_CSS`)
+  }
+  assert.match(
+    await source('styles.ts'),
+    /export const WIDGET_CSS = `[^`]*\$\{COMPONENTS_CSS\}/,
+  )
 })

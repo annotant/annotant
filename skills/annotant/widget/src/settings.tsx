@@ -18,7 +18,7 @@ import {
   Toggle,
   toast,
   type SelectOption,
-} from './ui'
+} from './components'
 
 type Label = 'trivial' | 'standard' | 'hard'
 type Strategy = 'auto' | 'fixed'
