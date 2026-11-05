@@ -897,3 +897,31 @@ test("lines drawn from a reply's target slot go with it, their picture last", as
   expect(patch?.area).toMatchObject({ pictured: true, route: '/' })
   expect(patch?.area?.strokes).toHaveLength(2)
 })
+
+test('a drawing goes once Claude answers with files changed, not with words alone', async () => {
+  const answer = {
+    author: 'claude' as const,
+    body: 'Done.',
+    at: '2026-01-01T10:01:00.000Z',
+  }
+  renderCards([
+    comment({
+      id: 'c1',
+      area: DRAWING,
+      state: 'answered',
+      messages: [{ ...answer, changed: ['src/App.tsx'] }],
+    }),
+    comment({
+      id: 'c2',
+      body: 'c2',
+      area: DRAWING,
+      state: 'answered',
+      messages: [answer],
+    }),
+  ])
+
+  await waitFor(() => expect(screen.getAllByTestId('an-area-mark')).toHaveLength(1))
+  expect(
+    screen.getByRole('button', { name: 'Open the comment on the drawing' }).title,
+  ).toBe('c2')
+})

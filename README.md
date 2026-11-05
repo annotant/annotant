@@ -190,6 +190,8 @@ The `stable` branch holds the released versions; `main` is where development
 happens and does not work without a build. Get new versions with `claude
 plugin marketplace update annotant`, or turn on auto-update for the
 marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
+When a new version is out, a dot shows on the widget's menu (`⋯`), and the
+menu links to its release notes.
 After an update, `/annotant:annotant update` migrates a project installed
 by an older version.
 
@@ -239,8 +241,9 @@ next sessions.
 - **Point at element** starts a comment with that element in its message
   box, as an image would be: the comment is about the page, and the element
   goes with its message. It stays outlined while you write, then a bubble
-  marks it until the thread is first resolved. A reply that picks an element
-  afterwards moves the mark to it. Hovering an element chip outlines it on the
+  marks it until Claude answers it with files changed, or the thread is first
+  resolved. A reply that picks an element afterwards moves the mark to it,
+  under the same rule. Hovering an element chip outlines it on the
   page, clicking it scrolls to it (navigating first if it lives on another
   page).
 - **Draw area** to frame a part of the page no single element holds: the gap
@@ -269,7 +272,8 @@ next sessions.
   within the window.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or an area, on a drawing's lines or behind a text, marks
-  a comment Claude has yet to resolve; once its thread is first resolved, the mark goes away.
+  a comment Claude has yet to deal with; once Claude answers it with files
+  changed, or its thread is first resolved, the mark goes away.
 - **Paste, drop or choose images** (a screenshot, a mockup) in the message
   box of a comment or a reply, with its image button: they go with the
   message, or alone, and Claude opens them. As many as you like, PNG, JPEG,
@@ -464,6 +468,10 @@ each agent, with no restart:
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
+- The server's only request to the internet asks GitHub's API for the newest
+  release (`api.github.com/repos/annotant/annotant/releases/latest`), at most
+  once a day, when the widget loads; it sends nothing about your project. Set
+  `ANNOTANT_UPDATE_CHECK=0` in your environment to turn it off.
 - Comments hold page text and HTML excerpts; they stay in your project folder,
   with the images attached to them (`.annotant/images/`), which the server
   checks are images by their bytes.

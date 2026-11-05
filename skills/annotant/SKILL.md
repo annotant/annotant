@@ -135,9 +135,13 @@ this session; then stop.
 ## Update
 
 The widget and scripts are served from the skill, so they are always current.
-Run `detect.mjs`; when `installed.version` is lower than `installed.current`,
-migrate `.annotant.json` and the loader to the current shape above and
-re-run step 8 of init. Add `theme` when the config has none and `theme` is
+Run `detect.mjs`; `installed.drift` lists what no longer matches init: an
+old `version`, a `loader` list that names no file, a file of it missing, a
+loader absent from its file (search the client entry for where it went), on
+another port, or without its marker. Fix each one: migrate `.annotant.json`
+and the loader to the current shape above, check the CSP still allows the
+port (init step 6), then re-run step 8 of init. `version-new` needs the plugin
+updated, not the project. Add `theme` when the config has none and `theme` is
 set (init step 4).
 
 ## Uninstall

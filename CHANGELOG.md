@@ -7,8 +7,24 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Added
+
+- **Know when a new version is out.** A dot on the widget's menu (`⋯`) says a
+  newer Annotant is released; the menu links to its notes, with the command
+  that gets it. The server asks GitHub at most once a day;
+  `ANNOTANT_UPDATE_CHECK=0` turns it off.
+
 ### Changed
 
+- **`/annotant:annotant update` finds what drifted.** Beyond the config's
+  `version`, it checks that the loader is still in the files `.annotant.json`
+  lists, that it asks the server's port and that it keeps its
+  `data-annotant-loader` marker, then fixes what is off.
+- **A mark goes once Claude has made the change.** The page stops marking
+  what a message pointed at (an element, a text, an area or a drawing) as
+  soon as Claude answers it with files changed, without waiting for you to
+  resolve the thread. A question, an answer that changed nothing or a
+  stopped run keeps it. (#301)
 - **See the files a run changes while it works.** Under its current step,
   the thread lists the files the run has changed so far, as under an answer,
   and the list grows as it writes; once it answers, they move under its
