@@ -68,7 +68,8 @@ follow up; cancel to stop it.
   `models` in `.annotant.json` picks the model and its effort for it (by
   default Haiku, Sonnet and Opus). The widget names it on the thread
   ("haiku · trivial"). A comment of images alone is not classified: it
-  starts on the session's model at a medium effort. The settings dialog
+  starts on the session's model at a medium effort (with one fixed model,
+  on that model). The settings dialog
   switches between this and one fixed model for every comment, and sets
   each model's effort. See
   [Models](docs/comments-file.md#models).

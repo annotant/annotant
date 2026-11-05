@@ -1,8 +1,9 @@
 // The project's settings the widget's dialog shows: `instructions`, what the
 // reader wants every comment's agent to know about the project, and `models`,
 // the model and effort each comment's agent starts on. Saving writes them to
-// `.annotant.json` at once; the hooks read it again for each agent they start,
-// so the agents already working, and a follow-up that resumes one, keep the
+// `.annotant.json` at once: each comment's agent reads the instructions as it
+// starts, and the hooks read `models` again for each agent they start, so the
+// agents already working, and a follow-up that resumes one, keep the
 // instructions and the model they had.
 import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -24,7 +25,7 @@ const HIDDEN =
 /** A change the server does not take, its text for the reader. */
 export class SettingsRefusal extends Error {}
 
-/** The models a label can map to: the classifier picks among them. */
+/** The models a classifier's label can map to. */
 const AUTO_MODELS = /** @type {const} */ (['haiku', 'sonnet', 'opus'])
 /** One model for every comment may also be the session's, `inherit`. */
 const FIXED_MODELS = /** @type {const} */ ([...AUTO_MODELS, 'inherit'])
@@ -92,13 +93,14 @@ function choiceOf(value, isModel) {
 /**
  * `.annotant.json`'s `models` as the dialog shows it: one model it offers,
  * with its effort or not, is fixed; an object of the three labels, each a
- * model a label can map to, is auto; none is the default; anything else is
+ * model a label can map to, is auto; none or null is the default; anything else is
  * the reader's own, shown as written.
  * @param {unknown} value
  * @returns {ModelsSetting}
  */
 function modelsSetting(value) {
-  if (value === undefined) return { ...DEFAULT_MODELS }
+  // null too, as the hooks read it.
+  if (value === undefined || value === null) return { ...DEFAULT_MODELS }
   const fixed = choiceOf(value, isFixedModel)
   if (fixed) return { strategy: 'fixed', ...fixed }
   if (isObject(value) && Object.keys(value).length === LABELS.length) {
@@ -249,7 +251,7 @@ function instructionsToWrite(sent) {
 export async function saveSettings(project, input) {
   const body = isObject(input) ? input : {}
   if (!('instructions' in body) && !('models' in body))
-    throw new SettingsRefusal('instructions must be text')
+    throw new SettingsRefusal('Send instructions, models, or both.')
   const instructions =
     'instructions' in body ? instructionsToWrite(body.instructions) : undefined
   const models = 'models' in body ? modelsToWrite(body.models) : undefined

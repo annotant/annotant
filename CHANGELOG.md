@@ -28,7 +28,9 @@ released to the `stable` branch.
 - **Standard comments run on Sonnet.** Without `models` in `.annotant.json`,
   a comment the classifier sorts `standard` now starts on Sonnet instead of
   the session's model: the settings' Auto mode maps each label to Haiku,
-  Sonnet or Opus. `"standard": "inherit"` keeps the old behaviour. (#305)
+  Sonnet or Opus. `"models": { "trivial": "haiku", "standard": "inherit", "hard": "opus" }`
+  keeps the old behaviour; the settings dialog then shows it as written by
+  hand, to change in the file. (#305)
 - **`/annotant:annotant update` finds what drifted.** Beyond the config's
   `version`, it checks that the loader is still in the files `.annotant.json`
   lists, that it asks the server's port and that it keeps its

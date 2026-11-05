@@ -49,7 +49,7 @@ const EFFORTS: Option<Effort | ''>[] = [
   { value: 'xhigh', label: 'Extra high' },
   { value: 'max', label: 'Max' },
 ]
-/** The server's default, which Auto starts from when the file names none. */
+/** Auto's choices until the settings come; the server sends its default when the file names none. */
 const DEFAULT_LABELS: LabelChoices = {
   trivial: { model: 'haiku' },
   standard: { model: 'sonnet' },
@@ -73,8 +73,9 @@ const sameModels = (a: ModelsSetting, b: ModelsSetting) =>
 /**
  * The project's settings, over the panel: the instructions for the agents and
  * the model they start on. Saving writes them to `.annotant.json` at once
- * (lib/settings.mjs); the hooks read it for each agent they start, and a
- * follow-up resumes its agent. Escape or ✕ close it.
+ * (lib/settings.mjs): each agent reads the instructions as it starts, the
+ * hooks read the models for each agent they start, and a follow-up resumes
+ * its agent. Escape or ✕ close it.
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<ProjectSettings | null>()
@@ -109,11 +110,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     if (loaded) field.current?.focus()
   }, [loaded])
 
-  /** The dialog shows `read`, as the server holds it now. */
-  function showSaved(read: ProjectSettings | null) {
+  /** The dialog shows `read`, as the server holds it now; `keepText`, the reader's text too. */
+  function showSaved(read: ProjectSettings | null, keepText = false) {
     setSettings(read)
     if (!read) return
-    setText(read.instructions)
+    if (!keepText) setText(read.instructions)
     const models = read.models
     if (models?.strategy === 'auto') {
       setStrategy('auto')
@@ -155,6 +156,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       )
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Request failed', true)
+      // The file may have changed by hand meanwhile: its models as they are now.
+      const read = await fetchSettings().catch(() => undefined)
+      if (read) showSaved(read, true)
     } finally {
       setSaving(false)
     }

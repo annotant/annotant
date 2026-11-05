@@ -1814,6 +1814,34 @@ test('shows models written by hand that the dialog cannot show, and keeps them',
   }
 })
 
+test('reads models null as the default, as the hooks do, and replaces it', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  try {
+    await writeFile(file, JSON.stringify({ ...JSON.parse(config), models: null }))
+    assert.deepEqual((await json(await fetch(`${base}/api/settings`))).models, {
+      strategy: 'auto',
+      trivial: { model: 'haiku' },
+      standard: { model: 'sonnet' },
+      hard: { model: 'opus' },
+    })
+    assert.equal((await saveModels({ strategy: 'fixed', model: 'opus' })).status, 200)
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).models, 'opus')
+  } finally {
+    await writeFile(file, config)
+  }
+})
+
+test('refuses a save with neither instructions nor models, in words for the reader', async () => {
+  const refused = await fetch(`${base}/api/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+    body: '{}',
+  })
+  assert.equal(refused.status, 422)
+  assert.equal((await json(refused)).error, 'Send instructions, models, or both.')
+})
+
 test('refuses instructions over 4000 characters, not text, or from another origin', async () => {
   const save = (body, origin = 'http://localhost:3000') =>
     fetch(`${base}/api/settings`, {

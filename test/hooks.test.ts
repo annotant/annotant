@@ -723,10 +723,125 @@ test("models changed while the watch runs apply to the next comment's agent", as
   expect(w.spawned[1]?.model).toBe('sonnet')
   expect(w.route('c2')).toMatchObject({ complexity: 'trivial' })
 
-  // A file that cannot be read now keeps the models the watch started with.
+  // A file that cannot be read now keeps the models last read, and says so.
   w.write(`${ROOT}/.annotant.json`, '{ not json')
   await w.print(newLine('c3'))
-  expect(w.spawned[2]?.model).toBe('haiku')
+  expect(w.spawned[2]?.model).toBe('sonnet')
+  expect(w.toasts.at(-1)).toMatch(
+    /cannot read \.annotant\.json in web .*: the next comments' agents start on the models it last read, sonnet for trivial, the session's model for standard, opus for hard\./,
+  )
+  await w.exit(0)
+})
+
+test('a .annotant.json that stays unreadable is told once', async ($, on) => {
+  const w = world(on, [
+    titleComment,
+    { ...titleComment, id: 'c2' },
+    { ...titleComment, id: 'c3' },
+  ])
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  w.write(`${ROOT}/.annotant.json`, '{ not json')
+  await w.print(newLine('c2'))
+  await w.print(newLine('c3'))
+  expect(w.spawned.map((agent) => agent.model)).toEqual(['haiku', 'haiku', 'haiku'])
+  expect(
+    w.toasts.filter((toast) => toast.includes('cannot read .annotant.json')),
+  ).toHaveLength(1)
+  await w.exit(0)
+})
+
+test('models null is the default, as the settings dialog reads it', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: null }),
+  )
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.spawned[0]?.model).toBe('haiku')
+  await w.exit(0)
+})
+
+test('an object with a model and other keys is read as labels, not one model', async ($, on) => {
+  const w = world(on, [titleComment, { ...titleComment, id: 'c2' }])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: { model: 'opus', trivial: 'sonnet' },
+    }),
+  )
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.spawned[0]?.model).toBe('sonnet')
+
+  // One model the hooks cannot use routes nothing: the session's model.
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: { model: '' } }),
+  )
+  await w.print(newLine('c2'))
+  expect(w.classified).toHaveLength(1)
+  expect(w.spawned[1]?.model).toBeUndefined()
+  await w.exit(0)
+})
+
+test("a follow-up keeps its agent's model when the models change", async ($, on) => {
+  const w = world(on, [titleComment])
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  w.setState('c1', 'asking')
+  await $.turn.complete(ended('a1', 'QUESTION: Which title?'))
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: 'opus' }),
+  )
+  w.registered.clear()
+  await w.print(followUpLine('c1'))
+  expect(w.sent.map((one) => one.to)).toEqual(['a1'])
+  expect(w.spawned).toHaveLength(1)
+  expect(w.registered.get('annotant:an-c1')?.model).toBe('haiku')
+  await w.exit(0)
+})
+
+test("the session's model with an effort: no model asked, the effort sent", async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: { model: 'inherit', effort: 'high' },
+    }),
+  )
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.classified).toEqual([])
+  expect(w.spawned[0]?.model).toBeUndefined()
+  expect(w.registered.get('annotant:an-c1')?.effort).toBe('high')
+  await w.exit(0)
+})
+
+test('an effort alone on a label turns routing on', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: { trivial: { model: 'inherit', effort: 'low' } },
+    }),
+  )
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.classified).toHaveLength(1)
+  expect(w.spawned[0]?.model).toBeUndefined()
+  expect(w.registered.get('annotant:an-c1')?.effort).toBe('low')
   await w.exit(0)
 })
 
@@ -1497,8 +1612,6 @@ test('tells the person the widget changed the models of the agents', async ($, o
 
   w.write(`${ROOT}/.annotant.json`, '{ not json')
   await w.print('SETTINGS models')
-  expect(w.toasts.at(-1)).toMatch(
-    /cannot be read now: .* keep the models the watch started with/,
-  )
+  expect(w.toasts.at(-1)).toMatch(/cannot be read now: .* keep the models last read/)
   await w.exit(0)
 })

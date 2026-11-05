@@ -10,6 +10,13 @@ import type {
 
 const PAGE = '/'
 
+/** A `models` the server shows as written by hand. */
+const isCustom = (models: unknown) =>
+  typeof models === 'object' &&
+  models !== null &&
+  'strategy' in models &&
+  models.strategy === 'custom'
+
 type Fields = Partial<Omit<ReviewComment, 'anchor' | 'messages'>> &
   Partial<ReviewAnchor> & {
     /** The reader's comment, the thread's first message. */
@@ -150,6 +157,13 @@ export function fakeServer(
           { error: 'The instructions hold control or invisible characters.' },
           { status: 422 },
         )
+      if (models !== undefined && isCustom(settings.models))
+        return Response.json(
+          {
+            error: 'models in .annotant.json was written by hand: change it in the file.',
+          },
+          { status: 422 },
+        )
       if (models !== undefined) settings = { ...settings, models }
       if (
         instructions !== undefined &&
@@ -196,7 +210,16 @@ export function fakeServer(
     )
   })
   vi.stubGlobal('fetch', fetch)
-  return { patches, saved, savedModels, fetch }
+  return {
+    patches,
+    saved,
+    savedModels,
+    fetch,
+    /** `.annotant.json` edited by hand, as the dialog is open. */
+    edit: (next: typeof settings) => {
+      settings = next
+    },
+  }
 }
 
 /** Opens the panel on a thread, as the reader left it. */

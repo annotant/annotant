@@ -332,8 +332,9 @@ the model alone keeps its own. Without `models`, the default is:
 
 A `models` object is read whole: a label it leaves out inherits, so
 `{ "trivial": "inherit" }` turns routing off, and the classifier is not
-asked. A model alone, with its effort or not, runs every comment on it,
-without the classifier, and the thread names the model with no label:
+asked; a label on `inherit` with an effort still asks it. `null` is the
+default too. A model alone, with its effort or not (an object of `model` and `effort`,
+no other key), runs every comment on it, without the classifier, and the thread names the model with no label:
 
 ```json
 "models": "opus"
@@ -342,7 +343,8 @@ without the classifier, and the thread names the model with no label:
 
 The hooks read `models` again for each agent they start, so a change applies
 to the next comment without restarting the watch; a `.annotant.json` that
-cannot be read then keeps the `models` the watch started with. A classifier that fails or takes more than 5 seconds leaves the agent
+cannot be read then keeps the `models` they last read, and Claude Code says
+so once. A classifier that fails or takes more than 5 seconds leaves the agent
 on the session's model. A comment of images alone, which the classifier
 cannot read, is not classified, routing on or off: its agent starts on the
 session's model (the fixed one, when `models` names one) at a `medium`

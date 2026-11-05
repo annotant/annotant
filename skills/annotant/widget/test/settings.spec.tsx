@@ -266,6 +266,35 @@ test('models written by hand are shown as written, with no picker, and never sen
   expect(server.savedModels).toEqual([])
 })
 
+test('a save refused as the file changed by hand shows the file as it is now, the text kept', async () => {
+  const server = fakeServer([], {
+    settings: { instructions: '', max: 4000, models: AUTO },
+  })
+  openPanel()
+  renderWidget()
+
+  const field = await openSettings()
+  server.edit({
+    instructions: '',
+    max: 4000,
+    models: { strategy: 'custom', text: '{"trivial":"inherit"}' },
+  })
+  fireEvent.change(field, { target: { value: 'Use tabs.' } })
+  fireEvent.change(select('Trivial'), { target: { value: 'sonnet' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(
+    await screen.findByText(/models in .annotant.json was written by hand/),
+  ).toBeTruthy()
+  expect(await screen.findByText('{"trivial":"inherit"}')).toBeTruthy()
+  expect(screen.queryByRole('radiogroup', { name: 'How the model is picked' })).toBeNull()
+  expect(field.value).toBe('Use tabs.')
+  // Saved again, the instructions alone go.
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(server.saved).toEqual(['Use tabs.', 'Use tabs.']))
+  expect(server.savedModels).toHaveLength(1)
+})
+
 test('an older server that names no models shows no Model section', async () => {
   fakeServer([], { settings: { instructions: '', max: 4000 } })
   openPanel()
