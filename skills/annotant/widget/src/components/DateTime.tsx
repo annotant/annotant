@@ -9,7 +9,7 @@ export function DateTime({
   now,
   className,
 }: {
-  /** An ISO date; anything else shows as it is. */
+  /** A date `Date` reads (the comments file holds ISO dates); one it cannot shows as it is. */
   at: string
   /** Given, the date shows relative to it, the full one in the tooltip. */
   now?: number

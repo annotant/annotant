@@ -14,7 +14,7 @@ import { IconButton } from './IconButton'
 import { toast } from './Toasts'
 
 /**
- * The message box at the panel's foot: Enter sends, Shift+Enter breaks the
+ * The message box at the end of the panel's body: Enter sends, Shift+Enter breaks the
  * line. An image pasted, dropped or chosen with its button is attached to the
  * message, shown as a thumbnail until it is sent; there is no count limit.
  */

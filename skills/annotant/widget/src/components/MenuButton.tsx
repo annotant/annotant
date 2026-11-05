@@ -128,7 +128,7 @@ export function MenuButton({
 }
 
 export const MENU_BUTTON_CSS = `
-/* What the header uses less often, in a menu under its last but one button. */
+/* The menu, under its button, aligned to its right. */
 .an-menu-wrap { position: relative; display: inline-flex; }
 .an-menu-btn svg { stroke-width: 3; }
 .an-menu {
