@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
-import { comment, fakeServer } from './server'
+import { comment, fakeServer, openPanel } from './server'
 import { renderWidget, startPageComment, stubHighlights } from './widget'
 
 /**
@@ -71,6 +71,7 @@ test('a bubble above the start of a commented text opens its thread', async () =
   onTestFinished(() => measure.mockRestore())
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
 
   const bubble = await screen.findByRole('button', {
@@ -96,6 +97,7 @@ test('the bubbles follow the page when an attribute moves its text', async () =>
   layout(() => ({ x, y: 100 }))
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
 
   const bubble = await screen.findByRole('button', { name: /Open the comment/ })
@@ -114,6 +116,7 @@ test('bubbles on the same spot sit side by side', async () => {
     comment({ id: 'c1', quote: 'Playground' }),
     comment({ id: 'c2', quote: 'Play' }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() =>

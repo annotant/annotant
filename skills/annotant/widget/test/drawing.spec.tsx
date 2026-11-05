@@ -712,6 +712,7 @@ const DRAWING: ReviewArea = {
 }
 
 test('a drawing loses its rainbow once its agent has written a file', async () => {
+  openPanel()
   renderCards([comment({ area: DRAWING, state: 'working', edited: true })])
 
   const mark = await screen.findByTestId('an-area-mark')
@@ -750,6 +751,7 @@ function openModal(html = '') {
 }
 
 test('a drawing hides while a modal covers what it was drawn on, and shows once it closes', async () => {
+  openPanel()
   renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
   await screen.findByTestId('an-area-mark')
 
@@ -761,6 +763,7 @@ test('a drawing hides while a modal covers what it was drawn on, and shows once 
 })
 
 test('a drawing hides as soon as something covers part of what it was drawn on', async () => {
+  openPanel()
   renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
   await screen.findByTestId('an-area-mark')
 
@@ -774,6 +777,7 @@ test('a drawing hides as soon as something covers part of what it was drawn on',
 
 test('a drawing made on a modal shows while the modal is open', async () => {
   const ON_MODAL = { selector: '.modal > p', tag: 'p', text: 'Delete version?' }
+  openPanel()
   renderCards([comment({ area: { ...DRAWING, covers: [ON_MODAL] } })])
   openModal(
     '<section class="modal" data-box="0,0,1280,800"><p data-box="80,240,300,140">Delete version?</p></section>',
@@ -791,6 +795,7 @@ test('a drawing hides under a modal opened in what holds it', async () => {
     offset: { top: 142, left: 92 },
     size: { width: 1000, height: 400 },
   }
+  openPanel()
   renderCards([
     comment({ area: { ...DRAWING, within, covers: [CARD_A], pointsAt: CARD_B } }),
   ])
@@ -804,6 +809,7 @@ test('a drawing hides under a modal opened in what holds it', async () => {
 })
 
 test("the widget's own boxes over a drawing do not hide it", async () => {
+  openPanel()
   renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
   await screen.findByTestId('an-area-mark')
 
@@ -817,6 +823,7 @@ test("the widget's own boxes over a drawing do not hide it", async () => {
 })
 
 test('a drawing with nothing over it shows, its lines over the cards', async () => {
+  openPanel()
   renderCards([comment({ area: { ...DRAWING, covers: [CARD_A], pointsAt: CARD_B } })])
   await screen.findByTestId('an-area-mark')
   await new Promise((done) => setTimeout(done, 50))
@@ -824,6 +831,7 @@ test('a drawing with nothing over it shows, its lines over the cards', async () 
 })
 
 test('a drawing does not follow what took the place of what it was drawn on', async () => {
+  openPanel()
   renderCards([comment({ area: { ...DRAWING, covers: [CARD_A] } })])
   await screen.findByTestId('an-area-mark')
 
@@ -835,6 +843,7 @@ test('a drawing does not follow what took the place of what it was drawn on', as
 
 test('a rectangle keeps its frame once what it covers is gone', async () => {
   const { strokes: _, ...rectangle } = DRAWING
+  openPanel()
   renderCards([comment({ area: { ...rectangle, covers: [CARD_A] } })])
   await screen.findByTestId('an-area-mark')
 
@@ -844,6 +853,7 @@ test('a rectangle keeps its frame once what it covers is gone', async () => {
 })
 
 test('a drawing over empty space keeps its lines', async () => {
+  openPanel()
   renderCards([comment({ area: DRAWING })])
   await screen.findByTestId('an-area-mark')
 
@@ -904,6 +914,7 @@ test('a drawing goes once Claude answers with files changed, not with words alon
     body: 'Done.',
     at: '2026-01-01T10:01:00.000Z',
   }
+  openPanel()
   renderCards([
     comment({
       id: 'c1',
