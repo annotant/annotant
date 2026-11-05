@@ -264,8 +264,20 @@ code { font-family: var(--cb-mono); }
 .an-settings-section { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .an-settings-section h3 { margin: 0; }
 .an-settings-model { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; font-size: 13px; }
-.an-select { padding: 4px 8px; border: 1px solid var(--cb-border); border-radius: 6px; background: var(--cb-surface-2); color: inherit; font: inherit; }
-.an-select:focus { outline: none; border-color: var(--cb-accent); }
+/* Select (ui.tsx): the browser's arrow hidden, ours drawn clear of the edge. */
+.an-select { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+.an-select select {
+  appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; height: 30px; margin: 0;
+  padding: 0 32px 0 10px; border: 1px solid var(--cb-border); border-radius: 6px;
+  background: var(--cb-surface-2); color: inherit; font: inherit; font-size: 13px;
+  line-height: 28px; text-overflow: ellipsis; cursor: pointer; outline: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.an-select select:hover { border-color: var(--cb-muted); }
+.an-select select:focus-visible { border-color: var(--cb-accent); box-shadow: 0 0 0 3px var(--cb-accent-weak); }
+.an-select svg { position: absolute; right: 10px; width: 14px; height: 14px; color: var(--cb-muted); pointer-events: none; }
+.an-select select:hover + svg, .an-select select:focus-visible + svg { color: var(--cb-text); }
+.an-select[data-disabled] select { cursor: not-allowed; opacity: .55; }
 .an-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .an-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--cb-border); }
 .an-title { display: flex; align-items: center; gap: 4px; min-width: 0; }

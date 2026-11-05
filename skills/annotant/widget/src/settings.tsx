@@ -9,12 +9,21 @@ import {
   type ModelsSetting,
   type ProjectSettings,
 } from './api'
-import { Button, IconButton, Spinner, Textarea, Toggle, toast } from './ui'
+import {
+  Button,
+  IconButton,
+  Select,
+  Spinner,
+  Textarea,
+  Toggle,
+  toast,
+  type SelectOption,
+} from './ui'
 
 type Label = 'trivial' | 'standard' | 'hard'
 type Strategy = 'auto' | 'fixed'
 type LabelChoices = Record<Label, Choice<AutoModel>>
-type Option<T extends string> = { value: T; label: string }
+type Option<T extends string> = SelectOption<T>
 
 const LABELS: Option<Label>[] = [
   { value: 'trivial', label: 'Trivial' },
@@ -333,37 +342,20 @@ function ChoicePicker<M extends string>({
   return (
     <div className="an-settings-model">
       <label htmlFor={id}>{label}</label>
-      <select
+      <Select
         id={id}
-        className="an-select"
         value={choice.model}
-        onChange={(event) => {
-          const model = models.find((one) => one.value === event.target.value)
-          if (model) onChange({ ...choice, model: model.value })
-        }}
-      >
-        {models.map((model) => (
-          <option key={model.value} value={model.value}>
-            {model.label}
-          </option>
-        ))}
-      </select>
-      <select
-        className="an-select"
+        options={models}
+        onChange={(model) => onChange({ ...choice, model })}
+      />
+      <Select
         aria-label={`${label}: effort`}
         value={choice.effort ?? ''}
-        onChange={(event) => {
-          const effort = EFFORTS.find((one) => one.value === event.target.value)?.value
-          if (effort === undefined) return
+        options={EFFORTS}
+        onChange={(effort) =>
           onChange(effort ? { model: choice.model, effort } : { model: choice.model })
-        }}
-      >
-        {EFFORTS.map((effort) => (
-          <option key={effort.value} value={effort.value}>
-            {effort.label}
-          </option>
-        ))}
-      </select>
+        }
+      />
     </div>
   )
 }
