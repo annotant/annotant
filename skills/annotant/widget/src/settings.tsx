@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import {
   fetchSettings,
   saveSettings,
-  type AgentModel,
+  type AutoModel,
+  type Choice,
+  type Effort,
+  type FixedModel,
   type ModelsSetting,
   type ProjectSettings,
 } from './api'
@@ -10,36 +13,53 @@ import { Button, IconButton, Spinner, Textarea, Toggle, toast } from './ui'
 
 type Label = 'trivial' | 'standard' | 'hard'
 type Strategy = 'auto' | 'fixed'
-type LabelModels = Record<Label, AgentModel>
+type LabelChoices = Record<Label, Choice<AutoModel>>
+type Option<T extends string> = { value: T; label: string }
 
-const LABELS: { value: Label; label: string }[] = [
+const LABELS: Option<Label>[] = [
   { value: 'trivial', label: 'Trivial' },
   { value: 'standard', label: 'Standard' },
   { value: 'hard', label: 'Hard' },
 ]
-const MODELS: { value: AgentModel; label: string }[] = [
+const AUTO_MODELS: Option<AutoModel>[] = [
   { value: 'haiku', label: 'Haiku' },
   { value: 'sonnet', label: 'Sonnet' },
   { value: 'opus', label: 'Opus' },
+]
+// The session's model fits one model for every comment, not a label.
+const FIXED_MODELS: Option<FixedModel>[] = [
+  ...AUTO_MODELS,
   { value: 'inherit', label: "The session's model" },
 ]
+/** `''`: none, the model's own effort. */
+const EFFORTS: Option<Effort | ''>[] = [
+  { value: '', label: 'Default effort' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra high' },
+  { value: 'max', label: 'Max' },
+]
 /** The server's default, which Auto starts from when the file names none. */
-const DEFAULT_LABELS: LabelModels = {
-  trivial: 'haiku',
-  standard: 'inherit',
-  hard: 'opus',
+const DEFAULT_LABELS: LabelChoices = {
+  trivial: { model: 'haiku' },
+  standard: { model: 'sonnet' },
+  hard: { model: 'opus' },
 }
 
-/** What the dialog would save for a strategy and its models. */
-const draftOf = (strategy: Strategy, labels: LabelModels, fixed: AgentModel) =>
+/** What the dialog would save for a strategy and its choices. */
+const draftOf = (strategy: Strategy, labels: LabelChoices, fixed: Choice<FixedModel>) =>
   strategy === 'auto'
     ? ({ strategy, ...labels } as const)
-    : ({ strategy, model: fixed } as const)
+    : ({ strategy, ...fixed } as const)
+
+const sameChoice = (a: Choice<string>, b: Choice<string>) =>
+  a.model === b.model && (a.effort ?? '') === (b.effort ?? '')
 
 const sameModels = (a: ModelsSetting, b: ModelsSetting) =>
   a.strategy === 'auto' && b.strategy === 'auto'
-    ? LABELS.every(({ value }) => a[value] === b[value])
-    : a.strategy === 'fixed' && b.strategy === 'fixed' && a.model === b.model
+    ? LABELS.every(({ value }) => sameChoice(a[value], b[value]))
+    : a.strategy === 'fixed' && b.strategy === 'fixed' && sameChoice(a, b)
 
 /**
  * The project's settings, over the panel: the instructions for the agents and
@@ -52,8 +72,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState('')
   const [strategy, setStrategy] = useState<Strategy>('auto')
   // Each strategy's own choice, kept while the reader switches between them.
-  const [labels, setLabels] = useState<LabelModels>(DEFAULT_LABELS)
-  const [fixed, setFixed] = useState<AgentModel>('inherit')
+  const [labels, setLabels] = useState<LabelChoices>(DEFAULT_LABELS)
+  const [fixed, setFixed] = useState<Choice<FixedModel>>({ model: 'inherit' })
   const [saving, setSaving] = useState(false)
   // Why the settings could not be read: no server, or its own words.
   const [failed, setFailed] = useState('')
@@ -91,7 +111,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       setLabels({ trivial: models.trivial, standard: models.standard, hard: models.hard })
     } else if (models?.strategy === 'fixed') {
       setStrategy('fixed')
-      setFixed(models.model)
+      setFixed({ model: models.model, ...(models.effort && { effort: models.effort }) })
     }
   }
 
@@ -219,9 +239,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * The model each comment's agent starts on: Auto, the classifier's label then
- * a model per label, or Fixed, one model. A `models` written by hand that the
- * dialog cannot show is shown as written, to change in the file.
+ * The model and effort each comment's agent starts on: Auto, the classifier's
+ * label then a choice per label, or Fixed, one choice. A `models` written by
+ * hand that the dialog cannot show is shown as written, to change in the file.
  */
 function ModelSection({
   models,
@@ -235,10 +255,10 @@ function ModelSection({
   models: ModelsSetting
   strategy: Strategy
   onStrategy: (strategy: Strategy) => void
-  labels: LabelModels
-  onLabels: (labels: LabelModels) => void
-  fixed: AgentModel
-  onFixed: (model: AgentModel) => void
+  labels: LabelChoices
+  onLabels: (labels: LabelChoices) => void
+  fixed: Choice<FixedModel>
+  onFixed: (choice: Choice<FixedModel>) => void
 }) {
   return (
     <section className="an-settings-section" aria-labelledby="an-models-title">
@@ -254,7 +274,7 @@ function ModelSection({
         <>
           <p className="an-settings-hint">
             {strategy === 'auto'
-              ? "Auto: a classifier sorts each comment, and its label picks the agent's model."
+              ? "Auto: a classifier sorts each comment, and its label picks the agent's model and effort."
               : 'Fixed: every comment runs on this model, without the classifier.'}
           </p>
           <Toggle
@@ -268,19 +288,21 @@ function ModelSection({
           />
           {strategy === 'auto' ? (
             LABELS.map(({ value, label }) => (
-              <ModelPicker
+              <ChoicePicker
                 key={value}
                 id={`an-model-${value}`}
                 label={label}
-                value={labels[value]}
-                onChange={(model) => onLabels({ ...labels, [value]: model })}
+                models={AUTO_MODELS}
+                choice={labels[value]}
+                onChange={(choice) => onLabels({ ...labels, [value]: choice })}
               />
             ))
           ) : (
-            <ModelPicker
+            <ChoicePicker
               id="an-model-fixed"
               label="Every comment"
-              value={fixed}
+              models={FIXED_MODELS}
+              choice={fixed}
               onChange={onFixed}
             />
           )}
@@ -294,16 +316,19 @@ function ModelSection({
   )
 }
 
-function ModelPicker({
+/** A row: its name, the model, and the effort it runs at. */
+function ChoicePicker<M extends string>({
   id,
   label,
-  value,
+  models,
+  choice,
   onChange,
 }: {
   id: string
   label: string
-  value: AgentModel
-  onChange: (model: AgentModel) => void
+  models: Option<M>[]
+  choice: Choice<M>
+  onChange: (choice: Choice<M>) => void
 }) {
   return (
     <div className="an-settings-model">
@@ -311,15 +336,31 @@ function ModelPicker({
       <select
         id={id}
         className="an-select"
-        value={value}
+        value={choice.model}
         onChange={(event) => {
-          const model = MODELS.find((one) => one.value === event.target.value)
-          if (model) onChange(model.value)
+          const model = models.find((one) => one.value === event.target.value)
+          if (model) onChange({ ...choice, model: model.value })
         }}
       >
-        {MODELS.map((model) => (
+        {models.map((model) => (
           <option key={model.value} value={model.value}>
             {model.label}
+          </option>
+        ))}
+      </select>
+      <select
+        className="an-select"
+        aria-label={`${label}: effort`}
+        value={choice.effort ?? ''}
+        onChange={(event) => {
+          const effort = EFFORTS.find((one) => one.value === event.target.value)?.value
+          if (effort === undefined) return
+          onChange(effort ? { model: choice.model, effort } : { model: choice.model })
+        }}
+      >
+        {EFFORTS.map((effort) => (
+          <option key={effort.value} value={effort.value}>
+            {effort.label}
           </option>
         ))}
       </select>

@@ -263,7 +263,7 @@ code { font-family: var(--cb-mono); }
 .an-settings-count[data-over] { color: var(--cb-red); font-weight: 600; }
 .an-settings-section { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .an-settings-section h3 { margin: 0; }
-.an-settings-model { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.an-settings-model { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; font-size: 13px; }
 .an-select { padding: 4px 8px; border: 1px solid var(--cb-border); border-radius: 6px; background: var(--cb-surface-2); color: inherit; font: inherit; }
 .an-select:focus { outline: none; border-color: var(--cb-accent); }
 .an-settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }

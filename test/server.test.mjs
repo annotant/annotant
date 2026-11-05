@@ -1618,7 +1618,12 @@ test('writes the instructions the widget saves to .annotant.json, its other keys
     assert.deepEqual(await json(await fetch(`${base}/api/settings`)), {
       instructions: '',
       max: 4000,
-      models: { strategy: 'auto', trivial: 'haiku', standard: 'inherit', hard: 'opus' },
+      models: {
+        strategy: 'auto',
+        trivial: { model: 'haiku' },
+        standard: { model: 'sonnet' },
+        hard: { model: 'opus' },
+      },
     })
 
     const from = output.length
@@ -1627,7 +1632,12 @@ test('writes the instructions the widget saves to .annotant.json, its other keys
     assert.deepEqual(await json(saved), {
       instructions: 'Copy is in Canadian French.',
       max: 4000,
-      models: { strategy: 'auto', trivial: 'haiku', standard: 'inherit', hard: 'opus' },
+      models: {
+        strategy: 'auto',
+        trivial: { model: 'haiku' },
+        standard: { model: 'sonnet' },
+        hard: { model: 'opus' },
+      },
     })
     assert.equal(await nextLine('SETTINGS', from), 'SETTINGS changed')
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
@@ -1670,23 +1680,32 @@ test('writes the models the widget saves, one or one per label, its other keys k
     const fixed = await saveModels({ strategy: 'fixed', model: 'opus' })
     assert.equal(fixed.status, 200)
     assert.deepEqual((await json(fixed)).models, { strategy: 'fixed', model: 'opus' })
+    // The session's model, at an effort.
+    const session = { strategy: 'fixed', model: 'inherit', effort: 'low' }
+    assert.deepEqual((await json(await saveModels(session))).models, session)
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).models, {
+      model: 'inherit',
+      effort: 'low',
+    })
+    assert.equal((await saveModels({ strategy: 'fixed', model: 'opus' })).status, 200)
     assert.equal(await nextLine('SETTINGS', from), 'SETTINGS models')
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
       ...JSON.parse(config),
       models: 'opus',
     })
 
+    // An effort is written with its model; none, the model alone.
     const auto = {
       strategy: 'auto',
-      trivial: 'sonnet',
-      standard: 'inherit',
-      hard: 'opus',
+      trivial: { model: 'sonnet' },
+      standard: { model: 'sonnet', effort: 'high' },
+      hard: { model: 'opus', effort: 'max' },
     }
     assert.deepEqual((await json(await saveModels(auto))).models, auto)
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).models, {
       trivial: 'sonnet',
-      standard: 'inherit',
-      hard: 'opus',
+      standard: { model: 'sonnet', effort: 'high' },
+      hard: { model: 'opus', effort: 'max' },
     })
     assert.deepEqual((await json(await fetch(`${base}/api/settings`))).models, auto)
 
@@ -1749,7 +1768,15 @@ test('refuses models it does not offer, and leaves .annotant.json as it is', asy
   const config = await readFile(file, 'utf8')
   for (const models of [
     { strategy: 'fixed', model: 'claude-opus-5-5' },
-    { strategy: 'auto', trivial: 'haiku', standard: 'inherit' },
+    { strategy: 'auto', trivial: { model: 'haiku' }, standard: { model: 'opus' } },
+    // The session's model is for one model only, not a label's.
+    {
+      strategy: 'auto',
+      trivial: { model: 'haiku' },
+      standard: { model: 'inherit' },
+      hard: { model: 'opus' },
+    },
+    { strategy: 'fixed', model: 'opus', effort: 'turbo' },
     { strategy: 'custom', text: '"opus"' },
     'opus',
   ]) {
@@ -1764,7 +1791,11 @@ test('shows models written by hand that the dialog cannot show, and keeps them',
   const file = path.join(root, '.annotant.json')
   const config = await readFile(file, 'utf8')
   try {
-    for (const models of [{ trivial: 'inherit' }, 'claude-opus-5-5']) {
+    for (const models of [
+      { trivial: 'inherit' },
+      'claude-opus-5-5',
+      { trivial: 'haiku', standard: 'inherit', hard: 'opus' },
+    ]) {
       const edited = JSON.stringify({ ...JSON.parse(config), models })
       await writeFile(file, edited)
       assert.deepEqual((await json(await fetch(`${base}/api/settings`))).models, {

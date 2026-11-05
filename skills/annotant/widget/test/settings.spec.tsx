@@ -121,7 +121,12 @@ test('settings that cannot be read say why', async () => {
   ).toBeTruthy()
 })
 
-const AUTO = { strategy: 'auto', trivial: 'haiku', standard: 'inherit', hard: 'opus' }
+const AUTO = {
+  strategy: 'auto',
+  trivial: { model: 'haiku' },
+  standard: { model: 'sonnet', effort: 'high' },
+  hard: { model: 'opus' },
+}
 const select = (name: string) => {
   const field = screen.getByLabelText(name)
   if (!(field instanceof HTMLSelectElement)) throw new Error(`no ${name} picker`)
@@ -137,8 +142,24 @@ test('the settings show the model strategy: Auto, a model per label', async () =
   const strategy = screen.getByRole('radiogroup', { name: 'How the model is picked' })
   expect(strategy.querySelector('[aria-checked="true"]')?.textContent).toBe('Auto')
   expect(select('Trivial').value).toBe('haiku')
-  expect(select('Standard').value).toBe('inherit')
+  expect(select('Trivial: effort').value).toBe('')
+  expect(select('Standard').value).toBe('sonnet')
+  expect(select('Standard: effort').value).toBe('high')
   expect(select('Hard').value).toBe('opus')
+  // The session's model is for Fixed only.
+  expect([...select('Trivial').options].map((option) => option.value)).toEqual([
+    'haiku',
+    'sonnet',
+    'opus',
+  ])
+  expect([...select('Hard: effort').options].map((option) => option.value)).toEqual([
+    '',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+  ])
   // Which agents a change reaches.
   expect(
     screen.getByText(/a\s+follow-up to their comment, keep their model/),
@@ -155,13 +176,22 @@ test("changing a label's model saves the models alone", async () => {
   await openSettings()
   const save = screen.getByRole('button', { name: 'Save' })
   fireEvent.change(select('Trivial'), { target: { value: 'sonnet' } })
+  fireEvent.change(select('Trivial: effort'), { target: { value: 'low' } })
+  // Back to the model's own effort: none sent.
+  fireEvent.change(select('Standard: effort'), { target: { value: '' } })
   expect(save.hasAttribute('disabled')).toBe(false)
   fireEvent.click(save)
 
   expect(
     await screen.findByText(/next comments' agents start on these models/),
   ).toBeTruthy()
-  expect(server.savedModels).toEqual([{ ...AUTO, trivial: 'sonnet' }])
+  expect(server.savedModels).toEqual([
+    {
+      ...AUTO,
+      trivial: { model: 'sonnet', effort: 'low' },
+      standard: { model: 'sonnet' },
+    },
+  ])
   expect(server.saved).toEqual([])
   await waitFor(() => expect(save.hasAttribute('disabled')).toBe(true))
 })
@@ -182,11 +212,17 @@ test('Fixed runs every comment on one model, and switching back keeps the labels
   expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true)
 
   fireEvent.click(screen.getByRole('radio', { name: 'Fixed' }))
+  expect([...select('Every comment').options].map((option) => option.value)).toContain(
+    'inherit',
+  )
   fireEvent.change(select('Every comment'), { target: { value: 'opus' } })
+  fireEvent.change(select('Every comment: effort'), { target: { value: 'max' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
   await waitFor(() =>
-    expect(server.savedModels).toEqual([{ strategy: 'fixed', model: 'opus' }]),
+    expect(server.savedModels).toEqual([
+      { strategy: 'fixed', model: 'opus', effort: 'max' },
+    ]),
   )
 })
 
@@ -195,7 +231,7 @@ test('a fixed model the file names shows Fixed with it', async () => {
     settings: {
       instructions: '',
       max: 4000,
-      models: { strategy: 'fixed', model: 'opus' },
+      models: { strategy: 'fixed', model: 'opus', effort: 'high' },
     },
   })
   openPanel()
@@ -206,6 +242,7 @@ test('a fixed model the file names shows Fixed with it', async () => {
     'true',
   )
   expect(select('Every comment').value).toBe('opus')
+  expect(select('Every comment: effort').value).toBe('high')
 })
 
 test('models written by hand are shown as written, with no picker, and never sent', async () => {
@@ -254,7 +291,7 @@ test('changing the instructions and a model saves both in one request', async ()
     await screen.findByText(/next comments' agents follow these settings/),
   ).toBeTruthy()
   expect(server.saved).toEqual(['Use tabs.'])
-  expect(server.savedModels).toEqual([{ ...AUTO, hard: 'sonnet' }])
+  expect(server.savedModels).toEqual([{ ...AUTO, hard: { model: 'sonnet' } }])
   expect(
     server.fetch.mock.calls.filter(([, init]) => init?.method === 'POST'),
   ).toHaveLength(1)

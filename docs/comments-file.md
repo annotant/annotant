@@ -321,20 +321,23 @@ Code's small fast model for one label:
 | `hard`     | Anything across several components or pages, data or API changes, or a question that needs a product decision. |
 
 `models` in `.annotant.json` maps each label to a model alias (`haiku`,
-`sonnet`, `opus`) or id; `inherit` keeps the session's model. Without
-it, the default is:
+`sonnet`, `opus`) or id; `inherit` keeps the session's model. A model may
+come with the effort its agent runs at, one of `low`, `medium`, `high`,
+`xhigh` and `max` (another is left out): `{ "model": "opus", "effort": "high" }`;
+the model alone keeps its own. Without `models`, the default is:
 
 ```json
-"models": { "trivial": "haiku", "standard": "inherit", "hard": "opus" }
+"models": { "trivial": "haiku", "standard": "sonnet", "hard": "opus" }
 ```
 
 A `models` object is read whole: a label it leaves out inherits, so
 `{ "trivial": "inherit" }` turns routing off, and the classifier is not
-asked. A model alone runs every comment on it, without the classifier, and
-the thread names the model with no label:
+asked. A model alone, with its effort or not, runs every comment on it,
+without the classifier, and the thread names the model with no label:
 
 ```json
 "models": "opus"
+"models": { "model": "inherit", "effort": "high" }
 ```
 
 The hooks read `models` again for each agent they start, so a change applies
@@ -343,7 +346,7 @@ cannot be read then keeps the `models` the watch started with. A classifier that
 on the session's model. A comment of images alone, which the classifier
 cannot read, is not classified, routing on or off: its agent starts on the
 session's model (the fixed one, when `models` names one) at a `medium`
-effort, with no label. In every case the hooks
+effort (the fixed one's, when it names one), with no label. In every case the hooks
 write the agent, the model it runs on and the label in the state folder
 (`routes/<id>.json`, beside `progress/`), and `claim.mjs` records them on the
 `working` event (`ANNOTANT_AGENT`, `ANNOTANT_MODEL` and
@@ -377,13 +380,15 @@ nothing. `GET /api/settings` and the save answer `{ instructions, max, models }`
 `.annotant.json` that cannot be read or written, is not valid JSON or not an
 object is refused (422) with the reason, and left as it is.
 
-The dialog's _Model_ section edits `models` the same way: _Auto_, a model per
-label (`haiku`, `sonnet`, `opus` or the session's, `inherit`), or _Fixed_, one
-of them for every comment. `GET /api/settings` names it as `models`:
-`{ strategy: "auto", trivial, standard, hard }`, `{ strategy: "fixed", model }`,
-or `{ strategy: "custom", text }` for a `models` written by hand that the dialog
-cannot show (a model id, a label left out), which it shows read-only and never
-replaces (422). The widget sends `{ models }` in the same shape, without
+The dialog's _Model_ section edits `models` the same way: _Auto_, a model
+per label (`haiku`, `sonnet` or `opus`), or _Fixed_, one for every comment
+(those three or the session's, `inherit`), each with an effort or the
+model's own. `GET /api/settings` names it as `models`:
+`{ strategy: "auto", trivial, standard, hard }`, each `{ model, effort? }`,
+`{ strategy: "fixed", model, effort? }`, or `{ strategy: "custom", text }` for
+a `models` written by hand that the dialog cannot show (a model id, a label
+left out, `inherit` for a label), which it shows read-only and never replaces
+(422). The widget sends `{ models }` in the same shape, without
 `text`, alone or with `instructions`; a change prints `SETTINGS models`, and the
 hooks tell the reader the new models in Claude Code.
 

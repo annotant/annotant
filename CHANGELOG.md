@@ -16,13 +16,19 @@ released to the `stable` branch.
 - **Choose the model in the settings.** The settings dialog's Model section
   shows how each comment's model is picked and changes it: Auto, where the
   classifier's label picks a model for each label, or Fixed, one model for
-  every comment, without the classifier (`"models": "opus"`). The next
+  every comment, without the classifier (`"models": "opus"`). Each model
+  comes with its effort (`low` to `max`, or the model's own), written
+  `{ "model": "opus", "effort": "high" }`. The next
   comment's agent starts on it without restarting the watch; a `models`
   written by hand that the dialog cannot show is kept, and shown as written.
   (#305)
 
 ### Changed
 
+- **Standard comments run on Sonnet.** Without `models` in `.annotant.json`,
+  a comment the classifier sorts `standard` now starts on Sonnet instead of
+  the session's model: the settings' Auto mode maps each label to Haiku,
+  Sonnet or Opus. `"standard": "inherit"` keeps the old behaviour. (#305)
 - **`/annotant:annotant update` finds what drifted.** Beyond the config's
   `version`, it checks that the loader is still in the files `.annotant.json`
   lists, that it asks the server's port and that it keeps its

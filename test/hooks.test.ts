@@ -425,9 +425,7 @@ test('/annotant-debug turns the hook log on, shows it, and turns it off', async 
   await watch($, w)
   await w.print(newLine('c1'))
   const log = w.file(LOG) ?? ''
-  expect(log).toMatch(
-    / a1 c1 started on claude-sonnet-5-5, the comment classified standard\n/,
-  )
+  expect(log).toMatch(/ a1 c1 started on sonnet, the comment classified standard\n/)
   expect(log).toMatch(/ a1 c1 started for NEW\n/)
   // Not a teammate: nothing about agent teams.
   expect(log).not.toContain('runs as a teammate')
@@ -543,16 +541,16 @@ test("locks a comment's files across the git repository the project is in", asyn
   await w.exit(0)
 })
 
-test('a hard comment goes to opus, a standard one keeps the parent model', async ($, on) => {
+test('a hard comment goes to opus, a standard one to sonnet', async ($, on) => {
   const w = world(on, [titleComment, { ...titleComment, id: 'c2' }])
   await watch($, w)
   w.classifyAs('hard')
   await w.print(newLine('c1'))
   w.classifyAs('standard')
   await w.print(newLine('c2'))
-  expect(w.spawned.map((agent) => agent.model)).toEqual(['opus', undefined])
+  expect(w.spawned.map((agent) => agent.model)).toEqual(['opus', 'sonnet'])
   expect(w.route('c2')).toEqual({
-    model: 'claude-sonnet-5-5',
+    model: 'sonnet',
     complexity: 'standard',
     agent: 'a2',
   })
@@ -747,6 +745,69 @@ test('models taken out of the file while the watch runs go back to the default',
   await w.print(newLine('c1'))
   expect(w.spawned[0]?.model).toBe('haiku')
   expect(w.route('c1')).toMatchObject({ complexity: 'trivial' })
+  await w.exit(0)
+})
+
+test('a label or the fixed model can name its effort', async ($, on) => {
+  const w = world(on, [
+    titleComment,
+    { ...titleComment, id: 'c2' },
+    { ...imageOnly, id: 'c3' },
+  ])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: {
+        trivial: 'haiku',
+        standard: 'sonnet',
+        hard: { model: 'opus', effort: 'xhigh' },
+      },
+    }),
+  )
+  w.classifyAs('hard')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.registered.get('annotant:an-c1')).toMatchObject({
+    model: 'opus',
+    effort: 'xhigh',
+  })
+  expect(w.route('c1')).toMatchObject({ complexity: 'hard', effort: 'xhigh' })
+
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: { model: 'sonnet', effort: 'high' },
+    }),
+  )
+  await w.print(newLine('c2'))
+  expect(w.registered.get('annotant:an-c2')).toMatchObject({
+    model: 'sonnet',
+    effort: 'high',
+  })
+  // The fixed effort wins over an image alone's medium one.
+  await w.print(newLine('c3'))
+  expect(w.registered.get('annotant:an-c3')).toMatchObject({
+    model: 'sonnet',
+    effort: 'high',
+  })
+  await w.exit(0)
+})
+
+test('an effort Claude Code does not take is left out', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: { model: 'sonnet', effort: 'turbo' },
+    }),
+  )
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.registered.get('annotant:an-c1')?.model).toBe('sonnet')
+  expect(w.registered.get('annotant:an-c1')?.effort).toBeUndefined()
   await w.exit(0)
 })
 
@@ -1365,7 +1426,7 @@ test('/annotant status says why a server stopped, and the agents still at work',
   await w.exit(1)
   const { text } = await $.command.run(watchCommand('status'))
   expect(text).toMatch(
-    /\/repo\/web: server stopped: the server exited \(code 1\)\. \/annotant starts it again\.\n  At work:\n    c1 "make the title bigger": agent a1 on claude-sonnet-5-5, for 0 s$/,
+    /\/repo\/web: server stopped: the server exited \(code 1\)\. \/annotant starts it again\.\n  At work:\n    c1 "make the title bigger": agent a1 on sonnet, for 0 s$/,
   )
   // Stopping the watch forgets the server that ended.
   await $.command.run(watchCommand('stop'))
@@ -1419,16 +1480,19 @@ test("tells the person the widget changed the agents' instructions", async ($, o
 test('tells the person the widget changed the models of the agents', async ($, on) => {
   const w = world(on, [])
   await watch($, w)
-  w.write(`${ROOT}/.annotant.json`, JSON.stringify({ models: 'opus' }))
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ models: { model: 'opus', effort: 'high' } }),
+  )
   await w.print('SETTINGS models')
   expect(w.toasts.at(-1)).toMatch(
-    /models for the agents of web changed through its server .*: opus for every comment\. The next comments' agents start on them\./,
+    /models for the agents of web changed through its server .*: opus at high effort for every comment\. The next comments' agents start on them\./,
   )
 
   w.write(`${ROOT}/.annotant.json`, JSON.stringify({}))
   await w.print('SETTINGS models')
   expect(w.toasts.at(-1)).toMatch(
-    /: haiku for trivial, the session's model for standard, opus for hard\./,
+    /: haiku for trivial, sonnet for standard, opus for hard\./,
   )
 
   w.write(`${ROOT}/.annotant.json`, '{ not json')

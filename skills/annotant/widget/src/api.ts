@@ -315,17 +315,27 @@ export function useNewerRelease(current: string) {
   return release
 }
 
-/** A model the settings dialog offers; `inherit` is the session's. */
-export type AgentModel = 'haiku' | 'sonnet' | 'opus' | 'inherit'
+/** A model a label can map to in Auto. */
+export type AutoModel = 'haiku' | 'sonnet' | 'opus'
+/** One model for every comment may also be the session's, `inherit`. */
+export type FixedModel = AutoModel | 'inherit'
+/** The efforts Claude Code takes for an agent; none is the model's own. */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type Choice<M extends string> = { model: M; effort?: Effort }
 
 /**
  * How each comment's model is picked (lib/settings.mjs): `auto`, the
- * classifier's label then a model per label; `fixed`, one model; `custom`, a
- * `models` written by hand the dialog cannot show, its JSON.
+ * classifier's label then a model and effort per label; `fixed`, one model and
+ * effort; `custom`, a `models` written by hand the dialog cannot show, its JSON.
  */
 export type ModelsSetting =
-  | { strategy: 'auto'; trivial: AgentModel; standard: AgentModel; hard: AgentModel }
-  | { strategy: 'fixed'; model: AgentModel }
+  | {
+      strategy: 'auto'
+      trivial: Choice<AutoModel>
+      standard: Choice<AutoModel>
+      hard: Choice<AutoModel>
+    }
+  | ({ strategy: 'fixed' } & Choice<FixedModel>)
   | { strategy: 'custom'; text: string }
 
 /**

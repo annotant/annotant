@@ -1,6 +1,6 @@
 // The project's settings the widget's dialog shows: `instructions`, what the
 // reader wants every comment's agent to know about the project, and `models`,
-// the model each comment's agent starts on. Saving writes them to
+// the model and effort each comment's agent starts on. Saving writes them to
 // `.annotant.json` at once; the hooks read it again for each agent they start,
 // so the agents already working, and a follow-up that resumes one, keep the
 // instructions and the model they had.
@@ -24,17 +24,25 @@ const HIDDEN =
 /** A change the server does not take, its text for the reader. */
 export class SettingsRefusal extends Error {}
 
-/** The models the dialog offers; `inherit` is the session's. */
-const MODELS = /** @type {const} */ (['haiku', 'sonnet', 'opus', 'inherit'])
+/** The models a label can map to: the classifier picks among them. */
+const AUTO_MODELS = /** @type {const} */ (['haiku', 'sonnet', 'opus'])
+/** One model for every comment may also be the session's, `inherit`. */
+const FIXED_MODELS = /** @type {const} */ ([...AUTO_MODELS, 'inherit'])
+/** The efforts Claude Code takes for an agent; none is the model's own. */
+const EFFORTS = /** @type {const} */ (['low', 'medium', 'high', 'xhigh', 'max'])
 const LABELS = /** @type {const} */ (['trivial', 'standard', 'hard'])
-/** @typedef {(typeof MODELS)[number]} Model */
+/** @typedef {(typeof AUTO_MODELS)[number]} AutoModel */
+/** @typedef {(typeof FIXED_MODELS)[number]} FixedModel */
+/** @typedef {(typeof EFFORTS)[number]} Effort */
 /**
  * How each comment's model is picked, as the dialog shows it. `auto`: the
- * classifier's label, then a model per label; `fixed`: one model, no
- * classifier; `custom`: a `models` written by hand the dialog cannot show (a
- * model id, a label left out), its JSON, read-only.
- * @typedef {{ strategy: 'auto', trivial: Model, standard: Model, hard: Model }
- *   | { strategy: 'fixed', model: Model }
+ * classifier's label, then a model and an effort per label; `fixed`: one
+ * model and effort, no classifier; `custom`: a `models` written by hand the
+ * dialog cannot show (a model id, a label left out, `inherit` for a label),
+ * its JSON, read-only. No `effort`: the model's own.
+ * @typedef {{ model: AutoModel, effort?: Effort }} AutoChoice
+ * @typedef {{ strategy: 'auto', trivial: AutoChoice, standard: AutoChoice, hard: AutoChoice }
+ *   | { strategy: 'fixed', model: FixedModel, effort?: Effort }
  *   | { strategy: 'custom', text: string }} ModelsSetting
  */
 /**
@@ -44,61 +52,110 @@ const LABELS = /** @type {const} */ (['trivial', 'standard', 'hard'])
 /** Without `models` in `.annotant.json`: the hooks' default too (hooks/register.ts). */
 const DEFAULT_MODELS = /** @type {const} */ ({
   strategy: 'auto',
-  trivial: 'haiku',
-  standard: 'inherit',
-  hard: 'opus',
+  trivial: { model: 'haiku' },
+  standard: { model: 'sonnet' },
+  hard: { model: 'opus' },
 })
 
 /**
- * @param {unknown} value
- * @returns {value is Model}
+ * @template {string} T
+ * @param {readonly T[]} known
+ * @returns {(value: unknown) => value is T}
  */
-const isModel = (value) => MODELS.some((model) => model === value)
+const oneOf =
+  (known) =>
+  /** @returns {value is T} */
+  (value) =>
+    known.some((one) => one === value)
+const isAutoModel = oneOf(AUTO_MODELS)
+const isFixedModel = oneOf(FIXED_MODELS)
+const isEffort = oneOf(EFFORTS)
 
 /**
- * `.annotant.json`'s `models` as the dialog shows it: a model it offers
- * (`"opus"`) is fixed; an object of the three labels, each a model it offers,
- * is auto; none is the default; anything else is the reader's own, shown as
- * written.
+ * A model and its effort, as `.annotant.json` or the dialog writes them: the
+ * model alone (`"opus"`), or `{ "model": "opus", "effort": "high" }`. Anything
+ * else, none.
+ * @template {string} M
+ * @param {unknown} value
+ * @param {(value: unknown) => value is M} isModel
+ * @returns {{ model: M, effort?: Effort } | undefined}
+ */
+function choiceOf(value, isModel) {
+  if (isModel(value)) return { model: value }
+  if (!isObject(value)) return undefined
+  const { model, effort, ...rest } = value
+  if (Object.keys(rest).length || !isModel(model)) return undefined
+  if (effort === undefined) return { model }
+  return isEffort(effort) ? { model, effort } : undefined
+}
+
+/**
+ * `.annotant.json`'s `models` as the dialog shows it: one model it offers,
+ * with its effort or not, is fixed; an object of the three labels, each a
+ * model a label can map to, is auto; none is the default; anything else is
+ * the reader's own, shown as written.
  * @param {unknown} value
  * @returns {ModelsSetting}
  */
 function modelsSetting(value) {
   if (value === undefined) return { ...DEFAULT_MODELS }
-  if (isModel(value)) return { strategy: 'fixed', model: value }
+  const fixed = choiceOf(value, isFixedModel)
+  if (fixed) return { strategy: 'fixed', ...fixed }
   if (isObject(value) && Object.keys(value).length === LABELS.length) {
-    const { trivial, standard, hard } = value
-    if (isModel(trivial) && isModel(standard) && isModel(hard))
-      return { strategy: 'auto', trivial, standard, hard }
+    const trivial = choiceOf(value.trivial, isAutoModel)
+    const standard = choiceOf(value.standard, isAutoModel)
+    const hard = choiceOf(value.hard, isAutoModel)
+    if (trivial && standard && hard) return { strategy: 'auto', trivial, standard, hard }
   }
   return { strategy: 'custom', text: JSON.stringify(value) }
 }
 
 /**
- * The `models` to write for what the dialog sent: a model for fixed, the
- * three labels' for auto. Anything else is refused.
+ * A choice as the file keeps it: the model alone when it has no effort.
+ * @template {string} M
+ * @param {{ model: M, effort?: Effort }} choice
+ */
+const written = ({ model, effort }) => (effort ? { model, effort } : model)
+
+/**
+ * The `models` to write for what the dialog sent: a choice for fixed, one per
+ * label for auto. Anything else is refused.
  * @param {unknown} sent
- * @returns {Model | { trivial: Model, standard: Model, hard: Model }}
  */
 function modelsToWrite(sent) {
-  if (isObject(sent) && sent.strategy === 'fixed' && isModel(sent.model))
-    return sent.model
+  if (isObject(sent) && sent.strategy === 'fixed') {
+    const { strategy: _, ...rest } = sent
+    const fixed = choiceOf(rest, isFixedModel)
+    if (fixed) return written(fixed)
+  }
   if (isObject(sent) && sent.strategy === 'auto') {
-    const { trivial, standard, hard } = sent
-    if (isModel(trivial) && isModel(standard) && isModel(hard))
-      return { trivial, standard, hard }
+    const trivial = choiceOf(sent.trivial, isAutoModel)
+    const standard = choiceOf(sent.standard, isAutoModel)
+    const hard = choiceOf(sent.hard, isAutoModel)
+    if (trivial && standard && hard)
+      return {
+        trivial: written(trivial),
+        standard: written(standard),
+        hard: written(hard),
+      }
   }
   throw new SettingsRefusal(
-    `models must be one of ${MODELS.join(', ')}, or one of them for each of ${LABELS.join(', ')}.`,
+    `models must be one of ${FIXED_MODELS.join(', ')}, or one of ${AUTO_MODELS.join(', ')} for each of ${LABELS.join(', ')}; an effort, one of ${EFFORTS.join(', ')}.`,
   )
 }
 
-/** @param {ModelsSetting} models One string per setting, to compare them. */
+/** @param {{ model: string, effort?: string }} choice */
+const choiceKey = (choice) => `${choice.model}/${choice.effort ?? ''}`
+
+/**
+ * One string per setting, to compare them.
+ * @param {ModelsSetting} models
+ */
 const modelsKey = (models) =>
   models.strategy === 'auto'
-    ? `auto ${models.trivial} ${models.standard} ${models.hard}`
+    ? `auto ${LABELS.map((label) => choiceKey(models[label])).join(' ')}`
     : models.strategy === 'fixed'
-      ? `fixed ${models.model}`
+      ? `fixed ${choiceKey(models)}`
       : `custom ${models.text}`
 
 /** @param {{ root: string }} project */

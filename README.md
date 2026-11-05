@@ -65,11 +65,12 @@ follow up; cancel to stop it.
   around each of its tools, and no other agent does.
 - **Each comment gets a model that fits it.** Before its agent starts, a
   classifier sorts the comment as `trivial`, `standard` or `hard`, and
-  `models` in `.annotant.json` picks the model for it (by default Haiku,
-  the session's own model, and Opus). The widget names it on the thread
+  `models` in `.annotant.json` picks the model and its effort for it (by
+  default Haiku, Sonnet and Opus). The widget names it on the thread
   ("haiku · trivial"). A comment of images alone is not classified: it
   starts on the session's model at a medium effort. The settings dialog
-  switches between this and one fixed model for every comment. See
+  switches between this and one fixed model for every comment, and sets
+  each model's effort. See
   [Models](docs/comments-file.md#models).
 - **You see where the agents write.** The panel's foot names the branch your
   project is on (its commit on a detached HEAD), its worktree on hover when it
