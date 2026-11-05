@@ -239,6 +239,8 @@ next sessions.
 - **Comments**, at the strip's end, opens the panel. Its **New comment**
   (`+`) starts a comment for the page, or the whole app; so does the comment
   shortcut.
+  The marks below (bubbles, frames, areas and drawings) show while the panel
+  is open: closed, the page shows as it is.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.
 - **Point at element** starts a comment with that element in its message

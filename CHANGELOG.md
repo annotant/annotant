@@ -25,6 +25,10 @@ released to the `stable` branch.
 
 ### Changed
 
+- **A closed panel leaves the page clean.** While the panel is closed, the
+  widget draws none of its marks: no bubble, element frame, area or drawing.
+  They come back as it opens; what you pick or draw from the strip still
+  shows. (#313)
 - **Standard comments run on Sonnet.** Without `models` in `.annotant.json`,
   a comment the classifier sorts `standard` now starts on Sonnet instead of
   the session's model: the settings' Auto mode maps each label to Haiku,
