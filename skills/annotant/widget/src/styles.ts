@@ -74,6 +74,10 @@ export const WIDGET_CSS = `
   --cb-amber-fg: #7a4e0e;
   --cb-amber-ink: #4a2f06;
   --cb-amber-border: #f2d9a8;
+  /* A follow-up Claude answered: the reader checks it, no question holds a run.
+     Calmer than the amber of a question, apart from the blues and the green. */
+  --cb-violet: #6a3fbf;
+  --cb-violet-bg: #f3eefc;
   --cb-bubble: #eff3f8;
   /* The syntax of code in diffs and answers: 4.5:1 on the surface, the diff's
      green and red, the bubble, and a code block's tint on it. */
@@ -118,6 +122,8 @@ export const WIDGET_CSS = `
   --cb-amber-fg: #f2c46b;
   --cb-amber-ink: #f7e5bd;
   --cb-amber-border: #5e4919;
+  --cb-violet: #c4a8ff;
+  --cb-violet-bg: #2a2042;
   --cb-bubble: #232c3a;
   --cb-code-keyword: #d4a5ff;
   --cb-code-string: #8fdca2;
@@ -162,7 +168,8 @@ code { font-family: var(--cb-mono); }
 .an-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .an-chip--open { background: var(--cb-accent-weak); color: var(--cb-accent); }
 .an-chip--claimed { background: var(--cb-accent-tint); color: var(--cb-accent-strong); }
-.an-chip--asking, .an-chip--answered { background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
+.an-chip--asking { background: var(--cb-amber-bg); color: var(--cb-amber-fg); }
+.an-chip--answered { background: var(--cb-violet-bg); color: var(--cb-violet); }
 .an-chip--resolved { background: var(--cb-green-bg); color: var(--cb-green); }
 .an-chip--stopped { background: var(--cb-red-bg); color: var(--cb-red); }
 .an-chip--small { height: 18px; padding: 0 7px; border-radius: 9px; font-size: 11px; vertical-align: 1px; }

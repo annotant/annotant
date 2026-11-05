@@ -65,6 +65,7 @@ const TEXT_ON = {
   'orange-ink': ['surface'],
   'amber-fg': ['amber-bg'],
   'amber-ink': ['amber-bg', 'surface'],
+  violet: ['violet-bg', 'surface'],
 }
 
 test('keeps every text of both palettes at AA contrast', async () => {
@@ -85,4 +86,18 @@ test('keeps every text of both palettes at AA contrast', async () => {
       }
     }
   }
+})
+
+test('gives each state its own chip colour', async () => {
+  const css = await source('styles.ts')
+  const tones = ['open', 'claimed', 'asking', 'answered', 'resolved', 'stopped'].map(
+    (tone) => {
+      const declarations = rule(css, `.an-chip--${tone}`)
+      assert.ok(declarations, `.an-chip--${tone} has a rule of its own`)
+      const background = /background: var\(--cb-([\w-]+)\)/.exec(declarations)?.[1]
+      assert.ok(background, `.an-chip--${tone} takes its background from a token`)
+      return background
+    },
+  )
+  assert.equal(new Set(tones).size, tones.length, `chip backgrounds: ${tones.join(', ')}`)
 })
