@@ -58,6 +58,7 @@ test('an element is in progress until its thread is first resolved or handled', 
     comment({ id: 'c2', element: TITLE, state: 'resolved' }),
     comment({ id: 'c3', element: TITLE, events: [...reopened] }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() => expect(marks()).toHaveLength(1))
@@ -67,6 +68,7 @@ test("a bubble on an element opens its comment's thread", async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Open the comment on <h1>' }))
@@ -97,6 +99,7 @@ test('a text is in progress until its thread is first resolved or handled', asyn
     comment({ id: 'c2', quote: 'Play', state: 'resolved' }),
     comment({ id: 'c3', quote: 'Play', events: [...reopened] }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() => expect(lines()).toHaveLength(1))
@@ -108,6 +111,42 @@ test('a text is in progress until its thread is first resolved or handled', asyn
   ).toEqual([`${-40 - RAINBOW_PERIOD}px`, '-100px'])
   // Drawn by the widget: the page's highlights only hold the draft.
   expect([...highlights.keys()]).toEqual(['annotant-draft'])
+})
+
+/** The box that cuts the first frame to what shows: where it is on the page. */
+const framed = () => {
+  const clip = marks()[0]?.parentElement
+  return clip instanceof HTMLElement ? clip.style.cssText : undefined
+}
+/** The bubbles on the page, which open their threads. */
+const bubbles = () => screen.queryAllByRole('button', { name: /^Open the comment/ })
+
+test('the marks hide while the panel is closed and come back, in place, as it opens', async () => {
+  stubHighlights()
+  layout()
+  document.body.replaceChildren()
+  fakeServer([
+    comment({ id: 'c1', element: TITLE }),
+    comment({ id: 'c2', quote: 'Playground' }),
+  ])
+  openPanel()
+  renderWidget()
+  await waitFor(() => expect(marks()).toHaveLength(1))
+  await waitFor(() => expect(lines()).toHaveLength(1))
+  const before = framed()
+  expect(bubbles()).toHaveLength(2)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(marks()).toHaveLength(0))
+  expect(lines()).toHaveLength(0)
+  expect(bubbles()).toHaveLength(0)
+
+  fireEvent.click(screen.getByRole('button', { name: /^Comments/ }))
+  await waitFor(() => expect(marks()).toHaveLength(1))
+  await waitFor(() => expect(lines()).toHaveLength(1))
+  expect(bubbles()).toHaveLength(2)
+  expect([lines()[0]?.style.left, lines()[0]?.style.width]).toEqual(['40px', '200px'])
+  expect(framed()).toBe(before)
 })
 
 /** The reader points at the page's title and starts a comment on it. */
@@ -183,6 +222,7 @@ test('an element picked in a message is marked until the thread is resolved', as
     holding({ id: 'c1', events: reopened.slice(0, 2) }),
     holding({ id: 'c2', state: 'resolved' }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() => expect(marks()).toHaveLength(1))
@@ -220,6 +260,7 @@ test('an element picked in a reply after the thread was resolved takes the mark'
       events: [...reopened],
     }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() => expect(marks()).toHaveLength(1))
@@ -258,6 +299,7 @@ test('an element scrolled out of its box has no frame nor bubble', async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
   await waitFor(() => expect(marks()).toHaveLength(1))
 
@@ -272,6 +314,7 @@ test('an element half out of its box is framed where it shows, its bubble on tha
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
   scrollBox(110)
   fireEvent.scroll(document)
@@ -295,6 +338,7 @@ test('a text scrolled out of its box has no rainbow nor bubble', async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
   await waitFor(() => expect(lines()).toHaveLength(1))
 
@@ -310,6 +354,7 @@ test('a text half out of its box has its rainbow cut where it shows, its bubble 
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
   scrollBox(110)
   fireEvent.scroll(document)
@@ -325,6 +370,7 @@ test('an element with no height keeps its bubble', async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
   scrollBox(100, 0)
   fireEvent.scroll(document)
@@ -336,6 +382,7 @@ test('a fixed element in a scrolling box is not cut by it', async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
   document.querySelector('h1')?.style.setProperty('position', 'fixed')
   scrollBox(300)
@@ -350,6 +397,7 @@ test('a text in an inline box that hides its overflow keeps its rainbow', async 
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
   const title = document.querySelector('h1')
   if (!title) throw new Error('no title')
@@ -366,6 +414,7 @@ test('marks follow their element when the page is squeezed with no change to its
   const resize = resizes()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
   await waitFor(() => expect(pins()[0]?.style.left).toBe('40px'))
 
@@ -382,6 +431,7 @@ test('a rainbow follows its text when the element holding it changes size', asyn
   const resize = resizes()
   document.body.replaceChildren()
   fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
   await waitFor(() => expect(lines()[0]?.style.left).toBe('40px'))
 
@@ -430,6 +480,7 @@ test('an element or a text goes once Claude answers with files changed', async (
       messages: [ANSWER],
     }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() => expect(marks()).toHaveLength(2))
@@ -495,6 +546,7 @@ test('an element picked in a follow-up is marked until Claude answers it with fi
       events: [...reopened, { at: later, state: 'answered', by: 'agent', run: 'r2' }],
     }),
   ])
+  openPanel()
   renderWidget()
 
   await waitFor(() => expect(marks()).toHaveLength(4))

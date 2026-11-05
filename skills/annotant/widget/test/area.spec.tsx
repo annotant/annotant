@@ -599,6 +599,7 @@ const DRAWN: ReviewArea = {
 const shown = () => screen.getByTestId('an-area-mark').parentElement?.style
 
 test('an area is in progress until its thread is resolved', async () => {
+  openPanel()
   renderCards([
     comment({ id: 'c1', area: DRAWN }),
     comment({ id: 'c2', area: DRAWN, state: 'resolved' }),
@@ -615,9 +616,27 @@ test('an area is in progress until its thread is resolved', async () => {
   ])
 })
 
+test('an area hides while the panel is closed and comes back, in place, as it opens', async () => {
+  openPanel()
+  renderCards([comment({ area: DRAWN })])
+  await waitFor(() => expect(shown()?.top).toBe('300px'))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByTestId('an-area-mark')).toBeNull())
+
+  fireEvent.click(screen.getByRole('button', { name: /^Comments/ }))
+  await waitFor(() => expect(shown()?.top).toBe('300px'))
+  expect([shown()?.left, shown()?.width, shown()?.height]).toEqual([
+    '10px',
+    '500px',
+    '60px',
+  ])
+})
+
 test('an area greys out once its agent has written a file: the page under it changed', async () => {
   const events = fakeEvents()
   const comments = [comment({ area: DRAWN, state: 'working' })]
+  openPanel()
   renderCards(comments)
 
   const mark = await screen.findByTestId('an-area-mark')
@@ -639,6 +658,7 @@ const stopped = (changed: string[]) =>
   })
 
 test('a stopped area stays greyed out when its agent had written a file', async () => {
+  openPanel()
   renderCards([stopped(['src/App.tsx']), stopped([])])
 
   await waitFor(() => expect(screen.getAllByTestId('an-area-mark')).toHaveLength(2))
@@ -671,6 +691,7 @@ test("the area's chip in a resolved thread shows it again on the page", async ()
 })
 
 test('an area whose element is hidden is not framed elsewhere', async () => {
+  openPanel()
   renderCards([comment({ area: DRAWN })])
   await screen.findByTestId('an-area-mark')
 
@@ -681,6 +702,7 @@ test('an area whose element is hidden is not framed elsewhere', async () => {
 })
 
 test("the bubble on an area's frame opens its thread and scrolls to it", async () => {
+  openPanel()
   renderCards([comment({ area: DRAWN, body: 'Tighten this gap' })])
 
   fireEvent.click(
@@ -869,6 +891,7 @@ const ANSWER = {
 const CHANGED = { ...ANSWER, changed: ['src/App.tsx'] }
 
 test('an area goes once Claude answers with files changed', async () => {
+  openPanel()
   renderCards([
     comment({ id: 'c1', area: DRAWN, state: 'answered', messages: [CHANGED] }),
     // An area sent with a follow-up: the thread is answered, not resolved.

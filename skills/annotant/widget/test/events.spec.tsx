@@ -157,6 +157,7 @@ test('a change that leaves the page’s comments as they were does not read the 
   onTestFinished(() => measure.mockRestore())
   const events = fakeEvents()
   const server = fakeServer([comment({ quote: 'Playground' })])
+  openPanel()
   renderWidget()
   await screen.findByRole('button', { name: 'Open the comment on “Playground”' })
   const walks = vi.spyOn(document, 'createTreeWalker')
@@ -181,6 +182,7 @@ test('a change the reader makes to a comment of another page does not read this 
     comment({ quote: 'Playground' }),
     comment({ id: 'c2', route: '/other', url: 'http://localhost/other' }),
   ])
+  openPanel()
   renderWidget()
   await screen.findByRole('button', { name: 'Open the comment on “Playground”' })
   const walks = vi.spyOn(document, 'createTreeWalker')

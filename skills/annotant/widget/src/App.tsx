@@ -1879,7 +1879,7 @@ export default function App({ root }: { root: Element }) {
     scrollToComment(root, comment.anchor)
   }
 
-  /** A bubble on the page: its thread, in the panel, opened if it was closed. */
+  /** A bubble on the page, there only while the panel is open: its thread, in the panel. */
   const openFromPage = (comment: ReviewComment) => {
     // Like Escape, never at the cost of what the reader is writing.
     if (draft && written(draft)) return
@@ -2841,9 +2841,16 @@ export default function App({ root }: { root: Element }) {
       onTouchStart={keepPress}
       onTouchEnd={keepPress}
     >
-      <ElementMarks root={root} comments={comments} onOpen={openFromPage} />
-      <AreaMarks root={root} comments={comments} onOpen={openFromPage} />
-      <QuoteBubbles root={root} comments={comments} onOpen={openFromPage} />
+      {/* The marks (frames, drawings, rainbows and their bubbles) show only while
+          the panel is open: closed, the page shows as it is. The outlines,
+          pickers and drawers below still show what the reader picks or draws. */}
+      {open && (
+        <>
+          <ElementMarks root={root} comments={comments} onOpen={openFromPage} />
+          <AreaMarks root={root} comments={comments} onOpen={openFromPage} />
+          <QuoteBubbles root={root} comments={comments} onOpen={openFromPage} />
+        </>
+      )}
       {outlined && <TargetOutline element={outlined} />}
       {outlinedArea && !drawing && <AreaOutline root={root} area={outlinedArea} />}
       {picking && (
