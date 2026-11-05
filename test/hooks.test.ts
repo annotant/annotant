@@ -678,6 +678,94 @@ test('models set to inherit turn routing off: no classifier, the model still rec
   await w.exit(0)
 })
 
+test('one model for every comment: no classifier, the model recorded with no label', async ($, on) => {
+  const w = world(on, [titleComment, { ...titleComment, id: 'c2' }])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: 'opus' }),
+  )
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.classified).toEqual([])
+  expect(w.spawned[0]?.model).toBe('opus')
+  expect(w.route('c1')).toEqual({ model: 'opus', agent: 'a1' })
+
+  // The session's model, fixed: no classifier either, and no model asked.
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: 'inherit' }),
+  )
+  await w.print(newLine('c2'))
+  expect(w.classified).toEqual([])
+  expect(w.spawned[1]?.model).toBeUndefined()
+  expect(w.route('c2')).toEqual({ model: 'claude-sonnet-5-5', agent: 'a2' })
+  await w.exit(0)
+})
+
+test("models changed while the watch runs apply to the next comment's agent", async ($, on) => {
+  const w = world(on, [
+    titleComment,
+    { ...titleComment, id: 'c2' },
+    { ...titleComment, id: 'c3' },
+  ])
+  w.classifyAs('trivial')
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.spawned[0]?.model).toBe('haiku')
+
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({
+      commentsFile: '.annotant/comments.json',
+      models: { trivial: 'sonnet', standard: 'inherit', hard: 'opus' },
+    }),
+  )
+  await w.print(newLine('c2'))
+  expect(w.spawned[1]?.model).toBe('sonnet')
+  expect(w.route('c2')).toMatchObject({ complexity: 'trivial' })
+
+  // A file that cannot be read now keeps the models the watch started with.
+  w.write(`${ROOT}/.annotant.json`, '{ not json')
+  await w.print(newLine('c3'))
+  expect(w.spawned[2]?.model).toBe('haiku')
+  await w.exit(0)
+})
+
+test('models taken out of the file while the watch runs go back to the default', async ($, on) => {
+  const w = world(on, [titleComment])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: 'sonnet' }),
+  )
+  w.classifyAs('trivial')
+  await watch($, w)
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json' }),
+  )
+  await w.print(newLine('c1'))
+  expect(w.spawned[0]?.model).toBe('haiku')
+  expect(w.route('c1')).toMatchObject({ complexity: 'trivial' })
+  await w.exit(0)
+})
+
+test('a comment of an image alone starts on the fixed model, at a medium effort', async ($, on) => {
+  const w = world(on, [imageOnly])
+  w.write(
+    `${ROOT}/.annotant.json`,
+    JSON.stringify({ commentsFile: '.annotant/comments.json', models: 'opus' }),
+  )
+  await watch($, w)
+  await w.print(newLine('c1'))
+  expect(w.classified).toEqual([])
+  expect(w.registered.get('annotant:an-c1')).toMatchObject({
+    model: 'opus',
+    effort: 'medium',
+  })
+  await w.exit(0)
+})
+
 test('a classifier that does not answer in time leaves the agent on the parent model', async ($, on) => {
   const w = world(on, [titleComment])
   w.classifyAs(new Promise<string>(() => {}))
@@ -1325,5 +1413,28 @@ test("tells the person the widget changed the agents' instructions", async ($, o
   w.write(`${ROOT}/.annotant.json`, JSON.stringify({}))
   await w.print('SETTINGS changed')
   expect(w.toasts.at(-1)).toMatch(/: none now\./)
+  await w.exit(0)
+})
+
+test('tells the person the widget changed the models of the agents', async ($, on) => {
+  const w = world(on, [])
+  await watch($, w)
+  w.write(`${ROOT}/.annotant.json`, JSON.stringify({ models: 'opus' }))
+  await w.print('SETTINGS models')
+  expect(w.toasts.at(-1)).toMatch(
+    /models for the agents of web changed through its server .*: opus for every comment\. The next comments' agents start on them\./,
+  )
+
+  w.write(`${ROOT}/.annotant.json`, JSON.stringify({}))
+  await w.print('SETTINGS models')
+  expect(w.toasts.at(-1)).toMatch(
+    /: haiku for trivial, the session's model for standard, opus for hard\./,
+  )
+
+  w.write(`${ROOT}/.annotant.json`, '{ not json')
+  await w.print('SETTINGS models')
+  expect(w.toasts.at(-1)).toMatch(
+    /cannot be read now: .* keep the models the watch started with/,
+  )
   await w.exit(0)
 })

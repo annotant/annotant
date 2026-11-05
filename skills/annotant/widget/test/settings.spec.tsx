@@ -120,3 +120,142 @@ test('settings that cannot be read say why', async () => {
     await screen.findByText(/could not be read \(Request failed \(500\)\)/),
   ).toBeTruthy()
 })
+
+const AUTO = { strategy: 'auto', trivial: 'haiku', standard: 'inherit', hard: 'opus' }
+const select = (name: string) => {
+  const field = screen.getByLabelText(name)
+  if (!(field instanceof HTMLSelectElement)) throw new Error(`no ${name} picker`)
+  return field
+}
+
+test('the settings show the model strategy: Auto, a model per label', async () => {
+  fakeServer([], { settings: { instructions: '', max: 4000, models: AUTO } })
+  openPanel()
+  renderWidget()
+
+  await openSettings()
+  const strategy = screen.getByRole('radiogroup', { name: 'How the model is picked' })
+  expect(strategy.querySelector('[aria-checked="true"]')?.textContent).toBe('Auto')
+  expect(select('Trivial').value).toBe('haiku')
+  expect(select('Standard').value).toBe('inherit')
+  expect(select('Hard').value).toBe('opus')
+  // Which agents a change reaches.
+  expect(
+    screen.getByText(/a\s+follow-up to their comment, keep their model/),
+  ).toBeTruthy()
+})
+
+test("changing a label's model saves the models alone", async () => {
+  const server = fakeServer([], {
+    settings: { instructions: 'Use tabs.', max: 4000, models: AUTO },
+  })
+  openPanel()
+  renderWidget()
+
+  await openSettings()
+  const save = screen.getByRole('button', { name: 'Save' })
+  fireEvent.change(select('Trivial'), { target: { value: 'sonnet' } })
+  expect(save.hasAttribute('disabled')).toBe(false)
+  fireEvent.click(save)
+
+  expect(
+    await screen.findByText(/next comments' agents start on these models/),
+  ).toBeTruthy()
+  expect(server.savedModels).toEqual([{ ...AUTO, trivial: 'sonnet' }])
+  expect(server.saved).toEqual([])
+  await waitFor(() => expect(save.hasAttribute('disabled')).toBe(true))
+})
+
+test('Fixed runs every comment on one model, and switching back keeps the labels', async () => {
+  const server = fakeServer([], {
+    settings: { instructions: '', max: 4000, models: AUTO },
+  })
+  openPanel()
+  renderWidget()
+
+  await openSettings()
+  fireEvent.click(screen.getByRole('radio', { name: 'Fixed' }))
+  expect(screen.queryByLabelText('Trivial')).toBeNull()
+  expect(screen.getByText(/without the classifier/)).toBeTruthy()
+  // Back to Auto, as it was: nothing to save.
+  fireEvent.click(screen.getByRole('radio', { name: 'Auto' }))
+  expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true)
+
+  fireEvent.click(screen.getByRole('radio', { name: 'Fixed' }))
+  fireEvent.change(select('Every comment'), { target: { value: 'opus' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  await waitFor(() =>
+    expect(server.savedModels).toEqual([{ strategy: 'fixed', model: 'opus' }]),
+  )
+})
+
+test('a fixed model the file names shows Fixed with it', async () => {
+  fakeServer([], {
+    settings: {
+      instructions: '',
+      max: 4000,
+      models: { strategy: 'fixed', model: 'opus' },
+    },
+  })
+  openPanel()
+  renderWidget()
+
+  await openSettings()
+  expect(screen.getByRole('radio', { name: 'Fixed' }).getAttribute('aria-checked')).toBe(
+    'true',
+  )
+  expect(select('Every comment').value).toBe('opus')
+})
+
+test('models written by hand are shown as written, with no picker, and never sent', async () => {
+  const server = fakeServer([], {
+    settings: {
+      instructions: '',
+      max: 4000,
+      models: { strategy: 'custom', text: '{"trivial":"inherit"}' },
+    },
+  })
+  openPanel()
+  renderWidget()
+
+  const field = await openSettings()
+  expect(screen.getByText('{"trivial":"inherit"}')).toBeTruthy()
+  expect(screen.getByText(/written by hand: change it in the file/)).toBeTruthy()
+  expect(screen.queryByRole('radiogroup', { name: 'How the model is picked' })).toBeNull()
+  fireEvent.change(field, { target: { value: 'Use tabs.' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(server.saved).toEqual(['Use tabs.']))
+  expect(server.savedModels).toEqual([])
+})
+
+test('an older server that names no models shows no Model section', async () => {
+  fakeServer([], { settings: { instructions: '', max: 4000 } })
+  openPanel()
+  renderWidget()
+
+  await openSettings()
+  expect(screen.queryByRole('heading', { name: 'Model' })).toBeNull()
+})
+
+test('changing the instructions and a model saves both in one request', async () => {
+  const server = fakeServer([], {
+    settings: { instructions: '', max: 4000, models: AUTO },
+  })
+  openPanel()
+  renderWidget()
+
+  const field = await openSettings()
+  fireEvent.change(field, { target: { value: 'Use tabs.' } })
+  fireEvent.change(select('Hard'), { target: { value: 'sonnet' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(
+    await screen.findByText(/next comments' agents follow these settings/),
+  ).toBeTruthy()
+  expect(server.saved).toEqual(['Use tabs.'])
+  expect(server.savedModels).toEqual([{ ...AUTO, hard: 'sonnet' }])
+  expect(
+    server.fetch.mock.calls.filter(([, init]) => init?.method === 'POST'),
+  ).toHaveLength(1)
+})

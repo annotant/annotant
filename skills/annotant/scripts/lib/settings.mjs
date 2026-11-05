@@ -1,8 +1,9 @@
-// The project's settings the widget's dialog shows: today `instructions`, what
-// the reader wants every comment's agent to know about the project. Saving
-// writes them to `.annotant.json` at once; each agent reads that file when it
-// starts, so the agents already working, and a follow-up that resumes one,
-// keep the instructions they had.
+// The project's settings the widget's dialog shows: `instructions`, what the
+// reader wants every comment's agent to know about the project, and `models`,
+// the model each comment's agent starts on. Saving writes them to
+// `.annotant.json` at once; the hooks read it again for each agent they start,
+// so the agents already working, and a follow-up that resumes one, keep the
+// instructions and the model they had.
 import { randomUUID } from 'node:crypto'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -23,9 +24,82 @@ const HIDDEN =
 /** A change the server does not take, its text for the reader. */
 export class SettingsRefusal extends Error {}
 
+/** The models the dialog offers; `inherit` is the session's. */
+const MODELS = /** @type {const} */ (['haiku', 'sonnet', 'opus', 'inherit'])
+const LABELS = /** @type {const} */ (['trivial', 'standard', 'hard'])
+/** @typedef {(typeof MODELS)[number]} Model */
 /**
- * @typedef {{ instructions: string, max: number }} Settings
+ * How each comment's model is picked, as the dialog shows it. `auto`: the
+ * classifier's label, then a model per label; `fixed`: one model, no
+ * classifier; `custom`: a `models` written by hand the dialog cannot show (a
+ * model id, a label left out), its JSON, read-only.
+ * @typedef {{ strategy: 'auto', trivial: Model, standard: Model, hard: Model }
+ *   | { strategy: 'fixed', model: Model }
+ *   | { strategy: 'custom', text: string }} ModelsSetting
  */
+/**
+ * @typedef {{ instructions: string, max: number, models: ModelsSetting }} Settings
+ */
+
+/** Without `models` in `.annotant.json`: the hooks' default too (hooks/register.ts). */
+const DEFAULT_MODELS = /** @type {const} */ ({
+  strategy: 'auto',
+  trivial: 'haiku',
+  standard: 'inherit',
+  hard: 'opus',
+})
+
+/**
+ * @param {unknown} value
+ * @returns {value is Model}
+ */
+const isModel = (value) => MODELS.some((model) => model === value)
+
+/**
+ * `.annotant.json`'s `models` as the dialog shows it: a model it offers
+ * (`"opus"`) is fixed; an object of the three labels, each a model it offers,
+ * is auto; none is the default; anything else is the reader's own, shown as
+ * written.
+ * @param {unknown} value
+ * @returns {ModelsSetting}
+ */
+function modelsSetting(value) {
+  if (value === undefined) return { ...DEFAULT_MODELS }
+  if (isModel(value)) return { strategy: 'fixed', model: value }
+  if (isObject(value) && Object.keys(value).length === LABELS.length) {
+    const { trivial, standard, hard } = value
+    if (isModel(trivial) && isModel(standard) && isModel(hard))
+      return { strategy: 'auto', trivial, standard, hard }
+  }
+  return { strategy: 'custom', text: JSON.stringify(value) }
+}
+
+/**
+ * The `models` to write for what the dialog sent: a model for fixed, the
+ * three labels' for auto. Anything else is refused.
+ * @param {unknown} sent
+ * @returns {Model | { trivial: Model, standard: Model, hard: Model }}
+ */
+function modelsToWrite(sent) {
+  if (isObject(sent) && sent.strategy === 'fixed' && isModel(sent.model))
+    return sent.model
+  if (isObject(sent) && sent.strategy === 'auto') {
+    const { trivial, standard, hard } = sent
+    if (isModel(trivial) && isModel(standard) && isModel(hard))
+      return { trivial, standard, hard }
+  }
+  throw new SettingsRefusal(
+    `models must be one of ${MODELS.join(', ')}, or one of them for each of ${LABELS.join(', ')}.`,
+  )
+}
+
+/** @param {ModelsSetting} models One string per setting, to compare them. */
+const modelsKey = (models) =>
+  models.strategy === 'auto'
+    ? `auto ${models.trivial} ${models.standard} ${models.hard}`
+    : models.strategy === 'fixed'
+      ? `fixed ${models.model}`
+      : `custom ${models.text}`
 
 /** @param {{ root: string }} project */
 const configFile = (project) => path.join(project.root, CONFIG_FILE)
@@ -69,30 +143,31 @@ const isObject = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
- * The settings `.annotant.json` holds: `instructions` '' when absent or not text.
+ * What `.annotant.json` holds, as the dialog shows it.
+ * @param {Record<string, unknown>} config
+ * @returns {Settings}
+ */
+const settingsOf = (config) => ({
+  instructions: typeof config.instructions === 'string' ? config.instructions : '',
+  max: MAX_INSTRUCTIONS,
+  models: modelsSetting(config.models),
+})
+
+/**
+ * The settings `.annotant.json` holds: `instructions` '' when absent or not
+ * text, `models` the default when absent.
  * @param {{ root: string }} project
  * @returns {Promise<Settings>}
  */
 export async function readSettings(project) {
-  const { instructions } = await readConfig(project)
-  return {
-    instructions: typeof instructions === 'string' ? instructions : '',
-    max: MAX_INSTRUCTIONS,
-  }
+  return settingsOf(await readConfig(project))
 }
 
 /**
- * Writes the instructions the reader saved to `.annotant.json`, its other keys
- * kept; none removes the key.
- * @param {{ root: string }} project
- * @param {unknown} input The request's body.
- * @returns {Promise<{ settings: Settings, changed: boolean }>}
+ * The instructions sent, trimmed, or a refusal that says why not.
+ * @param {unknown} sent
  */
-export async function saveSettings(project, input) {
-  const sent =
-    typeof input === 'object' && input !== null && 'instructions' in input
-      ? input.instructions
-      : undefined
+function instructionsToWrite(sent) {
   if (typeof sent !== 'string') throw new SettingsRefusal('instructions must be text')
   const instructions = sent.replaceAll('\r\n', '\n').trim()
   if (instructions.length > MAX_INSTRUCTIONS)
@@ -103,13 +178,43 @@ export async function saveSettings(project, input) {
     throw new SettingsRefusal(
       'The instructions hold control or invisible characters: write them as plain text.',
     )
+  return instructions
+}
+
+/**
+ * Writes what the reader saved to `.annotant.json`, its other keys kept: the
+ * `instructions` (none removes the key), the `models`, or both. A `models`
+ * written by hand that the dialog cannot show is not replaced.
+ * @param {{ root: string }} project
+ * @param {unknown} input The request's body.
+ * @returns {Promise<{ settings: Settings, changed: { instructions: boolean, models: boolean } }>}
+ */
+export async function saveSettings(project, input) {
+  const body = isObject(input) ? input : {}
+  if (!('instructions' in body) && !('models' in body))
+    throw new SettingsRefusal('instructions must be text')
+  const instructions =
+    'instructions' in body ? instructionsToWrite(body.instructions) : undefined
+  const models = 'models' in body ? modelsToWrite(body.models) : undefined
   const config = await readConfig(project)
-  const before = typeof config.instructions === 'string' ? config.instructions : ''
-  const settings = { instructions, max: MAX_INSTRUCTIONS }
-  if (instructions === before.trim())
-    return { settings: { ...settings, instructions: before }, changed: false }
-  if (instructions) config.instructions = instructions
-  else delete config.instructions
+  const before = settingsOf(config)
+  const changed = {
+    instructions:
+      instructions !== undefined && instructions !== before.instructions.trim(),
+    models:
+      models !== undefined &&
+      modelsKey(modelsSetting(models)) !== modelsKey(before.models),
+  }
+  if (changed.models && before.models.strategy === 'custom')
+    throw new SettingsRefusal(
+      `models in ${CONFIG_FILE} was written by hand: change it in the file.`,
+    )
+  if (!changed.instructions && !changed.models) return { settings: before, changed }
+  if (changed.instructions) {
+    if (instructions) config.instructions = instructions
+    else delete config.instructions
+  }
+  if (changed.models) config.models = models
   const file = configFile(project)
   // One per request: two saves at once must not share it.
   const temp = `${file}.${randomUUID()}.tmp`
@@ -123,5 +228,5 @@ export async function saveSettings(project, input) {
       `${CONFIG_FILE} cannot be written: ${String(errorCode(error) ?? error)}`,
     )
   }
-  return { settings, changed: true }
+  return { settings: settingsOf(config), changed }
 }

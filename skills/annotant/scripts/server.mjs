@@ -728,7 +728,8 @@ async function handle(req, res) {
         if (req.method === 'GET') return send(res, 200, await readSettings(project), cors)
         const { settings, changed } = await saveSettings(project, input)
         // For the hooks: they tell the reader in Claude Code.
-        if (changed) console.log('SETTINGS changed')
+        if (changed.instructions) console.log('SETTINGS changed')
+        if (changed.models) console.log('SETTINGS models')
         return send(res, 200, settings, cors)
       } catch (error) {
         if (error instanceof SettingsRefusal)

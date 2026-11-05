@@ -68,7 +68,8 @@ follow up; cancel to stop it.
   `models` in `.annotant.json` picks the model for it (by default Haiku,
   the session's own model, and Opus). The widget names it on the thread
   ("haiku · trivial"). A comment of images alone is not classified: it
-  starts on the session's model at a medium effort. See
+  starts on the session's model at a medium effort. The settings dialog
+  switches between this and one fixed model for every comment. See
   [Models](docs/comments-file.md#models).
 - **You see where the agents write.** The panel's foot names the branch your
   project is on (its commit on a detached HEAD), its worktree on hover when it

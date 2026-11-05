@@ -330,10 +330,20 @@ it, the default is:
 
 A `models` object is read whole: a label it leaves out inherits, so
 `{ "trivial": "inherit" }` turns routing off, and the classifier is not
-asked. A classifier that fails or takes more than 5 seconds leaves the agent
+asked. A model alone runs every comment on it, without the classifier, and
+the thread names the model with no label:
+
+```json
+"models": "opus"
+```
+
+The hooks read `models` again for each agent they start, so a change applies
+to the next comment without restarting the watch; a `.annotant.json` that
+cannot be read then keeps the `models` the watch started with. A classifier that fails or takes more than 5 seconds leaves the agent
 on the session's model. A comment of images alone, which the classifier
 cannot read, is not classified, routing on or off: its agent starts on the
-session's model at a `medium` effort, with no label. In every case the hooks
+session's model (the fixed one, when `models` names one) at a `medium`
+effort, with no label. In every case the hooks
 write the agent, the model it runs on and the label in the state folder
 (`routes/<id>.json`, beside `progress/`), and `claim.mjs` records them on the
 `working` event (`ANNOTANT_AGENT`, `ANNOTANT_MODEL` and
@@ -363,9 +373,19 @@ starts, so the next comments' agents follow them; those already working, and
 a follow-up that resumes one, keep the ones they had. Text with control,
 zero-width or bidi characters is refused (422), so what an agent reads is
 what the reader sees. Saving the instructions it already holds writes
-nothing. `GET /api/settings` and the save answer `{ instructions, max }`; a
+nothing. `GET /api/settings` and the save answer `{ instructions, max, models }`; a
 `.annotant.json` that cannot be read or written, is not valid JSON or not an
 object is refused (422) with the reason, and left as it is.
+
+The dialog's _Model_ section edits `models` the same way: _Auto_, a model per
+label (`haiku`, `sonnet`, `opus` or the session's, `inherit`), or _Fixed_, one
+of them for every comment. `GET /api/settings` names it as `models`:
+`{ strategy: "auto", trivial, standard, hard }`, `{ strategy: "fixed", model }`,
+or `{ strategy: "custom", text }` for a `models` written by hand that the dialog
+cannot show (a model id, a label left out), which it shows read-only and never
+replaces (422). The widget sends `{ models }` in the same shape, without
+`text`, alone or with `instructions`; a change prints `SETTINGS models`, and the
+hooks tell the reader the new models in Claude Code.
 
 ## The step files
 

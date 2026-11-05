@@ -5,9 +5,10 @@
 // in the background, with no model turn, so the session stays free for any
 // other work. Follow-ups and edits go to that agent; a stop ends it.
 //
-// Before a comment's agent starts, they pick its model: a classifier sorts the
-// comment (trivial, standard, hard) and `.annotant.json`'s `models` maps the
-// label to a model, which claim.mjs records on the run for the widget.
+// Before a comment's agent starts, they pick its model from `.annotant.json`'s
+// `models`, read again for each agent: one model for every comment, or a
+// classifier sorts the comment (trivial, standard, hard) and `models` maps the
+// label to a model. claim.mjs records it on the run for the widget.
 //
 // Claude Code runs none of this module's hooks for an agent it starts, so each
 // comment's agent is a type of its own, `annotant:an-<id>`, whose settings
@@ -35,9 +36,14 @@ type Project = {
   lockRoot: string
   commentsFile: string
   progressDir: string
-  /** A model (`haiku`, an id, or `inherit`) per label. */
-  models: Partial<Record<Complexity, string>>
+  /** `.annotant.json`'s when the watch started: used when reading it again fails. */
+  models: Models
 }
+/**
+ * How a comment's model is picked: `fixed`, one model (`haiku`, an id, or
+ * `inherit`) for every comment, no classifier; else a model per label.
+ */
+type Models = { fixed: string } | { labels: Partial<Record<Complexity, string>> }
 type Step = Record<string, unknown>
 
 const noWorkers: Record<string, Worker> = {}
@@ -55,10 +61,8 @@ const COMPLEXITIES: readonly Complexity[] = ['trivial', 'standard', 'hard']
 /** The parent's model: today's behaviour, no routing. */
 const INHERIT = 'inherit'
 /** Without `models` in `.annotant.json`. */
-const DEFAULT_MODELS: Project['models'] = {
-  trivial: 'haiku',
-  standard: INHERIT,
-  hard: 'opus',
+const DEFAULT_MODELS: Models = {
+  labels: { trivial: 'haiku', standard: INHERIT, hard: 'opus' },
 }
 // What the classifier reads before the comment, so its labels mean the same
 // every time. The comment itself is data: the engine's classifier prompt says so.
@@ -247,17 +251,51 @@ async function loadProjectOnce($: $, root: string): Promise<Project> {
 }
 
 /**
- * `.annotant.json`'s `models`, whole: a label it leaves out inherits, so
+ * `.annotant.json`'s `models`: a model (`"opus"`) for every comment, or an
+ * object read whole, where a label it leaves out inherits, so
  * `{ "trivial": "inherit" }` turns routing off. Absent: the default.
  */
-function modelsOf(value: unknown): Project['models'] {
-  if (typeof value !== 'object' || value === null) return DEFAULT_MODELS
-  const models: Project['models'] = {}
+function modelsOf(value: unknown): Models {
+  if (typeof value === 'string' && value.trim()) return { fixed: value.trim() }
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return DEFAULT_MODELS
+  const labels: Partial<Record<Complexity, string>> = {}
   for (const [label, model] of Object.entries(value)) {
     const known = COMPLEXITIES.find((one) => one === label)
-    if (known && typeof model === 'string' && model.trim()) models[known] = model.trim()
+    if (known && typeof model === 'string' && model.trim()) labels[known] = model.trim()
   }
-  return models
+  return { labels }
+}
+
+/** `.annotant.json`'s `models` now, or none when the file cannot be read or is not an object. */
+async function readModels($: $, root: string): Promise<Models | undefined> {
+  try {
+    const config: unknown = JSON.parse(await $.fs.read(`${root}/.annotant.json`))
+    if (typeof config !== 'object' || config === null || Array.isArray(config))
+      return undefined
+    return modelsOf('models' in config ? config.models : undefined)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * `.annotant.json`'s `models` now: the settings dialog may have changed it
+ * since the watch started. A file that cannot be read keeps the watch's.
+ */
+const currentModels = async ($: $, project: Project) =>
+  (await readModels($, project.root)) ?? project.models
+
+/** A model, for the reader. */
+const modelWords = (model: string | undefined) =>
+  !model || model === INHERIT ? "the session's model" : model
+
+/** `models` in a few words, for the reader: `haiku for trivial, …` or one model. */
+function describeModels(models: Models) {
+  if ('fixed' in models) return `${modelWords(models.fixed)} for every comment`
+  return COMPLEXITIES.map(
+    (label) => `${modelWords(models.labels[label])} for ${label}`,
+  ).join(', ')
 }
 
 function loadProject($: $, root: string): Promise<Project> {
@@ -316,7 +354,8 @@ async function classify($: $, text: string): Promise<Complexity | undefined> {
 
 /**
  * A comment of images alone, which the classifier cannot read: the session's
- * model, at this effort, routing on or off.
+ * model (the fixed one, when `models` names one), at this effort, routing on
+ * or off.
  */
 const IMAGES_ONLY_EFFORT = 'medium'
 
@@ -330,14 +369,22 @@ async function routeComment(
   id: string,
 ): Promise<{ complexity?: Complexity; model?: string; effort?: string }> {
   const comment = await readComment($, project, id)
+  const models = await currentModels($, project)
+  if ('fixed' in models) {
+    const model = models.fixed === INHERIT ? undefined : models.fixed
+    return {
+      ...(model && { model }),
+      ...(comment && onlyImages(comment) && { effort: IMAGES_ONLY_EFFORT }),
+    }
+  }
   if (comment && onlyImages(comment)) return { effort: IMAGES_ONLY_EFFORT }
   const routing = COMPLEXITIES.some(
-    (label) => (project.models[label] ?? INHERIT) !== INHERIT,
+    (label) => (models.labels[label] ?? INHERIT) !== INHERIT,
   )
   const text = routing && comment && classifiedText(comment)
   if (!text) return {}
   const complexity = await classify($, text)
-  const model = complexity && project.models[complexity]
+  const model = complexity && models.labels[complexity]
   return {
     ...(complexity && { complexity }),
     ...(model && model !== INHERIT && { model }),
@@ -870,6 +917,15 @@ async function onLine(
   if (kind === 'SETTINGS') {
     // The page's own scripts can save them too: the text shows a change the
     // person did not make.
+    if (id === 'models') {
+      const models = await readModels($, watched.root)
+      $.ui.toast(
+        models
+          ? `Annotant: the models for the agents of ${basename(watched.root)} changed through its server (.annotant.json): ${describeModels(models)}. The next comments' agents start on them.`
+          : `Annotant: the models for the agents of ${basename(watched.root)} changed through its server, but .annotant.json cannot be read now: the next comments' agents keep the models the watch started with.`,
+      )
+      return
+    }
     $.ui.toast(
       `Annotant: the instructions for the agents of ${basename(watched.root)} changed through its server (.annotant.json): ${await instructionsPreview($, watched.root)}. The next comments' agents follow them.`,
     )

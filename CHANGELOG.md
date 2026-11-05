@@ -13,6 +13,13 @@ released to the `stable` branch.
   newer Annotant is released; the menu links to its notes, with the command
   that gets it. The server asks GitHub at most once a day;
   `ANNOTANT_UPDATE_CHECK=0` turns it off.
+- **Choose the model in the settings.** The settings dialog's Model section
+  shows how each comment's model is picked and changes it: Auto, where the
+  classifier's label picks a model for each label, or Fixed, one model for
+  every comment, without the classifier (`"models": "opus"`). The next
+  comment's agent starts on it without restarting the watch; a `models`
+  written by hand that the dialog cannot show is kept, and shown as written.
+  (#305)
 
 ### Changed
 

@@ -315,15 +315,39 @@ export function useNewerRelease(current: string) {
   return release
 }
 
-/** The settings dialog's: the instructions `.annotant.json` holds for the agents. */
-export type ProjectSettings = { instructions: string; max: number }
+/** A model the settings dialog offers; `inherit` is the session's. */
+export type AgentModel = 'haiku' | 'sonnet' | 'opus' | 'inherit'
+
+/**
+ * How each comment's model is picked (lib/settings.mjs): `auto`, the
+ * classifier's label then a model per label; `fixed`, one model; `custom`, a
+ * `models` written by hand the dialog cannot show, its JSON.
+ */
+export type ModelsSetting =
+  | { strategy: 'auto'; trivial: AgentModel; standard: AgentModel; hard: AgentModel }
+  | { strategy: 'fixed'; model: AgentModel }
+  | { strategy: 'custom'; text: string }
+
+/**
+ * The settings dialog's: the instructions `.annotant.json` holds for the
+ * agents, and their models (none from an older server).
+ */
+export type ProjectSettings = {
+  instructions: string
+  max: number
+  models?: ModelsSetting
+}
 
 export const fetchSettings = () => request<ProjectSettings>(SETTINGS)
 
-export const saveSettings = (instructions: string) =>
+/** Saves what changed: the instructions, the models, or both. */
+export const saveSettings = (changes: {
+  instructions?: string
+  models?: Exclude<ModelsSetting, { strategy: 'custom' }>
+}) =>
   request<ProjectSettings>(SETTINGS, {
     method: 'POST',
-    body: JSON.stringify({ instructions }),
+    body: JSON.stringify(changes),
   })
 
 /** Where the project is in git now, and whether that is its default branch. */
