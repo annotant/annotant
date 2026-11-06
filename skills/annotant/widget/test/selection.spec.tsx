@@ -187,6 +187,19 @@ test('All comments does not throw away the comment being written', async () => {
   expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('Half a thought')
 })
 
+test('All comments leaves a comment with nothing written for the list', async () => {
+  document.body.replaceChildren()
+  fakeServer([])
+  renderWidget()
+  await startPageComment()
+  await screen.findByRole('textbox')
+
+  fireEvent.click(screen.getByRole('button', { name: 'All comments' }))
+
+  await screen.findByRole('heading', { name: 'All comments' })
+  expect(screen.queryByRole('textbox')).toBeNull()
+})
+
 test('the Comment button sits on the quote when the drag starts on the line above', async () => {
   // Past the end of "Part 1", the caret is at the end of its line, far right.
   layout((range) =>

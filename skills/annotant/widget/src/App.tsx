@@ -1793,8 +1793,9 @@ export default function App({ root }: { root: Element }) {
   )
 
   /**
-   * The selection's Comment: the text becomes the target of the comment being
-   * written, after what the reader had written and attached; else of a new one.
+   * The selection's Comment button: the text becomes the target of the comment
+   * being written, after its message and images (one target per message: the
+   * elements picked go); else of a new one.
    */
   const quoteSelection = () => {
     const anchor = pendingAnchor.current
@@ -3041,7 +3042,7 @@ export default function App({ root }: { root: Element }) {
                 <IconButton
                   icon="chats"
                   label="All comments"
-                  // Like New comment, never at the cost of what the reader is writing.
+                  // Only while the draft holds something: the list never costs what the reader wrote.
                   disabled={drafting && written(draft)}
                   onClick={() => {
                     setView('all')
