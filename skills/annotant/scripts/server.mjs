@@ -63,6 +63,10 @@ if (!process.env.ANNOTANT_HOOKS) {
 }
 const { config } = project
 const port = Number(process.env.ANNOTANT_PORT ?? config.port ?? 4599)
+/** The Host of a request from this machine: by its name or its IP, and this port. */
+const LOCAL_HOSTS = new Set(
+  ['127.0.0.1', 'localhost', '[::1]'].map((name) => `${name}:${port}`),
+)
 // The re-read behind the folder watches, for the mounts whose writes they miss
 // (some Docker, network or WSL ones).
 const pollMs = Number(process.env.ANNOTANT_POLL_MS ?? 5000)
@@ -158,6 +162,7 @@ const CLIENT_ERRORS = /** @type {const} */ ({
   400: 'invalid JSON',
   403: 'origin not allowed',
   413: 'body too large',
+  421: 'host not allowed',
 })
 
 /**
@@ -602,6 +607,8 @@ async function agentContext(id) {
 
 async function handle(req, res) {
   const cors = corsHeaders(req.headers.origin)
+  // Another site's page, its name rebound to this machine, reads nothing.
+  if (!LOCAL_HOSTS.has((req.headers.host ?? '').toLowerCase())) throw new ClientError(421)
   const url = new URL(req.url, `http://${req.headers.host}`)
   if (req.method === 'OPTIONS') return send(res, 204, undefined, cors)
   // A page of another site may send a request it cannot read the answer of:
