@@ -15,6 +15,7 @@ const IMAGES = new URL('api/images/', new URL('.', import.meta.url)).href
 const HEALTH = new URL('api/health', new URL('.', import.meta.url)).href
 const GIT = new URL('api/git', new URL('.', import.meta.url)).href
 const SETTINGS = new URL('api/settings', new URL('.', import.meta.url)).href
+const RELEASE = new URL('api/release', new URL('.', import.meta.url)).href
 // The server pushes its changes: this reload only catches what a dropped
 // stream missed.
 const POLL_MS = 30_000
@@ -268,15 +269,95 @@ export function useServerSettings() {
   return settings
 }
 
-/** The settings dialog's: the instructions `.annotant.json` holds for the agents. */
-export type ProjectSettings = { instructions: string; max: number }
+/** A release of Annotant newer than this widget: its version and its notes. */
+export type Release = { version: string; url: string }
+
+const versionParts = (version: string) => version.split('.').map(Number)
+
+/** `a` is a later `x.y.z` than `b`. */
+export function isNewer(a: string, b: string) {
+  const [x, y] = [versionParts(a), versionParts(b)]
+  for (let at = 0; at < 3; at++) {
+    const diff = (x[at] ?? 0) - (y[at] ?? 0)
+    if (diff) return diff > 0
+  }
+  return false
+}
+
+/**
+ * The newest release of Annotant, as the server learnt it from GitHub, when it
+ * is newer than this widget; undefined otherwise, and while it is not known.
+ */
+export function useNewerRelease(current: string) {
+  const [release, setRelease] = useState<Release>()
+  useEffect(() => {
+    let live = true
+    const load = async () => {
+      const body = await request<unknown>(RELEASE)
+      if (!live || !body || typeof body !== 'object') return
+      const version = 'version' in body ? body.version : undefined
+      const url = 'url' in body ? body.url : undefined
+      if (
+        typeof version === 'string' &&
+        /^\d+\.\d+\.\d+$/.test(version) &&
+        typeof url === 'string' &&
+        url.startsWith('https://github.com/annotant/annotant/releases/') &&
+        isNewer(version, current)
+      )
+        setRelease({ version, url })
+    }
+    // An older server (404), or none: nothing to say.
+    load().catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [current])
+  return release
+}
+
+/** A model a label can map to in Auto. */
+export type AutoModel = 'haiku' | 'sonnet' | 'opus'
+/** One model for every comment may also be the session's, `inherit`. */
+export type FixedModel = AutoModel | 'inherit'
+/** The efforts Claude Code takes for an agent; none is the model's own. */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type Choice<M extends string> = { model: M; effort?: Effort }
+
+/**
+ * How each comment's model is picked (lib/settings.mjs): `auto`, the
+ * classifier's label then a model and effort per label; `fixed`, one model and
+ * effort; `custom`, a `models` written by hand the dialog cannot show, its JSON.
+ */
+export type ModelsSetting =
+  | {
+      strategy: 'auto'
+      trivial: Choice<AutoModel>
+      standard: Choice<AutoModel>
+      hard: Choice<AutoModel>
+    }
+  | ({ strategy: 'fixed' } & Choice<FixedModel>)
+  | { strategy: 'custom'; text: string }
+
+/**
+ * The settings dialog's: the instructions `.annotant.json` holds for the
+ * agents, and their models (none from an older server).
+ */
+export type ProjectSettings = {
+  instructions: string
+  max: number
+  models?: ModelsSetting
+}
 
 export const fetchSettings = () => request<ProjectSettings>(SETTINGS)
 
-export const saveSettings = (instructions: string) =>
+/** Saves what changed: the instructions, the models, or both. */
+export const saveSettings = (changes: {
+  instructions?: string
+  models?: Exclude<ModelsSetting, { strategy: 'custom' }>
+}) =>
   request<ProjectSettings>(SETTINGS, {
     method: 'POST',
-    body: JSON.stringify({ instructions }),
+    body: JSON.stringify(changes),
   })
 
 /** Where the project is in git now, and whether that is its default branch. */

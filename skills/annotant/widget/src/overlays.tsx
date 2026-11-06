@@ -13,6 +13,8 @@ import {
   boxOf,
   coveredBy,
   type DrawnPoint,
+  coveredAt,
+  drawnOnElements,
   drawnOnShows,
   elementFromAnchor,
   aroundOf,
@@ -26,18 +28,18 @@ import {
   type ReviewBox,
   gist,
   isAsking,
+  anchorMarked,
   markedElement,
   outdated,
   pickedMark,
   type ReviewComment,
-  wasResolved,
 } from './domain'
 import { type Clipper, clipOf, clippersOf, type Edges, within } from './clips'
 import { setInlineStyle } from './inline'
 import { RAINBOW, RAINBOW_PERIOD, REDUCED_MOTION, scrollBehavior } from './styles'
 import { fieldOf } from './shortcuts'
 import { pageIsDark } from './theme'
-import { Icon, type IconName } from './ui'
+import { Icon, type IconName } from './components'
 
 const WIDGET = '[data-annotant]'
 
@@ -174,8 +176,9 @@ function measureElements(found: ReturnType<typeof findElements>): Mark[] {
 
 /**
  * Frames around the elements that open comments point at, until their thread
- * is first resolved: a follow-up, often about something else, does not bring
- * them back, unless it picks an element, which is then framed in their place.
+ * is first resolved, or Claude answered with files changed: a follow-up, often
+ * about something else, does not bring them back, unless it picks an element,
+ * which is then framed in their place, under the same rule.
  * A bubble on each opens the comment's thread.
  */
 export function ElementMarks({
@@ -296,34 +299,64 @@ function findAreas(root: Element, comments: ReviewComment[]) {
   return comments.flatMap((comment) => {
     const { area } = comment.anchor
     // An element picked since takes the area's place.
-    if (wasResolved(comment) || !area || pickedMark(comment)) return []
+    if (!anchorMarked(comment) || !area || pickedMark(comment)) return []
     // Its chip still shows the drawing, and the picture sent with it.
     if (!drawnOnShows(root, area)) return []
     const holder = holderOf(root, area)
     const around = aroundOf(root, area)
-    return [{ comment, area, holder, around, clippers: clippersOf(holder ?? null) }]
+    // What it was drawn on, then what holds it: hidden while something comes over them.
+    const drawnOn = area.strokes
+      ? [drawnOnElements(root, area), [holder, around].filter((element) => !!element)]
+      : []
+    return [
+      { comment, area, holder, around, drawnOn, clippers: clippersOf(holder ?? null) },
+    ]
   })
+}
+
+/** How many points of a drawing's lines are hit-tested. */
+const COVER_SAMPLES = 16
+
+/** Points along a drawing's lines, in the viewport, those that show. */
+function linePoints(area: ReviewArea, frame: Box, shown: Box): DrawnPoint[] {
+  const points = (area.strokes ?? []).flat()
+  const step = Math.max(1, Math.ceil(points.length / COVER_SAMPLES))
+  const scaleX = area.width ? frame.width / area.width : 1
+  const scaleY = area.height ? frame.height / area.height : 1
+  return points
+    .filter((_, at) => at % step === 0)
+    .map(([x, y]) => ({ x: frame.left + x * scaleX, y: frame.top + y * scaleY }))
+    .filter(
+      ({ x, y }) =>
+        x >= shown.left &&
+        x <= shown.left + shown.width &&
+        y >= shown.top &&
+        y <= shown.top + shown.height,
+    )
 }
 
 const holdersOf = (found: ReturnType<typeof findAreas>) =>
   found.flatMap(({ holder, around }) => [holder, around])
 
 function measureAreas(found: ReturnType<typeof findAreas>): AreaMark[] {
-  return found.flatMap(({ comment, area, holder, around, clippers }) => {
+  return found.flatMap(({ comment, area, holder, around, drawnOn, clippers }) => {
     const frame = framedArea(area, holder, around)
     const shown = frame && within(frame, clipOf(clippers))
-    return shown ? [{ comment, area, frame, shown }] : []
+    // Its lines would circle what a reader no longer sees there.
+    if (!shown || coveredAt(drawnOn, linePoints(area, frame, shown))) return []
+    return [{ comment, area, frame, shown }]
   })
 }
 
 /**
  * Frames around the areas comments were drawn on, as around an element,
- * until their thread is first resolved; a bubble on each opens its thread.
+ * while `anchorMarked`; a bubble on each opens its thread.
  * A drawing has no frame: its lines carry the rainbow. Once its agent has
  * written a file, while it works or once stopped, the page under an area may
  * have changed: it greys out, as what the reader pointed at, not what is
  * there now. Once none of what a drawing was drawn on is on the page, its
- * lines go.
+ * lines go; while something of the page comes over it under one of its lines
+ * (a modal), they hide.
  */
 export function AreaMarks({
   root,
@@ -408,11 +441,11 @@ function textParts(
   })
 }
 
-/** The ranges of the comments on a text never resolved, read from the page's text once. */
+/** The ranges of the comments on a text still marked, read from the page's text once. */
 function findQuotes(root: Element, comments: ReviewComment[]) {
   const quoted = comments.filter(
     (comment) =>
-      !wasResolved(comment) &&
+      anchorMarked(comment) &&
       !comment.anchor.element &&
       !pickedMark(comment) &&
       comment.anchor.quote,
@@ -513,7 +546,7 @@ function measureQuotes(found: ReturnType<typeof findQuotes>): QuotePin[] {
 }
 
 /**
- * A rainbow behind each commented text, until its thread is first resolved, and a
+ * A rainbow behind each commented text, while `anchorMarked`, and a
  * bubble above its start, which opens the comment's thread.
  */
 export function QuoteBubbles({

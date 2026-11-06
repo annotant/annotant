@@ -7,7 +7,70 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.6.0 - 2026-11-05
+
+### Added
+
+- **Know when a new version is out.** A dot on the widget's menu (`⋯`) says a
+  newer Annotant is released; the menu links to its notes, with the command
+  that gets it. The server asks GitHub at most once a day;
+  `ANNOTANT_UPDATE_CHECK=0` turns it off.
+- **Choose the model in the settings.** The settings dialog's Model section
+  shows how each comment's model is picked and changes it: Auto, where the
+  classifier's label picks a model for each label, or Fixed, one model for
+  every comment, without the classifier (`"models": "opus"`). Each model
+  comes with its effort (`low` to `max`, or the model's own), written
+  `{ "model": "opus", "effort": "high" }`. The next
+  comment's agent starts on it without restarting the watch; a `models`
+  written by hand that the dialog cannot show is kept, and shown as written.
+  (#305)
+
+### Changed
+
+- **A closed panel leaves the page clean.** While the panel is closed, the
+  widget draws none of its marks: no bubble, element frame, area or drawing.
+  They come back as it opens; what you pick or draw from the strip still
+  shows. (#313)
+- **Standard comments run on Sonnet.** Without `models` in `.annotant.json`,
+  a comment the classifier sorts `standard` now starts on Sonnet instead of
+  the session's model: the settings' Auto mode maps each label to Haiku,
+  Sonnet or Opus. `"models": { "trivial": "haiku", "standard": "inherit", "hard": "opus" }`
+  keeps the old behaviour; the settings dialog then shows it as written by
+  hand, to change in the file. (#305)
+- **`/annotant:annotant update` finds what drifted.** Beyond the config's
+  `version`, it checks that the loader is still in the files `.annotant.json`
+  lists, that it asks the server's port and that it keeps its
+  `data-annotant-loader` marker, then fixes what is off.
+- **A mark goes once Claude has made the change.** The page stops marking
+  what a message pointed at (an element, a text, an area or a drawing) as
+  soon as Claude answers it with files changed, without waiting for you to
+  resolve the thread. A question, an answer that changed nothing or a
+  stopped run keeps it. (#301)
+- **See the files a run changes while it works.** Under its current step,
+  the thread lists the files the run has changed so far, as under an answer,
+  and the list grows as it writes; once it answers, they move under its
+  message. A file's counts and diff load again each time the run writes.
+- **The branch alone.** The panel's foot, and where a run changed files,
+  name the branch (or commit) only; the worktree's path shows on hover. A run that moved to
+  another worktree on the same branch still says so. (#303)
+
+### Fixed
+
+- **A drawing hides under what opens over it.** While a modal, a drawer or
+  a sticky header lies over what you drew on, the drawing's lines no longer
+  stay on top of it; they come back once it closes. A drawing made on the
+  modal itself still shows. (#294)
+
+### Security
+
+- **The server answers only requests for this machine.** A request whose
+  `Host` is not `localhost`, `127.0.0.1` or `[::1]` with the server's port
+  is now refused (421), as a page of another site could otherwise reach it
+  under a name it points at this machine. (#323)
+
 ## 0.5.0 - 2026-11-03
+
+https://github.com/user-attachments/assets/e60cafed-0576-4b2a-9231-3501bceba75a
 
 ### Added
 

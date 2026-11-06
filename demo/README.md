@@ -28,14 +28,16 @@ never `demo/`. `npm run demo` runs the app alone, without the widget.
 
 ## Shoot the video again
 
-The scene, about 30 s once cut, looped on the site:
+The scene, about 50 s once cut, looped on the site:
 
 | Beat | On screen |
 |---|---|
 | Comment | Select “healty” in the headline → **Comment** → “typo” → send |
-| Draw | **New comment** → **Draw an area** around **Start growing** → “make it stand out” → send |
-| Work | The second thread, its steps appearing live, while the first agent fixes the typo behind it |
-| Answer | Its answer and the new button; **Back to the list**: both comments resolved |
+| Draw | **New comment** → **Area** around **Start growing** → “make it stand out, it gets lost” → send |
+| Work | The second thread, its steps appearing live; the headline turns to “healthy” behind it |
+| Detail | “use the forest green” in the box while it works: faded, then read by the agent |
+| Answer | The button turns forest green; the answer lists `src/styles.css` and the branch |
+| Diff | **Back to the list** → the typo's thread → `src/Hero.tsx`: its diff, highlighted |
 | End | The panel closed, the fixed page held for a beat |
 
 1. `/playground demo`, then stop its `npm run watch` task and run
@@ -47,7 +49,13 @@ The scene, about 30 s once cut, looped on the site:
    on purpose, though `/screencast` keeps it for choreography passes): the
    agents' changes reload the page, and the opening still would cover it.
    Wait for the comments to leave `open` and `working` in
-   `.demo/.annotant/comments.json` before the last beats. Before each take,
+   `.demo/.annotant/comments.json` before the last beats. Send the detail once
+   `.demo/src/Hero.tsx` reads “healthy” and the page has reloaded (a reload
+   while typing drops the text), but before the button's agent edits
+   `styles.css`; scroll back to the top after each reload. For the branch in
+   the panel's foot, make `.demo/` a repository of its own on a feature branch
+   (`git init -b main`, a first commit, `git switch -c feature/spring-launch`),
+   and `git checkout -- src` there between takes. Before each take,
    put `.demo/` back: copy `demo/src/` over `.demo/src/` and delete
    `.demo/.annotant/comments.json` (`/playground demo` again would bring the
    dev widget back). Take again when an agent wanders.
@@ -56,11 +64,13 @@ The scene, about 30 s once cut, looped on the site:
    output.
 
    ```sh
-   # Keep the segments to show, here from 17.3 s to 36.5 s, 55.5 s to 60.5 s and
-   # 68.5 s to the end: the sends, the changes landing and the answers.
-   ffmpeg -i take.webm -filter_complex "[0:v]fps=25,split=3[a][b][c];\
-   [a]trim=17.3:36.5,setpts=PTS-STARTPTS[v1];[b]trim=55.5:60.5,setpts=PTS-STARTPTS[v2];\
-   [c]trim=start=68.5,setpts=PTS-STARTPTS[v3];[v1][v2][v3]concat=n=3:v=1[v]" \
+   # Keep the segments to show, here 16.2-34 s, 54.5-66 s, 75-78 s, 87-93.5 s
+   # and 94 s to the end: the sends, the typo landing and the detail, the
+   # button changing, the answer, and the diff.
+   ffmpeg -i take.webm -filter_complex "[0:v]fps=25,split=5[a][b][c][d][e];\
+   [a]trim=16.2:34,setpts=PTS-STARTPTS[v1];[b]trim=54.5:66,setpts=PTS-STARTPTS[v2];\
+   [c]trim=75:78,setpts=PTS-STARTPTS[v3];[d]trim=87:93.5,setpts=PTS-STARTPTS[v4];\
+   [e]trim=start=94,setpts=PTS-STARTPTS[v5];[v1][v2][v3][v4][v5]concat=n=5:v=1[v]" \
      -map "[v]" -an -c:v libvpx-vp9 -crf 18 -b:v 0 cut.webm
    ffmpeg -i cut.webm -c:v libvpx-vp9 -crf 42 -b:v 0 -row-mt 1 -an site/assets/demo.webm
    ffmpeg -i cut.webm -c:v libx264 -crf 30 -preset slow -pix_fmt yuv420p -movflags +faststart -an site/assets/demo.mp4
@@ -69,6 +79,8 @@ The scene, about 30 s once cut, looped on the site:
 
    The poster is the last frame: the fixed page, shown to readers who asked
    for reduced motion.
-4. Update the video's `aria-label` in `site/index.html`, which tells the
+4. Bump the `?v=` of the video's sources and poster in `site/index.html`
+   (the release it shows), or browsers keep playing the cached take. Update
+   the video's `aria-label` there too, which tells the
    scene to readers who do not see it, when the scene or what the agents made
    of it changes (the button's new colour, for one).

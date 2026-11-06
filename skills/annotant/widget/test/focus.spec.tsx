@@ -28,10 +28,11 @@ test('the panel is named Annotant', () => {
   expect(panel()).toBe(screen.getByTestId('annotant-panel'))
 })
 
-test('a bubble moves the focus into the panel, and closing gives it back to the bubble', async () => {
+test('a bubble moves the focus into the panel, and closing gives it to the dock: the bubble goes with the panel', async () => {
   layout()
   document.body.replaceChildren()
   fakeServer([comment({ element: TITLE })])
+  openPanel()
   renderWidget()
 
   const bubble = await screen.findByRole('button', { name: 'Open the comment on <h1>' })
@@ -42,7 +43,8 @@ test('a bubble moves the focus into the panel, and closing gives it back to the 
   expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Comment' }))
 
   fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-  expect(document.activeElement).toBe(bubble)
+  expect(bubble.isConnected).toBe(false)
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Comments/ }))
 })
 
 test('closing the panel opened from the dock gives the focus to the dock', async () => {

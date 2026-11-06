@@ -35,6 +35,7 @@ import {
   type GitNow,
   useGitPlace,
   useRoute,
+  useNewerRelease,
   useServerSettings,
 } from './api'
 import {
@@ -53,13 +54,13 @@ import {
   type Status,
   answered,
   byPanelOrder,
-  folderName,
   gaveUp,
   gist,
   isActive,
   isAsking,
   isPending,
   isReply,
+  lastWrite,
   latestAttached,
   latestText,
   modelOf,
@@ -72,7 +73,7 @@ import {
 } from './domain'
 import { fits } from './images'
 import { DebugPanel, DebugToggle } from './debug'
-import { readSession, writeSession } from './session'
+import { readLocal, readSession, writeLocal, writeSession } from './session'
 import {
   type Box,
   type Side,
@@ -115,7 +116,7 @@ import {
   Toggle,
   ToolButton,
   toast,
-} from './ui'
+} from './components'
 import { activityOf, isOngoing, stepKey } from './activity'
 import {
   SHORTCUT_LIST,
@@ -161,6 +162,10 @@ const clampWidth = (value: number) =>
   )
 const PENDING_CENTER_MS = 5000
 const FLASH_MS = 1500
+// The release whose dot the reader saw, kept for every tab of the app.
+const RELEASE_SEEN_KEY = 'annotant:release-seen'
+// How a release reaches this session (README, Updating).
+const UPDATE_COMMAND = 'claude plugin marketplace update annotant'
 const UI_KEY = 'annotant:ui'
 const CENTER_KEY = 'annotant:center'
 // What the reader had in progress when the page reloaded (the app's dev server
@@ -441,7 +446,8 @@ const CHANGES = {
 } as const
 
 /**
- * The files the run behind Claude's message changed, under it: by name when
+ * The files the run behind Claude's message changed, under it, or the run at
+ * work has changed so far, under its current step: by name when
  * it changed one, else folded into a count that opens on a click. Once the
  * list shows, each file's diff loads, for the lines it added and removed on
  * its row; a click on the row unfolds the diff. Each file's path copies, and
@@ -458,6 +464,7 @@ function ChangedFiles({
   editor,
   editorIgnored,
   root,
+  version,
 }: {
   files: string[]
   added?: string[] | undefined
@@ -469,11 +476,13 @@ function ChangedFiles({
   editor: Editor | undefined
   editorIgnored?: true | undefined
   root: string | undefined
+  /** A run at work: changes when it writes again, and its diffs load again. */
+  version?: string | undefined
 }) {
   const [open, setOpen] = useState(false)
   const folds = files.length > 1
   // Loaded once the list shows, for the counts on each file's row.
-  const { diffs, retry } = useDiffs(files, diffOf, !folds || open)
+  const { diffs, retry } = useDiffs(files, diffOf, !folds || open, version)
   // The files whose diff is open.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set())
   const toggleDiff = (file: string) => {
@@ -969,25 +978,19 @@ function ModelLabel({ comment }: { comment: ReviewComment }) {
   )
 }
 
-/** A git place: its branch (or commit), and its worktree's folder, the full path on hover. */
+/** A git place: its branch (or commit) alone; its worktree's path on hover. */
 function Place({ place }: { place: GitPlace }) {
   return (
-    <>
-      <code>{placeName(place)}</code>
-      {place.worktree && (
-        <>
-          {' in '}
-          <code title={place.worktree}>{folderName(place.worktree)}</code>
-        </>
-      )}
-    </>
+    <code title={place.worktree && `In the worktree ${place.worktree}`}>
+      {placeName(place)}
+    </code>
   )
 }
 
 /**
- * Where the agents write, at the panel's foot: the project's branch, and its
- * worktree when it is not the main checkout. On the default branch, a hint,
- * not a block.
+ * Where the agents write, at the panel's foot: the project's branch alone;
+ * its worktree, when it is not the main checkout, on hover. On the default
+ * branch, a hint, not a block.
  */
 function GitLabel({ place }: { place: GitNow }) {
   const name = placeName(place)
@@ -1006,9 +1009,6 @@ function GitLabel({ place }: { place: GitNow }) {
     >
       <Icon name="git-branch" />
       <span className="an-git-name">{name}</span>
-      {place.worktree && (
-        <span className="an-git-name">· {folderName(place.worktree)}</span>
-      )}
       {place.default && <span className="an-visually-hidden">(default branch)</span>}
     </span>
   )
@@ -1028,6 +1028,9 @@ function WrittenOn({
   const wrote = writtenOn(comment, run)
   if (!wrote) return null
   const { place, from, switched } = wrote
+  // The branch alone does not show a move between worktrees on the same branch.
+  const elsewhere = (other: GitPlace) =>
+    placeName(other) === placeName(place) && ' in another worktree'
   return (
     <div
       className={`an-written ${from || switched ? 'an-written--moved' : ''}`}
@@ -1037,7 +1040,8 @@ function WrittenOn({
       <span>
         {from ? (
           <>
-            Started on <Place place={from} />, changed files on <Place place={place} />
+            Started on <Place place={from} />
+            {elsewhere(from)}, changed files on <Place place={place} />
           </>
         ) : (
           <>
@@ -1047,11 +1051,18 @@ function WrittenOn({
         {switched && (
           <>
             , and also on <Place place={switched} />
+            {elsewhere(switched)}
           </>
         )}
       </span>
     </div>
   )
+}
+
+/** The diffs of the run at work on `comment`, as far as it got. */
+function workingDiff(comment: ReviewComment) {
+  const current = comment.events.at(-1)?.run
+  return current ? (file: string) => fetchDiff(comment.id, current, file) : undefined
 }
 
 /** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
@@ -1263,6 +1274,11 @@ export default function App({ root }: { root: Element }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // The menu's button, which opened the settings: the focus goes back to it once they close.
   const settingsButton = useRef<HTMLButtonElement>(null)
+  // A newer release: an item in the menu, and a dot on its button until the
+  // menu opens, once per version and app.
+  const release = useNewerRelease(ANNOTANT_VERSION)
+  const [releaseSeen, setReleaseSeen] = useState(() => readLocal(RELEASE_SEEN_KEY))
+  const releaseNew = release && releaseSeen !== release.version ? release : undefined
 
   // The cards' relative dates move on while the panel is open: one timer for
   // every card, and the time gone by while it was closed shows as it opens.
@@ -1863,7 +1879,7 @@ export default function App({ root }: { root: Element }) {
     scrollToComment(root, comment.anchor)
   }
 
-  /** A bubble on the page: its thread, in the panel, opened if it was closed. */
+  /** A bubble on the page, there only while the panel is open: its thread, in the panel. */
   const openFromPage = (comment: ReviewComment) => {
     // Like Escape, never at the cost of what the reader is writing.
     if (draft && written(draft)) return
@@ -2610,6 +2626,18 @@ export default function App({ root }: { root: Element }) {
         (comment.state === 'working' ? (
           <div data-testid="an-working">
             <CurrentStep step={comment.progress?.at(-1)} />
+            {comment.changed?.length ? (
+              <ChangedFiles
+                files={comment.changed}
+                added={comment.added}
+                deleted={comment.deleted}
+                diffOf={workingDiff(comment)}
+                editor={editor}
+                editorIgnored={editorIgnored}
+                root={projectRoot}
+                version={lastWrite(comment.progress)}
+              />
+            ) : null}
             <WrittenOn comment={comment} run={comment.events.at(-1)?.run} />
           </div>
         ) : watching ? (
@@ -2813,9 +2841,16 @@ export default function App({ root }: { root: Element }) {
       onTouchStart={keepPress}
       onTouchEnd={keepPress}
     >
-      <ElementMarks root={root} comments={comments} onOpen={openFromPage} />
-      <AreaMarks root={root} comments={comments} onOpen={openFromPage} />
-      <QuoteBubbles root={root} comments={comments} onOpen={openFromPage} />
+      {/* The marks (frames, drawings, rainbows and their bubbles) show only while
+          the panel is open: closed, the page shows as it is. The outlines,
+          pickers and drawers below still show what the reader picks or draws. */}
+      {open && (
+        <>
+          <ElementMarks root={root} comments={comments} onOpen={openFromPage} />
+          <AreaMarks root={root} comments={comments} onOpen={openFromPage} />
+          <QuoteBubbles root={root} comments={comments} onOpen={openFromPage} />
+        </>
+      )}
       {outlined && <TargetOutline element={outlined} />}
       {outlinedArea && !drawing && <AreaOutline root={root} area={outlinedArea} />}
       {picking && (
@@ -3015,7 +3050,23 @@ export default function App({ root }: { root: Element }) {
               <MenuButton
                 ref={settingsButton}
                 label="More actions"
+                dot={releaseNew && `Annotant ${releaseNew.version} is out`}
+                onOpen={() => {
+                  if (!releaseNew) return
+                  writeLocal(RELEASE_SEEN_KEY, releaseNew.version)
+                  setReleaseSeen(releaseNew.version)
+                }}
                 items={[
+                  ...(release
+                    ? [
+                        {
+                          icon: 'arrow-up' as const,
+                          label: `Annotant ${release.version} is out: what's new`,
+                          detail: UPDATE_COMMAND,
+                          onSelect: () => window.open(release.url, '_blank', 'noopener'),
+                        },
+                      ]
+                    : []),
                   {
                     icon: docked ? 'collapse-horizontal' : 'expand-horizontal',
                     label: docked ? 'Narrow panel' : 'Widen panel to half the page',

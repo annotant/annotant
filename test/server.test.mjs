@@ -157,6 +157,19 @@ test("tells the widget the app's light and dark switch", async () => {
   assert.deepEqual(health.theme, { on: 'html', attribute: 'class', dark: 'dark' })
 })
 
+test('tells the widget the newest release, from its cache while it is fresh', async () => {
+  const release = {
+    version: '9.9.9',
+    url: 'https://github.com/annotant/annotant/releases/tag/v9.9.9',
+  }
+  // Fresh for a day: the server does not ask GitHub during the test.
+  await writeFile(
+    path.join(state, 'release.json'),
+    JSON.stringify({ nextAt: Date.now() + 86_400_000, version: [9, 9, 9] }),
+  )
+  assert.deepEqual(await json(await fetch(`${base}/api/release`)), release)
+})
+
 test('tells the widget the editor its files open in', async () => {
   const health = await json(await fetch(`${base}/api/health`))
   assert.equal(health.editor, 'cursor')
@@ -211,6 +224,38 @@ test('lets localhost apps in, and no other origin', async () => {
     headers: { origin: 'https://evil.example' },
   })
   assert.equal(other.headers.get('access-control-allow-origin'), null)
+})
+
+/**
+ * The status of a GET of `pathname` sent with this Host header, which fetch
+ * cannot set.
+ * @param {string} pathname
+ * @param {string} host
+ * @returns {Promise<number | undefined>}
+ */
+function statusWithHost(pathname, host) {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ host: '127.0.0.1', port, path: pathname, headers: { host } }, (response) => {
+        response.resume()
+        resolve(response.statusCode)
+      })
+      .on('error', reject)
+  })
+}
+
+test('answers only a request sent to this machine, by its name or its IP', async () => {
+  for (const host of [
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    `LocalHost:${port}`,
+    `[::1]:${port}`,
+  ]) {
+    assert.equal(await statusWithHost('/api/health', host), 200, host)
+  }
+  for (const host of [`evil.example:${port}`, 'localhost', `localhost:${port + 1}`]) {
+    assert.equal(await statusWithHost('/api/health', host), 421, host)
+  }
 })
 
 test('creates a comment and lists it for its page', async () => {
@@ -1605,6 +1650,12 @@ test('writes the instructions the widget saves to .annotant.json, its other keys
     assert.deepEqual(await json(await fetch(`${base}/api/settings`)), {
       instructions: '',
       max: 4000,
+      models: {
+        strategy: 'auto',
+        trivial: { model: 'haiku' },
+        standard: { model: 'sonnet' },
+        hard: { model: 'opus' },
+      },
     })
 
     const from = output.length
@@ -1613,6 +1664,12 @@ test('writes the instructions the widget saves to .annotant.json, its other keys
     assert.deepEqual(await json(saved), {
       instructions: 'Copy is in Canadian French.',
       max: 4000,
+      models: {
+        strategy: 'auto',
+        trivial: { model: 'haiku' },
+        standard: { model: 'sonnet' },
+        hard: { model: 'opus' },
+      },
     })
     assert.equal(await nextLine('SETTINGS', from), 'SETTINGS changed')
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
@@ -1637,6 +1694,184 @@ test('writes the instructions the widget saves to .annotant.json, its other keys
   } finally {
     await writeFile(file, config)
   }
+})
+
+/** Saves `models` as the widget does. */
+const saveModels = (models) =>
+  fetch(`${base}/api/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+    body: JSON.stringify({ models }),
+  })
+
+test('writes the models the widget saves, one or one per label, its other keys kept', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  try {
+    const from = output.length
+    const fixed = await saveModels({ strategy: 'fixed', model: 'opus' })
+    assert.equal(fixed.status, 200)
+    assert.deepEqual((await json(fixed)).models, { strategy: 'fixed', model: 'opus' })
+    // The session's model, at an effort.
+    const session = { strategy: 'fixed', model: 'inherit', effort: 'low' }
+    assert.deepEqual((await json(await saveModels(session))).models, session)
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).models, {
+      model: 'inherit',
+      effort: 'low',
+    })
+    assert.equal((await saveModels({ strategy: 'fixed', model: 'opus' })).status, 200)
+    assert.equal(await nextLine('SETTINGS', from), 'SETTINGS models')
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
+      ...JSON.parse(config),
+      models: 'opus',
+    })
+
+    // An effort is written with its model; none, the model alone.
+    const auto = {
+      strategy: 'auto',
+      trivial: { model: 'sonnet' },
+      standard: { model: 'sonnet', effort: 'high' },
+      hard: { model: 'opus', effort: 'max' },
+    }
+    assert.deepEqual((await json(await saveModels(auto))).models, auto)
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).models, {
+      trivial: 'sonnet',
+      standard: { model: 'sonnet', effort: 'high' },
+      hard: { model: 'opus', effort: 'max' },
+    })
+    assert.deepEqual((await json(await fetch(`${base}/api/settings`))).models, auto)
+
+    // The same again writes nothing, and says nothing.
+    const written = await readFile(file, 'utf8')
+    const again = output.length
+    assert.equal((await saveModels(auto)).status, 200)
+    assert.equal(await readFile(file, 'utf8'), written)
+    assert.equal(output.slice(again).includes('SETTINGS'), false)
+  } finally {
+    await writeFile(file, config)
+  }
+})
+
+test('saves the instructions and the models at once, and says both changed', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  try {
+    const from = output.length
+    const saved = await fetch(`${base}/api/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+      body: JSON.stringify({
+        instructions: 'Use tabs.',
+        models: { strategy: 'fixed', model: 'haiku' },
+      }),
+    })
+    assert.equal(saved.status, 200)
+    await nextLine('SETTINGS models', from)
+    assert.deepEqual(
+      output
+        .slice(from)
+        .split('\n')
+        .filter((line) => line.startsWith('SETTINGS')),
+      ['SETTINGS changed', 'SETTINGS models'],
+    )
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
+      ...JSON.parse(config),
+      instructions: 'Use tabs.',
+      models: 'haiku',
+    })
+    // A part refused refuses the whole save.
+    const refused = await fetch(`${base}/api/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+      body: JSON.stringify({
+        instructions: 'Use spaces.',
+        models: { strategy: 'fixed', model: 'gpt' },
+      }),
+    })
+    assert.equal(refused.status, 422)
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).instructions, 'Use tabs.')
+  } finally {
+    await writeFile(file, config)
+  }
+})
+
+test('refuses models it does not offer, and leaves .annotant.json as it is', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  for (const models of [
+    { strategy: 'fixed', model: 'claude-opus-5-5' },
+    { strategy: 'auto', trivial: { model: 'haiku' }, standard: { model: 'opus' } },
+    // The session's model is for one model only, not a label's.
+    {
+      strategy: 'auto',
+      trivial: { model: 'haiku' },
+      standard: { model: 'inherit' },
+      hard: { model: 'opus' },
+    },
+    { strategy: 'fixed', model: 'opus', effort: 'turbo' },
+    { strategy: 'custom', text: '"opus"' },
+    'opus',
+  ]) {
+    const refused = await saveModels(models)
+    assert.equal(refused.status, 422, JSON.stringify(models))
+    assert.match((await json(refused)).error, /models must be one of haiku/)
+  }
+  assert.equal(await readFile(file, 'utf8'), config)
+})
+
+test('shows models written by hand that the dialog cannot show, and keeps them', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  try {
+    for (const models of [
+      { trivial: 'inherit' },
+      'claude-opus-5-5',
+      { trivial: 'haiku', standard: 'inherit', hard: 'opus' },
+    ]) {
+      const edited = JSON.stringify({ ...JSON.parse(config), models })
+      await writeFile(file, edited)
+      assert.deepEqual((await json(await fetch(`${base}/api/settings`))).models, {
+        strategy: 'custom',
+        text: JSON.stringify(models),
+      })
+      const refused = await saveModels({ strategy: 'fixed', model: 'opus' })
+      assert.equal(refused.status, 422)
+      assert.match((await json(refused)).error, /written by hand: change it in the file/)
+      // The instructions still save, the models kept.
+      assert.equal((await saveInstructions('Use tabs.')).status, 200)
+      assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).models, models)
+    }
+  } finally {
+    await writeFile(file, config)
+  }
+})
+
+test('reads models null as the default, as the hooks do, and replaces it', async () => {
+  const file = path.join(root, '.annotant.json')
+  const config = await readFile(file, 'utf8')
+  try {
+    await writeFile(file, JSON.stringify({ ...JSON.parse(config), models: null }))
+    assert.deepEqual((await json(await fetch(`${base}/api/settings`))).models, {
+      strategy: 'auto',
+      trivial: { model: 'haiku' },
+      standard: { model: 'sonnet' },
+      hard: { model: 'opus' },
+    })
+    assert.equal((await saveModels({ strategy: 'fixed', model: 'opus' })).status, 200)
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).models, 'opus')
+  } finally {
+    await writeFile(file, config)
+  }
+})
+
+test('refuses a save with neither instructions nor models, in words for the reader', async () => {
+  const refused = await fetch(`${base}/api/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+    body: '{}',
+  })
+  assert.equal(refused.status, 422)
+  assert.equal((await json(refused)).error, 'Send instructions, models, or both.')
 })
 
 test('refuses instructions over 4000 characters, not text, or from another origin', async () => {

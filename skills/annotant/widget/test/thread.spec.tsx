@@ -1281,3 +1281,159 @@ test('a message added while no agent had the comment waits for the next one', as
   // Still about the comment: no reply waits on the hooks.
   expect(screen.getByTestId('an-working').textContent).not.toBe('Sent…')
 })
+
+/** A diff that turns `old` into `text`. */
+const hunks = (text: string) => ({
+  hunks: [
+    {
+      oldStart: 1,
+      oldLines: 1,
+      newStart: 1,
+      newLines: 1,
+      lines: [
+        { kind: 'removed', text: 'old' },
+        { kind: 'added', text },
+      ],
+    },
+  ],
+})
+
+test('the files a run at work has changed show under its step, and the list grows', async () => {
+  const events = fakeEvents()
+  const started = [
+    { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+    { at: '2026-01-01T10:01:00.000Z', state: 'working', by: 'agent', run: 'r1' },
+  ] as const
+  const comments = [
+    comment({
+      state: 'working',
+      events: [...started],
+      progress: [{ at: 1, id: 't1', kind: 'edit', label: 'src/App.tsx', state: 'done' }],
+      edited: true,
+      changed: ['src/App.tsx'],
+    }),
+  ]
+  const diffs: Record<string, unknown> = { 'c1/r1/src/App.tsx': hunks('one') }
+  const { fetch } = fakeServer(comments, { diffs })
+  openThread('c1')
+  renderWidget()
+
+  const working = await screen.findByTestId('an-working')
+  const list = within(working).getByTestId('an-changed')
+  expect(within(list).getByText('App.tsx')).toBeTruthy()
+  // One file: its diff loads for its counts.
+  expect(await within(list).findByLabelText('1 added, 1 removed')).toBeTruthy()
+  const asked = () => fetch.mock.calls.filter(([url]) => url.includes('/diff')).length
+  expect(asked()).toBe(1)
+
+  // It edits the file again and adds another: the list folds into a count.
+  diffs['c1/r1/src/App.tsx'] = {
+    hunks: [{ ...hunks('two').hunks[0]!, lines: [{ kind: 'added', text: 'two' }] }],
+  }
+  comments[0] = {
+    ...comments[0]!,
+    progress: [
+      { at: 2, id: 't2', kind: 'edit', label: 'src/App.tsx', state: 'done' },
+      { at: 3, id: 't3', kind: 'write', label: 'src/new.ts', state: 'done' },
+    ],
+    changed: ['src/App.tsx', 'src/new.ts'],
+    added: ['src/new.ts'],
+  }
+  events.send('changed')
+  fireEvent.click(await within(working).findByRole('button', { name: '2 files changed' }))
+  // The file it wrote again loads again.
+  expect(await within(working).findByLabelText('1 added, 0 removed')).toBeTruthy()
+
+  // Once it answers, the files show under its message only.
+  comments[0] = comment({
+    state: 'resolved',
+    events: [
+      ...started,
+      { at: '2026-01-01T10:05:00.000Z', state: 'resolved', by: 'agent', run: 'r1' },
+    ],
+    messages: [
+      {
+        author: 'claude',
+        run: 'r1',
+        body: 'Done.',
+        at: '2026-01-01T10:05:00.000Z',
+        changed: ['src/App.tsx', 'src/new.ts'],
+        added: ['src/new.ts'],
+      },
+    ],
+  })
+  events.send('changed')
+  await waitFor(() => expect(screen.queryByTestId('an-working')).toBeNull())
+  expect(screen.getAllByTestId('an-changed')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: '2 files changed' })).toBeTruthy()
+})
+
+/** An edit of `src/App.tsx` that ended, at `at`. */
+const write = (id: string, at: number) =>
+  ({ at, id, kind: 'edit', label: 'src/App.tsx', state: 'done' }) as const
+
+/** A diff that adds `count` lines. */
+const added = (count: number) =>
+  Response.json({
+    hunks: [
+      {
+        oldStart: 1,
+        oldLines: 0,
+        newStart: 1,
+        newLines: count,
+        lines: Array.from({ length: count }, () => ({ kind: 'added', text: 'x' })),
+      },
+    ],
+  })
+
+test('a diff loaded again never shows an older answer, nor a failure over a loaded one', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const events = fakeEvents()
+  const comments = [
+    comment({
+      state: 'working',
+      events: [
+        { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
+        { at: '2026-01-01T10:01:00.000Z', state: 'working', by: 'agent', run: 'r1' },
+      ],
+      progress: [write('t1', 1)],
+      edited: true,
+      changed: ['src/App.tsx'],
+    }),
+  ]
+  const { fetch } = fakeServer(comments)
+  const original = fetch.getMockImplementation()
+  // Each diff the widget asks for waits for the test to answer it.
+  const answers: ((response: Response) => void)[] = []
+  fetch.mockImplementation(async (input: string, init?: RequestInit) =>
+    input.includes('/diff')
+      ? new Promise<Response>((resolve) => answers.push(resolve))
+      : (original?.(input, init) ?? Response.json([])),
+  )
+  const step = async (progress: ReturnType<typeof write>[]) => {
+    comments[0] = { ...comments[0]!, progress }
+    const asked = answers.length
+    events.send('changed')
+    await waitFor(() => expect(answers).toHaveLength(asked + 1))
+  }
+  openThread('c1')
+  renderWidget()
+
+  await waitFor(() => expect(answers).toHaveLength(1))
+  await act(async () => answers[0]?.(added(1)))
+  expect(await screen.findByLabelText('1 added, 0 removed')).toBeTruthy()
+
+  // A step after the write: the file as the hooks kept it, asked again.
+  await step([write('t1', 1), write('t2', 2)])
+  // It writes again before that answer: the newer one wins, whatever the order.
+  await step([write('t1', 1), write('t2', 2), write('t3', 3)])
+  await act(async () => answers[2]?.(added(3)))
+  expect(await screen.findByLabelText('3 added, 0 removed')).toBeTruthy()
+  await act(async () => answers[1]?.(added(2)))
+  expect(screen.getByLabelText('3 added, 0 removed')).toBeTruthy()
+
+  // A reload that fails keeps the diff on screen.
+  await step([write('t1', 1), write('t2', 2), write('t3', 3), write('t4', 4)])
+  await act(async () => answers[3]?.(new Response(null, { status: 500 })))
+  expect(screen.getByLabelText('3 added, 0 removed')).toBeTruthy()
+})

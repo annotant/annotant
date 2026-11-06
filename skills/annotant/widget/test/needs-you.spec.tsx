@@ -240,6 +240,7 @@ test('on the page, the pin of a thread that needs the reader is a question mark'
   ]
   const threads = [comment({ id: 'c1', element, state: 'asking', messages: question })]
   fakeServer(threads)
+  openPanel()
   renderWidget()
 
   const pin = await screen.findByRole('button', { name: 'Open the comment on <h1>' })

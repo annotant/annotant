@@ -400,6 +400,40 @@ test('a run that wrote a file says so, even once the write is out of the steps s
   assert.equal(listed.progress?.length, 10)
 })
 
+test('a run at work lists the files it changed so far, as an answer does', async (t) => {
+  const { project, comments, comment } = await setUp(t)
+  await claim(comments, comment.id)
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 1, id: 't1', kind: 'edit', label: 'a.ts', state: 'done' },
+    { at: 2, id: 't2', kind: 'read', label: 'c.ts', state: 'done' },
+  )
+  let [listed] = await comments.list('/')
+  assert.deepEqual(listed.changed, ['a.ts'])
+  assert.equal(listed.added, undefined)
+  assert.equal(listed.deleted, undefined)
+
+  // The list grows as it changes more, past the steps shown.
+  await appendProgress(
+    project,
+    comment.id,
+    { at: 3, id: 't3', kind: 'write', label: 'b.ts', created: true, state: 'done' },
+    { at: 4, id: 't4', kind: 'delete', label: 'old.ts' },
+    ...Array.from({ length: 12 }, (_, i) => ({ at: 5 + i, kind: 'thinking', label: '' })),
+  )
+  ;[listed] = await comments.list('/')
+  assert.deepEqual(listed.changed, ['a.ts', 'b.ts', 'old.ts'])
+  assert.deepEqual(listed.added, ['b.ts'])
+  assert.deepEqual(listed.deleted, ['old.ts'])
+
+  // Once it answers, they are its message's, not the comment's.
+  await comments.answer(comment.id, 'Done.')
+  ;[listed] = await comments.list('/')
+  assert.equal(listed.changed, undefined)
+  assert.deepEqual(listed.messages.at(-1)?.changed, ['a.ts', 'b.ts', 'old.ts'])
+})
+
 test('steps show in the order they happened, whichever process wrote one first', async (t) => {
   const { project, comments, comment } = await setUp(t)
   await claim(comments, comment.id)

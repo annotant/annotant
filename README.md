@@ -65,17 +65,20 @@ follow up; cancel to stop it.
   around each of its tools, and no other agent does.
 - **Each comment gets a model that fits it.** Before its agent starts, a
   classifier sorts the comment as `trivial`, `standard` or `hard`, and
-  `models` in `.annotant.json` picks the model for it (by default Haiku,
-  the session's own model, and Opus). The widget names it on the thread
+  `models` in `.annotant.json` picks the model and its effort for it (by
+  default Haiku, Sonnet and Opus). The widget names it on the thread
   ("haiku · trivial"). A comment of images alone is not classified: it
-  starts on the session's model at a medium effort. See
+  starts on the session's model at a medium effort (with one fixed model,
+  on that model). The settings dialog
+  switches between this and one fixed model for every comment, and sets
+  each model's effort. See
   [Models](docs/comments-file.md#models).
 - **You see where the agents write.** The panel's foot names the branch your
-  project is on (its commit on a detached HEAD), and its worktree when it is
-  not the main checkout, in amber on the default branch. Each answer of
-  Claude's names the branch its run changed files on, kept after a branch
-  switch; a run that started on one branch (or commit) and wrote on another is
-  flagged.
+  project is on (its commit on a detached HEAD), its worktree on hover when it
+  is not the main checkout, in amber on the default branch. Each answer of
+  Claude's names the branch its run changed files on, its worktree's path on
+  hover, kept after a branch switch; a run that started on one branch (or
+  commit), or in another worktree, and wrote elsewhere is flagged.
   Outside a git repository, nothing shows.
 - **The widget follows your app's theme.** `init` finds how your app switches
   between light and dark (Tailwind's `darkMode`, `next-themes`, a `.dark`
@@ -190,6 +193,8 @@ The `stable` branch holds the released versions; `main` is where development
 happens and does not work without a build. Get new versions with `claude
 plugin marketplace update annotant`, or turn on auto-update for the
 marketplace in `/plugin`; the [changelog](CHANGELOG.md) lists what each brings.
+When a new version is out, a dot shows on the widget's menu (`⋯`), and the
+menu links to its release notes.
 After an update, `/annotant:annotant update` migrates a project installed
 by an older version.
 
@@ -234,13 +239,16 @@ next sessions.
 - **Comments**, at the strip's end, opens the panel. Its **New comment**
   (`+`) starts a comment for the page, or the whole app; so does the comment
   shortcut.
+  The marks below (bubbles, frames, areas and drawings) show while the panel
+  is open: closed, the page shows as it is.
 - **Select text**, then _Comment_, to anchor a comment to that text. A bubble
   then marks the text on the page; clicking it opens the comment's thread.
 - **Point at element** starts a comment with that element in its message
   box, as an image would be: the comment is about the page, and the element
   goes with its message. It stays outlined while you write, then a bubble
-  marks it until the thread is first resolved. A reply that picks an element
-  afterwards moves the mark to it. Hovering an element chip outlines it on the
+  marks it until Claude answers it with files changed, or the thread is first
+  resolved. A reply that picks an element afterwards moves the mark to it,
+  under the same rule. Hovering an element chip outlines it on the
   page, clicking it scrolls to it (navigating first if it lives on another
   page).
 - **Draw area** to frame a part of the page no single element holds: the gap
@@ -269,7 +277,8 @@ next sessions.
   within the window.
 - On the page, blue is what you are pointing at or commenting on; a rainbow,
   around an element or an area, on a drawing's lines or behind a text, marks
-  a comment Claude has yet to resolve; once its thread is first resolved, the mark goes away.
+  a comment Claude has yet to deal with; once Claude answers it with files
+  changed, or its thread is first resolved, the mark goes away.
 - **Paste, drop or choose images** (a screenshot, a mockup) in the message
   box of a comment or a reply, with its image button: they go with the
   message, or alone, and Claude opens them. As many as you like, PNG, JPEG,
@@ -464,6 +473,10 @@ each agent, with no restart:
 - The loader is guarded by the bundler's compile-time dev flag
   (`process.env.NODE_ENV` or `import.meta.env.DEV`), so it is removed from
   production builds; `scripts/verify-prod.mjs` checks the build output.
+- The server's only request to the internet asks GitHub's API for the newest
+  release (`api.github.com/repos/annotant/annotant/releases/latest`), at most
+  once a day, when the widget loads; it sends nothing about your project. Set
+  `ANNOTANT_UPDATE_CHECK=0` in your environment to turn it off.
 - Comments hold page text and HTML excerpts; they stay in your project folder,
   with the images attached to them (`.annotant/images/`), which the server
   checks are images by their bytes.

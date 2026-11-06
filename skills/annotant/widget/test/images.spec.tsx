@@ -517,6 +517,7 @@ test('a bubble on the page of an image alone is titled after it', async () => {
   const filed = comment({ quote: 'Playground', body: '' })
   filed.messages = filed.messages.map((message) => ({ ...message, images: ['m1-1.png'] }))
   fakeServer([filed])
+  openPanel()
   renderWidget()
   const bubble = await screen.findByRole('button', {
     name: 'Open the comment on “Playground”',
