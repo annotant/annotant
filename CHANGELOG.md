@@ -7,8 +7,18 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.6.1 - 2026-11-05
+
 ### Fixed
 
+- **Selecting text no longer throws away the comment being written.** The
+  selection's **Comment** button now quotes the selection in the draft, which
+  keeps its message and images, and **All comments** stays off while the
+  draft holds something. (#315)
+- **A reply being written survives the page's reload.** The dev server
+  reloads the page on an agent's edit, just when one replies: each thread now
+  keeps its own unsent reply, and a stopped thread its edited comment, through
+  the reload. (#318)
 - **A message sent while Claude works is read before it asks.** A message
   that reached the thread after the agent's last step, just before it asked
   a question, stayed unread under the question until the reader answered.
