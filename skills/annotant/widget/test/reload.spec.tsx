@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
-import { comment, fakeEvents, fakeServer, openPanel } from './server'
+import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, startPageComment } from './widget'
 
 /** Two cards in a section, a gap of 20px between them. */
@@ -347,4 +347,121 @@ test('an agent answering never cancels the area being drawn', async () => {
     (await screen.findByTestId('an-target-area')).querySelector('.an-target-text')
       ?.textContent,
   ).toBe('500 × 60across "Card A", "Card B"')
+})
+
+/** Two threads an agent works on: the reader may add a detail to each. */
+const working = () => [
+  comment({ state: 'working', body: 'Make the title bigger' }),
+  comment({ id: 'c2', state: 'working', body: 'Make the footer smaller' }),
+]
+
+const replyBox = () =>
+  screen.findByPlaceholderText<HTMLTextAreaElement>('Add a detail for Claude…')
+
+test('a reply being written comes back once the page reloads, and not once sent', async () => {
+  const threads = working()
+  openThread('c1')
+  const { view } = renderCards(threads)
+  fireEvent.change(await replyBox(), { target: { value: 'In bold too' } })
+
+  view.unmount()
+  const { view: again, patches } = renderCards(threads)
+  const box = await replyBox()
+  expect(box.value).toBe('In bold too')
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(patches).toEqual([{ id: 'c1', patch: { followUp: 'In bold too' } }]),
+  )
+
+  again.unmount()
+  reload(threads)
+  expect((await replyBox()).value).toBe('')
+})
+
+test('each thread keeps its own reply being written, through a reload too', async () => {
+  const threads = working()
+  openThread('c1')
+  const { view } = renderCards(threads)
+  fireEvent.change(await replyBox(), { target: { value: 'In bold too' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByText('Make the footer smaller'))
+  const other = await replyBox()
+  expect(other.value).toBe('')
+  fireEvent.change(other, { target: { value: 'And grey' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByText('Make the title bigger'))
+  expect((await replyBox()).value).toBe('In bold too')
+
+  view.unmount()
+  reload(threads)
+  expect((await replyBox()).value).toBe('In bold too')
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByText('Make the footer smaller'))
+  expect((await replyBox()).value).toBe('And grey')
+})
+
+test("a reply's target and images, kept by the tab, come back and are sent with it", async () => {
+  const threads = working()
+  const title = { selector: 'h1', tag: 'h1', text: 'Playground', route: '/' }
+  const image = { type: 'image/png', data: 'iVBORw0KGgo=' }
+  sessionStorage.setItem(
+    'annotant:replies',
+    JSON.stringify({
+      c1: { id: 'c1', body: '', elements: [title], images: [image] },
+      // Unreadable, or inherited by every object: left aside.
+      c2: { id: 'c2', body: 3 },
+      constructor: { id: 'constructor', body: 'x' },
+    }),
+  )
+  openThread('c1')
+  const { patches } = renderCards(threads)
+
+  const box = await replyBox()
+  expect(screen.getByTestId('an-picked').textContent).toContain('Playground')
+  expect(screen.getByTestId('an-attachments')).toBeTruthy()
+  fireEvent.keyDown(box, { key: 'Enter' })
+  await waitFor(() =>
+    expect(patches).toEqual([
+      { id: 'c1', patch: { images: [image], elements: [title] } },
+    ]),
+  )
+})
+
+/** The box of a stopped thread's comment, to edit before sending it again. */
+const resendBox = () =>
+  screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Edit the comment before sending it again',
+  })
+
+test('each stopped thread keeps its comment being edited, and not once sent again', async () => {
+  const threads = [
+    comment({ state: 'stopped', body: 'Make the title bigger' }),
+    comment({ id: 'c2', state: 'stopped', body: 'Make the footer smaller' }),
+  ]
+  openThread('c1')
+  const { view } = renderCards(threads)
+  fireEvent.change(await resendBox(), { target: { value: 'Make the title much bigger' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByText('Make the footer smaller'))
+  fireEvent.change(await resendBox(), { target: { value: 'Make the footer tiny' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByText('Make the title bigger'))
+  expect((await resendBox()).value).toBe('Make the title much bigger')
+
+  view.unmount()
+  const { view: again, patches } = renderCards(threads)
+  expect((await resendBox()).value).toBe('Make the title much bigger')
+  fireEvent.click(screen.getByRole('button', { name: 'Send again' }))
+  await waitFor(() =>
+    expect(patches).toEqual([
+      { id: 'c1', patch: { text: 'Make the title much bigger', cancelled: false } },
+    ]),
+  )
+
+  again.unmount()
+  reload(threads)
+  expect((await resendBox()).value).toBe('Make the title bigger')
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
+  fireEvent.click(await screen.findByText('Make the footer smaller'))
+  expect((await resendBox()).value).toBe('Make the footer tiny')
 })
