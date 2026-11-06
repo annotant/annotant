@@ -7,6 +7,8 @@ released to the `stable` branch.
 
 ## Unreleased
 
+## 0.6.0 - 2026-11-05
+
 ### Added
 
 - **Know when a new version is out.** A dot on the widget's menu (`⋯`) says a
@@ -54,14 +56,17 @@ released to the `stable` branch.
 
 ### Fixed
 
-- **The server answers only requests for this machine.** A request whose
-  `Host` is not `localhost`, `127.0.0.1` or `[::1]` with the server's port
-  is now refused (421), as a page of another site could otherwise reach it
-  under a name it points at this machine.
 - **A drawing hides under what opens over it.** While a modal, a drawer or
   a sticky header lies over what you drew on, the drawing's lines no longer
   stay on top of it; they come back once it closes. A drawing made on the
   modal itself still shows. (#294)
+
+### Security
+
+- **The server answers only requests for this machine.** A request whose
+  `Host` is not `localhost`, `127.0.0.1` or `[::1]` with the server's port
+  is now refused (421), as a page of another site could otherwise reach it
+  under a name it points at this machine. (#323)
 
 ## 0.5.0 - 2026-11-03
 
