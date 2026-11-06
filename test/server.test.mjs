@@ -226,6 +226,38 @@ test('lets localhost apps in, and no other origin', async () => {
   assert.equal(other.headers.get('access-control-allow-origin'), null)
 })
 
+/**
+ * The status of a GET of `pathname` sent with this Host header, which fetch
+ * cannot set.
+ * @param {string} pathname
+ * @param {string} host
+ * @returns {Promise<number | undefined>}
+ */
+function statusWithHost(pathname, host) {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ host: '127.0.0.1', port, path: pathname, headers: { host } }, (response) => {
+        response.resume()
+        resolve(response.statusCode)
+      })
+      .on('error', reject)
+  })
+}
+
+test('answers only a request sent to this machine, by its name or its IP', async () => {
+  for (const host of [
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
+    `LocalHost:${port}`,
+    `[::1]:${port}`,
+  ]) {
+    assert.equal(await statusWithHost('/api/health', host), 200, host)
+  }
+  for (const host of [`evil.example:${port}`, 'localhost', `localhost:${port + 1}`]) {
+    assert.equal(await statusWithHost('/api/health', host), 421, host)
+  }
+})
+
 test('creates a comment and lists it for its page', async () => {
   const created = await post(
     JSON.stringify({

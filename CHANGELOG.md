@@ -54,6 +54,10 @@ released to the `stable` branch.
 
 ### Fixed
 
+- **The server answers only requests for this machine.** A request whose
+  `Host` is not `localhost`, `127.0.0.1` or `[::1]` with the server's port
+  is now refused (421), as a page of another site could otherwise reach it
+  under a name it points at this machine.
 - **A drawing hides under what opens over it.** While a modal, a drawer or
   a sticky header lies over what you drew on, the drawing's lines no longer
   stay on top of it; they come back once it closes. A drawing made on the
