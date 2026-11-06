@@ -265,9 +265,9 @@ const sanitisePicked = (list) =>
     })
     .slice(0, MAX_PICKED)
 
-/** A name that may hold a secret: a token, a password, a signature, a nonce. */
+/** A name that may hold a secret: a token, a password, a signature, a nonce. As the widget's (`widget/src/pages.ts`). */
 const SECRET =
-  /token|secret|passw|pwd|csrf|xsrf|nonce|api[-_]?key|session|signature|jwt|credential|authori[sz]ation|bearer|^(?:auth|code|key|otp|sid|sig)$/i
+  /token|secret|passw|pwd|csrf|xsrf|nonce|api[-_]?key|session|signature|jwt|credential|authori[sz]ation|bearer|oobcode|oauth_verifier|samlresponse|^(?:auth|code|key|otp|sid|sig|ticket)$/i
 
 /** @param {string} name A parameter or an attribute, maybe percent-encoded. */
 function isSecret(name) {

@@ -7,6 +7,14 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Security
+
+- **A comment's page stays on the app, without its sign-in tokens.** A page
+  link that would leave the app's origin (a hand-edited `//elsewhere.com`) is
+  no longer followed, and a new comment's page drops the query's
+  secret-looking parameters (`code`, `token`, `oobCode`, `ticket`…, and
+  OAuth's `state` with them). (#322)
+
 ## 0.6.0 - 2026-11-05
 
 ### Added
