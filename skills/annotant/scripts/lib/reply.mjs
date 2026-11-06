@@ -1,8 +1,12 @@
 // What resolve.mjs and ask.mjs share: Claude files a message under a comment.
 import { parseArgs } from 'node:util'
+import { fenceMessages } from './fence.mjs'
+import { imagesDir } from './images.mjs'
 import { findProject, positional } from './project.mjs'
-import { MAX_OPTIONS, StoreRefusal, createStore } from './store.mjs'
+import { MAX_OPTIONS, StoreRefusal, UnreadMessages, createStore } from './store.mjs'
 
+/** `ask.mjs` did not ask: the reader wrote meanwhile, printed for the agent. */
+const UNREAD_EXIT = 3
 const MAX_LABEL = 80
 const MAX_DESCRIPTION = 300
 
@@ -109,6 +113,21 @@ export async function reply(script, { question }) {
       : ''
     console.log(`${state} ${id} (${comment.route})${meanwhile}`)
   } catch (error) {
+    if (error instanceof UnreadMessages) {
+      // The reader wrote meanwhile: they get no question their message may
+      // settle, and the agent reads it now, no hook left in its run to.
+      console.log(
+        [
+          `not asked: the reader added to comment ${id} while you worked, and you had not read it:`,
+          fenceMessages(imagesDir(project, id), error.messages),
+          'Take it into account, then ask again if you still need to, or go on.',
+        ].join('\n'),
+      )
+      // Not process.exit(): on macOS a pipe is written asynchronously, and a
+      // long message would be cut short.
+      process.exitCode = UNREAD_EXIT
+      return
+    }
     if (!(error instanceof StoreRefusal)) throw error
     console.error(`${error.message}; not ${question ? 'asking' : 'resolving'}`)
     process.exit(1)

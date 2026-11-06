@@ -45,7 +45,7 @@ import path from 'node:path'
 import { RUN_ID, diffsDir, keepAfter, keepBefore } from './lib/diffs.mjs'
 import { errorCode } from './lib/errors.mjs'
 import { withFileLock } from './lib/filelock.mjs'
-import { fence } from './lib/fence.mjs'
+import { fenceMessages } from './lib/fence.mjs'
 import { currentRun, parseFile, unreadDuring } from './lib/format.mjs'
 import { gitPlace, wroteAt } from './lib/git.mjs'
 import { imagesDir } from './lib/images.mjs'
@@ -886,17 +886,9 @@ function hooksFor({ comment, root, lockRoot, agent }) {
    * @param {import('./lib/format.mjs').MessageV2[]} added
    */
   function addedContext(added) {
-    const dir = imagesDir(project, comment)
-    const messages = added.map(({ id: message, body, images, elements, area }) => ({
-      id: message,
-      body,
-      ...(images && { images: images.map((image) => path.join(dir, image)) }),
-      ...(elements && { elements }),
-      ...(area && { area }),
-    }))
     return [
       `The reader added to comment ${comment} while you work on it:`,
-      fence(JSON.stringify(messages, null, 2)),
+      fenceMessages(imagesDir(project, comment), added),
       'Take it into account in this run. If you do not, say why in your answer.',
     ].join('\n')
   }

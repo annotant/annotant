@@ -93,6 +93,18 @@ export const isAsking = (comment) => comment.state === 'asking'
 /** A refusal a script reports to the agent and exits on, with nothing written. */
 export class StoreRefusal extends Error {}
 
+/**
+ * A question not asked: the reader wrote meanwhile, and the agent had not
+ * read it. `messages` are now marked read, for the agent to read instead.
+ */
+export class UnreadMessages extends Error {
+  /** @param {MessageV2[]} messages */
+  constructor(messages) {
+    super('the reader sent messages the agent has not read')
+    this.messages = messages
+  }
+}
+
 /** A model id is short (`claude-haiku-5-5`): the hooks' value, kept bounded. */
 const MAX_MODEL = 100
 
@@ -235,15 +247,24 @@ const historyPath = (project, id) => path.join(project.progressDir, `${id}.histo
  * @returns {MessageV2[]}
  */
 function queueUnread(comment, run) {
-  const unread = comment.messages.filter(
+  const unread = unreadBy(comment, run)
+  for (const message of unread) message.queued = true
+  return unread
+}
+
+/**
+ * The reader's messages run `run`'s agent has not read: those sent during it,
+ * and those queued before it.
+ * @param {CommentV2} comment
+ * @param {string | undefined} run
+ */
+const unreadBy = (comment, run) =>
+  comment.messages.filter(
     (message) =>
       message.author === 'reader' &&
       !message.readAt &&
       (message.queued || (!!run && message.during === run)),
   )
-  for (const message of unread) message.queued = true
-  return unread
-}
 
 /**
  * The thread a claim prints holds every message added while the comment was
@@ -545,17 +566,30 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
      * `multiple`; they can always answer in their own words instead.
      * The reader's messages sent during the run that its agent never read are
      * queued for the next one; after an answer, the latest of them opens the
-     * comment again, as a follow-up would.
+     * comment again, as a follow-up would. A question is not asked over
+     * them: the reader, who already spoke, would wait on an answer to a
+     * question their message may settle, and no agent would read it. They
+     * are marked read and thrown instead (`UnreadMessages`), for the agent to
+     * take into account before it asks again.
      * @param {string} id
      * @param {string} body
      * @param {{ question?: boolean, options?: { label: string, description?: string }[], multiple?: boolean }} [options]
+     * @returns {Promise<CommentV2>}
      */
-    answer(id, body, { question = false, options, multiple = false } = {}) {
-      return changeOne(id, async (comment) => {
+    async answer(id, body, { question = false, options, multiple = false } = {}) {
+      const result = await changeOne(id, async (comment) => {
         // An agent answers only a comment it may work on: the graph also lets
         // the reader resolve one that waits on them.
         if (!isActive(comment)) {
           throw new StoreRefusal(`comment ${id} is ${stateOf(comment)}`)
+        }
+        if (question) {
+          const unread = unreadBy(comment, currentRun(comment))
+          if (unread.length) {
+            const at = new Date().toISOString()
+            for (const message of unread) message.readAt = at
+            return { unread }
+          }
         }
         // Answered without a claim: the run starts here.
         if (comment.state === 'open') {
@@ -588,9 +622,13 @@ export function createStore(project, { history: keepHistory = isDevWidget() } = 
         await endRun(id, run)
         const unread = queueUnread(comment, run)
         const latest = unread.at(-1)
-        if (!question && latest) latest.sentAt = move(comment, 'open', { by: 'reader' })
+        // Only an answer can leave some: a question is not asked over them.
+        if (latest) latest.sentAt = move(comment, 'open', { by: 'reader' })
         return comment
       })
+      // Thrown once written: the messages are read now.
+      if ('unread' in result) throw new UnreadMessages(result.unread)
+      return result
     },
 
     /**

@@ -1028,14 +1028,41 @@ test('a message the run ended before reading opens the comment again, for the ne
   assert.ok(next.messages.find((one) => one.id === waiting?.id)?.readAt)
 })
 
-test('a message unread when the agent asks or stops waits for the next agent', async (t) => {
+test('a question is not asked over a message its agent did not read: the agent gets it', async (t) => {
   const { comments, comment } = await setUp(t)
   await claim(comments, comment.id)
   await update(comments, comment.id, { followUp: 'Keep it short' })
+  await assert.rejects(
+    comments.answer(comment.id, 'Which colour?', { question: true }),
+    (error) =>
+      error instanceof store.UnreadMessages &&
+      error.messages.map((one) => one.body).join() === 'Keep it short',
+  )
+  const [saved] = await comments.readAll()
+  assert.equal(saved?.state, 'working')
+  assert.ok(lastOf(saved?.messages ?? []).readAt)
+  assert.equal(lastOf(saved?.messages ?? []).queued, undefined)
+  // Read, the question goes through, and nothing waits under it unread.
   const asked = await comments.answer(comment.id, 'Which colour?', { question: true })
   assert.equal(asked.state, 'asking')
-  assert.equal(asked.messages.at(-2)?.queued, true)
+  assert.ok(asked.messages.every((one) => !(one.during || one.queued) || one.readAt))
+})
 
+test('a question with no claim is not asked over a queued message either', async (t) => {
+  const { comments, comment } = await setUp(t)
+  await update(comments, comment.id, { followUp: 'And the footer' })
+  await assert.rejects(
+    comments.answer(comment.id, 'Which footer?', { question: true }),
+    store.UnreadMessages,
+  )
+  const [saved] = await comments.readAll()
+  // No run started: the comment still waits for an agent, the message read.
+  assert.equal(saved?.state, 'open')
+  assert.deepEqual(statesOf(saved), ['open'])
+  assert.ok(lastOf(saved?.messages ?? []).readAt)
+})
+
+test('a message unread when the agent stops waits for the next agent', async (t) => {
   const other = await setUp(t)
   await claim(other.comments, other.comment.id)
   await update(other.comments, other.comment.id, { followUp: 'Wait' })

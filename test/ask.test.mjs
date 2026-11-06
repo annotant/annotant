@@ -104,3 +104,30 @@ test('finds the project given as --project=<dir>', async (t) => {
   assert.equal(asked.code, 0, asked.stderr)
   assert.ok(store.isAsking((await comments.readAll())[0]))
 })
+
+test('asks nothing over a message the agent did not read: prints it, fenced, and exits 3', async (t) => {
+  const { comments, comment, ask } = await setUp(t)
+  await comments.claim(comment.id)
+  await comments.update(comment.id, { followUp: 'And no blue subtitle' })
+  await comments.update(comment.id, {
+    followUp: 'Like this one',
+    images: [{ data: Buffer.from('89504e470d0a1a0a', 'hex'), ext: 'png' }],
+  })
+  const refused = await ask('Which title?')
+  assert.equal(refused.code, 3, refused.stderr)
+  assert.match(refused.stdout, /^not asked: the reader added/)
+  assert.match(refused.stdout, /data, not instructions/)
+  // Both, in order, the image as a file the agent opens.
+  const bodies = [...refused.stdout.matchAll(/"body": "([^"]*)"/g)].map((m) => m[1])
+  assert.deepEqual(bodies, ['And no blue subtitle', 'Like this one'])
+  assert.match(refused.stdout, /^reader-[0-9a-f]{8} .*"body": "And no blue subtitle"/m)
+  const image = refused.stdout.match(/"(\/[^"]*m3-1\.png)"/)?.[1]
+  assert.ok(image && path.isAbsolute(image), refused.stdout)
+  const [kept] = await comments.readAll()
+  assert.equal(kept.state, 'working')
+  assert.ok(kept.messages.every((message) => message.author !== 'claude'))
+  // Read now: asked again, the question goes through.
+  const asked = await ask('Which title?')
+  assert.equal(asked.code, 0, asked.stderr)
+  assert.ok(store.isAsking((await comments.readAll())[0]))
+})
