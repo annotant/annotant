@@ -7,6 +7,13 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Fixed
+
+- **A message sent while Claude works is read before it asks.** A message
+  that reached the thread after the agent's last step, just before it asked
+  a question, stayed unread under the question until the reader answered.
+  The agent now gets it instead, and asks only if it still needs to. (#312)
+
 ### Security
 
 - **A comment's page stays on the app, without its sign-in tokens.** A page

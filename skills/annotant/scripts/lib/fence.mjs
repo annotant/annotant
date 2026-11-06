@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import path from 'node:path'
 
 /**
  * `text`, the reader's and the page's, fenced as data: a header naming a
@@ -13,4 +14,21 @@ export function fence(text) {
     // Any line break a model may read as one, JSON leaves some unescaped.
     ...text.split(/\r?\n|[\u2028\u2029\u0085]/).map((line) => `${marker} ${line}`),
   ].join('\n')
+}
+
+/**
+ * The reader's messages, for an agent: fenced as data, their images as the
+ * files in `dir` it opens with Read.
+ * @param {string} dir The comment's images folder (`imagesDir`).
+ * @param {import('./format.mjs').MessageV2[]} messages
+ */
+export function fenceMessages(dir, messages) {
+  const given = messages.map(({ id, body, images, elements, area }) => ({
+    id,
+    body,
+    ...(images && { images: images.map((image) => path.join(dir, image)) }),
+    ...(elements && { elements }),
+    ...(area && { area }),
+  }))
+  return fence(JSON.stringify(given, null, 2))
 }

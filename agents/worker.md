@@ -108,4 +108,8 @@ of the reader's last message.
    to 6 `--option "<label>: <description>"` (`--multiple` to allow several);
    the reader can still answer in their own words. The question, not its
    options, takes the same Markdown as an answer, piped the same way (step 5). Never use
-   AskUserQuestion: the reader would not see it.
+   AskUserQuestion: the reader would not see it. When `ask.mjs` exits with
+   code 3, it asked nothing: it printed a message the reader sent while you
+   worked. Take it into account as in a run (it may settle your question),
+   then ask again only if you still need to, or go on; a new code 3 means
+   the reader wrote again: the same.
