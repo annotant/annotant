@@ -301,6 +301,12 @@ test('keeps no secret of the page in its url', async () => {
     ),
     'http://localhost:3000/a;jsessionid=redacted/b?Authorization=redacted&sid=redacted',
   )
+  assert.equal(
+    await stored(
+      'http://localhost:3000/login?mode=signIn&oobCode=o&ticket=t&oauth_verifier=v&SAMLResponse=r',
+    ),
+    'http://localhost:3000/login?mode=signIn&oobCode=redacted&ticket=redacted&oauth_verifier=redacted&SAMLResponse=redacted',
+  )
   // A name that does not decode is tested as written.
   assert.equal(
     await stored('http://localhost:3000/?%E0token=abc'),

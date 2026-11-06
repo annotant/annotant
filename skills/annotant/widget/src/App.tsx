@@ -139,6 +139,7 @@ import {
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
+import { appHref, appUrl, pageUrl } from './pages'
 import { editorLink, locate, type Editor } from './editor'
 import { FileDiffView, countsOf, useDiffs, type LineCounts } from './diff'
 import { SettingsDialog } from './settings'
@@ -173,6 +174,11 @@ const CENTER_KEY = 'annotant:center'
 const DRAFT_KEY = 'annotant:draft'
 // Its images and its drawing's picture, apart: written as they change, not on each key typed.
 const PICTURES_KEY = 'annotant:draft-pictures'
+// The replies being written, one per thread (by its id), with their pictures
+// while the tab has room; and, per stopped thread, its comment being edited to
+// send it again.
+const REPLIES_KEY = 'annotant:replies'
+const RESEND_KEY = 'annotant:resend'
 const TOOL_KEY = 'annotant:tool'
 
 /** Where the shortcuts moving through the page's comments go, in the panel's order. */
@@ -807,14 +813,13 @@ interface FollowUp {
   sketch?: NewImage
 }
 
-/** The reply `current` is for thread `id`, with `target` in place of its own. */
+/** Thread `id`'s reply, `current` (or a new one), with `target` in place of its own. */
 function retargetedReply(
   current: FollowUp | undefined,
   id: string,
   target: Pick<FollowUp, 'elements' | 'area' | 'sketch'>,
 ): FollowUp {
-  const own = current?.id === id ? current : undefined
-  const { elements: _, area: __, sketch: ___, ...rest } = own ?? { id, body: '' }
+  const { elements: _, area: __, sketch: ___, ...rest } = current ?? { id, body: '' }
   return { ...rest, ...target }
 }
 
@@ -902,6 +907,68 @@ const isSavedTool = (value: unknown): value is SavedTool =>
     (value['tool'] === 'sketch' &&
       (value['lines'] === undefined ||
         isList(value['lines'], (line) => isList(line, isPoint)))))
+
+const isPickedArea = (value: unknown) =>
+  isArea(value) && isFields(value) && isText(value['route'])
+
+const isSavedReply = (value: unknown): value is FollowUp =>
+  isFields(value) &&
+  isText(value['id']) &&
+  isText(value['body']) &&
+  (value['images'] === undefined || isList(value['images'], isImage)) &&
+  (value['sketch'] === undefined || isImage(value['sketch'])) &&
+  (value['elements'] === undefined || isList(value['elements'], isPicked)) &&
+  (value['area'] === undefined || isPickedArea(value['area']))
+
+/** Thread `id`'s entry: never one the object inherits (`constructor`…). */
+const byThread = <T,>(entries: Record<string, T>, id: string): T | undefined =>
+  Object.hasOwn(entries, id) ? entries[id] : undefined
+
+/** The replies the tab kept, by thread: those it cannot read are left aside. */
+function readReplies(): Record<string, FollowUp> {
+  const saved = readSession<unknown>(REPLIES_KEY)
+  if (!isFields(saved)) return {}
+  return Object.fromEntries(
+    Object.entries(saved).filter(
+      (entry): entry is [string, FollowUp] =>
+        isSavedReply(entry[1]) && entry[1].id === entry[0],
+    ),
+  )
+}
+
+/** Whether the reader wrote or attached anything in reply `reply`. */
+const replied = (reply: FollowUp) =>
+  !!reply.body.trim() ||
+  !!reply.images?.length ||
+  !!reply.elements?.length ||
+  !!reply.area ||
+  !!reply.sketch
+
+/**
+ * The replies to keep, by thread, as written; then without their images, then
+ * without their drawings' pictures too, for a tab short of room.
+ */
+function keptReplies(replies: Record<string, FollowUp>): Record<string, FollowUp>[] {
+  const kept = Object.entries(replies).filter(([, reply]) => replied(reply))
+  const without = (fields: ('images' | 'sketch')[]) =>
+    Object.fromEntries(
+      kept.map(([id, reply]) => {
+        const rest = { ...reply }
+        for (const field of fields) delete rest[field]
+        return [id, rest]
+      }),
+    )
+  return [Object.fromEntries(kept), without(['images']), without(['images', 'sketch'])]
+}
+
+/** The comments being edited to send them again, by thread. */
+function readResend(): Record<string, string> {
+  const saved = readSession<unknown>(RESEND_KEY)
+  if (!isFields(saved)) return {}
+  return Object.fromEntries(
+    Object.entries(saved).filter((entry): entry is [string, string] => isText(entry[1])),
+  )
+}
 
 /** The draft the tab kept, with its pictures when they could be kept too. */
 function readDraft(): SavedDraft | undefined {
@@ -1065,7 +1132,7 @@ function workingDiff(comment: ReviewComment) {
   return current ? (file: string) => fetchDiff(comment.id, current, file) : undefined
 }
 
-/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
+/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything, `//elsewhere.com` included (see `appHref`). */
 function pagePath(url: string | undefined): string {
   if (!url) return ''
   try {
@@ -1233,8 +1300,20 @@ export default function App({ root }: { root: Element }) {
     readSession<PendingCenter>(CENTER_KEY),
   )
   const [flash, setFlash] = useState<Element>()
-  const [resend, setResend] = useState<{ id: string; body: string }>()
-  const [followUp, setFollowUp] = useState<FollowUp>()
+  // Each stopped thread's comment being edited, and each thread's reply being
+  // written: moving to another thread keeps them.
+  const [resend, setResend] = useState(readResend)
+  const [replies, setReplies] = useState(readReplies)
+  /** Thread `id`'s reply becomes what `edit` makes of it; none drops it. */
+  const editReply = useCallback(
+    (id: string, edit: (current: FollowUp | undefined) => FollowUp | undefined) =>
+      setReplies((all) => {
+        const { [id]: _, ...others } = all
+        const next = edit(byThread(all, id))
+        return next ? { ...others, [id]: next } : others
+      }),
+    [],
+  )
   // The options ticked so far, under the question (`question`, its message id)
   // that takes several: another question of the thread starts with none.
   const [picked, setPicked] = useState<{
@@ -1330,6 +1409,21 @@ export default function App({ root }: { root: Element }) {
   useEffect(() => writeLayout('docked', docked), [docked])
   useEffect(() => writeLayout('width', chosenWidth), [chosenWidth])
   useEffect(() => writeLayout('strip', strip), [strip])
+
+  // Like the draft, the replies and the comments edited to send again outlive a
+  // reload; too big for the tab, the replies' pictures are left out first.
+  useEffect(() => {
+    const [first, ...smaller] = keptReplies(replies)
+    if (!first || !Object.keys(first).length) {
+      writeSession(REPLIES_KEY, undefined)
+      return
+    }
+    if (writeSession(REPLIES_KEY, first)) return
+    smaller.some((kept) => writeSession(REPLIES_KEY, kept))
+  }, [replies])
+  useEffect(() => {
+    writeSession(RESEND_KEY, Object.keys(resend).length ? resend : undefined)
+  }, [resend])
 
   // Not while the draft kept is still to come back: it would be forgotten.
   useEffect(() => {
@@ -1709,8 +1803,7 @@ export default function App({ root }: { root: Element }) {
         ...(images?.length ? { images } : {}),
         ...(elements?.length ? { elements } : {}),
         route: window.location.pathname,
-        // Never the hash, where a sign-in may leave its token.
-        url: window.location.origin + window.location.pathname + window.location.search,
+        url: pageUrl(window.location.href),
       })
       setView('page')
       setThreadId(undefined)
@@ -1738,7 +1831,7 @@ export default function App({ root }: { root: Element }) {
       if (drawingFor && area) {
         setDrawing(false)
         setDrawingFor(undefined)
-        setFollowUp((current) =>
+        editReply(drawingFor, (current) =>
           retargetedReply(current, drawingFor, {
             area: { ...area, route: window.location.pathname },
             ...(sketch ? { sketch } : {}),
@@ -1748,7 +1841,7 @@ export default function App({ root }: { root: Element }) {
       }
       startDraft({ ...anchor, ...(sketch ? { sketch } : {}) }, keptBody, keptImages)
     },
-    [drawingFor, startDraft, keptBody, keptImages],
+    [drawingFor, editReply, startDraft, keptBody, keptImages],
   )
   const drawArea = useCallback(
     (rect: ReviewBox) => placeArea(anchorFromArea(root, rect)),
@@ -1791,6 +1884,18 @@ export default function App({ root }: { root: Element }) {
     },
     [pickedOf, kept, startDraft, openPanel],
   )
+
+  /**
+   * The selection's Comment button: the text becomes the target of the comment
+   * being written, after its message and images (one target per message: the
+   * elements picked go); else of a new one.
+   */
+  const quoteSelection = () => {
+    const anchor = pendingAnchor.current
+    if (!anchor) return
+    if (draft && written(draft)) startDraft(anchor, draft.body, draft.images)
+    else startDraft(anchor)
+  }
 
   const cancelPick = useCallback(() => setPicking(false), [])
 
@@ -1903,7 +2008,7 @@ export default function App({ root }: { root: Element }) {
   // for an agent or one works on it, the message joins the thread for it. A
   // stopped thread has its own, which sends the comment again.
   const replying = !drafting && thread && !paused(thread) ? thread : undefined
-  const ownReply = replying && followUp?.id === replying.id ? followUp : undefined
+  const ownReply = replying ? byThread(replies, replying.id) : undefined
   const reply = ownReply?.body ?? ''
   const replyImages = ownReply?.images ?? []
   const replyElements = ownReply?.elements ?? []
@@ -1926,9 +2031,11 @@ export default function App({ root }: { root: Element }) {
         return
       }
       if (!writingIn) return
-      setFollowUp((current) => retargetedReply(current, writingIn, { elements: [added] }))
+      editReply(writingIn, (current) =>
+        retargetedReply(current, writingIn, { elements: [added] }),
+      )
     },
-    [pickedOf, writingIn],
+    [editReply, pickedOf, writingIn],
   )
 
   /**
@@ -2211,7 +2318,7 @@ export default function App({ root }: { root: Element }) {
 
   const sendReply = (comment: ReviewComment, choices: string[], withText = true) =>
     void run(async () => {
-      const own = withText && followUp?.id === comment.id ? followUp : undefined
+      const own = withText ? byThread(replies, comment.id) : undefined
       const text = own?.body.trim() ?? ''
       const attached = own?.images ?? []
       const elements = own?.elements ?? []
@@ -2228,7 +2335,7 @@ export default function App({ root }: { root: Element }) {
         ...(images.length ? { images } : {}),
         ...(elements.length ? { elements } : area ? { area } : {}),
       })
-      if (own) setFollowUp(undefined)
+      if (own) editReply(comment.id, () => undefined)
       setPicked(undefined)
       setAttachingTo(undefined)
       toLatest()
@@ -2394,15 +2501,17 @@ export default function App({ root }: { root: Element }) {
   }
 
   const goToPage = (href: string, anchor: ReviewAnchor, id?: string) => {
-    const url = new URL(href, window.location.href)
+    // A hand-edited comment's page may resolve off the app's origin: never go there.
+    const url = appUrl(href)
+    if (!url) return
     writeSession(CENTER_KEY, { anchor, path: url.pathname, id })
-    window.location.assign(url.pathname + url.search)
+    window.location.assign(url.href)
   }
 
-  /** `href` is the comment's page, visited first when it is not this one. */
+  /** `href` is the comment's page, visited first when it is not this one (never off the app's origin). */
   const elementChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
     if (!anchor.element) return null
-    const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    const onThisPage = !href || appUrl(href)?.pathname === route
     const show = () => setTarget(onThisPage ? elementFromAnchor(root, anchor) : undefined)
     return (
       <button
@@ -2431,7 +2540,7 @@ export default function App({ root }: { root: Element }) {
   const areaChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
     const { area } = anchor
     if (!area) return null
-    const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    const onThisPage = !href || appUrl(href)?.pathname === route
     const show = () => setTargetArea(onThisPage ? area : undefined)
     return (
       <button
@@ -2679,22 +2788,25 @@ export default function App({ root }: { root: Element }) {
           onClick={(event) => event.stopPropagation()}
           onSubmit={(event) => {
             event.preventDefault()
-            const body = (
-              resend?.id === comment.id ? resend.body : latestText(comment)
-            ).trim()
+            const body = (byThread(resend, comment.id) ?? latestText(comment)).trim()
             // With its images or elements, the comment may go again with no words.
             if (!body && !latestAttached(comment)) return
             void run(async () => {
               await updateComment(comment.id, { text: body, cancelled: false })
-              setResend(undefined)
+              setResend((current) => {
+                const { [comment.id]: _, ...others } = current
+                return others
+              })
               toLatest()
             })
           }}
         >
           <Textarea
             aria-label="Edit the comment before sending it again"
-            value={resend?.id === comment.id ? resend.body : latestText(comment)}
-            onChange={(event) => setResend({ id: comment.id, body: event.target.value })}
+            value={byThread(resend, comment.id) ?? latestText(comment)}
+            onChange={(event) =>
+              setResend((current) => ({ ...current, [comment.id]: event.target.value }))
+            }
           />
           <div className="an-actions">
             <Button small type="submit" icon="send" disabled={busy}>
@@ -2762,16 +2874,20 @@ export default function App({ root }: { root: Element }) {
           <Chip tone={status}>{STATUS_CHIPS[status]}</Chip>
           {!href ? (
             <span className="an-label">Whole app</span>
-          ) : showPage ? (
+          ) : showPage && appHref(href) ? (
             <a
               className="an-page"
-              href={href}
+              href={appHref(href)}
               title={comment.url ?? href}
               onClick={(event) => event.stopPropagation()}
             >
               <span>{href}</span>
               <Icon name="external" />
             </a>
+          ) : showPage ? (
+            <span className="an-label" title={comment.url ?? href}>
+              {href}
+            </span>
           ) : (
             <span className="an-label" title={comment.anchor.section}>
               {comment.anchor.section}
@@ -2873,7 +2989,7 @@ export default function App({ root }: { root: Element }) {
           title={`Comment on the selected text (${keysOf('comment')})`}
           aria-keyshortcuts={ariaKeysOf('comment')}
           style={{ top: selectionButton.top, left: selectionButton.left }}
-          onClick={() => pendingAnchor.current && startDraft(pendingAnchor.current)}
+          onClick={quoteSelection}
         >
           Comment
         </Button>
@@ -3030,6 +3146,8 @@ export default function App({ root }: { root: Element }) {
                 <IconButton
                   icon="chats"
                   label="All comments"
+                  // Only while the draft holds something: the list never costs what the reader wrote.
+                  disabled={drafting && written(draft)}
                   onClick={() => {
                     setView('all')
                     setStatusFilter('open')
@@ -3265,7 +3383,9 @@ export default function App({ root }: { root: Element }) {
                     replyArea,
                     replyArea?.route ?? route,
                     () =>
-                      setFollowUp((current) => retargetedReply(current, replying.id, {})),
+                      editReply(replying.id, (current) =>
+                        retargetedReply(current, replying.id, {}),
+                      ),
                   )}
                   targeted={!!replyElements.length || !!replyArea}
                   placeholder={
@@ -3279,25 +3399,23 @@ export default function App({ root }: { root: Element }) {
                   }
                   disabled={busy}
                   onChange={(value) =>
-                    setFollowUp((current) => ({
-                      ...(current?.id === replying.id ? current : {}),
+                    editReply(replying.id, (current) => ({
+                      ...current,
                       id: replying.id,
                       body: value,
                     }))
                   }
                   onAttach={(added) =>
-                    setFollowUp((current) => {
-                      const own = current?.id === replying.id ? current : undefined
-                      return {
-                        ...own,
-                        id: replying.id,
-                        body: own?.body ?? '',
-                        images: adding(own?.images, added),
-                      }
-                    })
+                    editReply(replying.id, (current) => ({
+                      ...current,
+                      id: replying.id,
+                      body: current?.body ?? '',
+                      images: adding(current?.images, added),
+                    }))
                   }
                   onDetach={(index) =>
-                    setFollowUp(
+                    editReply(
+                      replying.id,
                       (current) =>
                         current && {
                           ...current,
