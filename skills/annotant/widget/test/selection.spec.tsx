@@ -13,6 +13,11 @@ async function selectAcrossBlocks(comments: ReviewComment[] = []) {
   document.body.replaceChildren()
   fakeServer(comments)
   renderWidget()
+  return selectInPage()
+}
+
+/** Two blocks added to the widget's page, the reader selecting from the first to the second. */
+async function selectInPage() {
   const page = document.querySelector('main')
   if (!page) throw new Error('no page')
   page.insertAdjacentHTML('beforeend', '<div>Part 1</div><div>part 2</div>')
@@ -138,6 +143,46 @@ test('a bubble does not throw away the comment being written', async () => {
   fireEvent.change(box, { target: { value: 'Half a thought' } })
 
   fireEvent.click(await screen.findByRole('button', { name: /Open the comment/ }))
+
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('Half a thought')
+})
+
+test('the Comment button quotes the selection in the comment being written, keeping it', async () => {
+  const highlights = stubHighlights()
+  document.body.replaceChildren()
+  fakeServer([])
+  renderWidget()
+  await startPageComment()
+  const box = await screen.findByRole('textbox')
+  fireEvent.change(box, { target: { value: 'Half a thought' } })
+  const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'shot.png', {
+    type: 'image/png',
+  })
+  fireEvent.paste(box, { clipboardData: { files: [png], types: ['Files'] } })
+  await screen.findByRole('img', { name: 'Attached image 1' })
+
+  const { from, selection, button } = await selectInPage()
+  fireEvent.click(button)
+  selection.removeAllRanges()
+
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('Half a thought')
+  expect(screen.getByRole('img', { name: 'Attached image 1' })).toBeTruthy()
+  await waitFor(() => {
+    const [drafted] = highlights.get('annotant-draft') ?? []
+    expect(drafted?.startContainer).toBe(from)
+  })
+})
+
+test('All comments does not throw away the comment being written', async () => {
+  document.body.replaceChildren()
+  fakeServer([])
+  renderWidget()
+  await startPageComment()
+  fireEvent.change(await screen.findByRole('textbox'), {
+    target: { value: 'Half a thought' },
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: 'All comments' }))
 
   expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('Half a thought')
 })

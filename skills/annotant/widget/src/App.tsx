@@ -1792,6 +1792,17 @@ export default function App({ root }: { root: Element }) {
     [pickedOf, kept, startDraft, openPanel],
   )
 
+  /**
+   * The selection's Comment: the text becomes the target of the comment being
+   * written, after what the reader had written and attached; else of a new one.
+   */
+  const quoteSelection = () => {
+    const anchor = pendingAnchor.current
+    if (!anchor) return
+    if (draft && written(draft)) startDraft(anchor, draft.body, draft.images)
+    else startDraft(anchor)
+  }
+
   const cancelPick = useCallback(() => setPicking(false), [])
 
   const cancelDraw = useCallback(() => {
@@ -2873,7 +2884,7 @@ export default function App({ root }: { root: Element }) {
           title={`Comment on the selected text (${keysOf('comment')})`}
           aria-keyshortcuts={ariaKeysOf('comment')}
           style={{ top: selectionButton.top, left: selectionButton.left }}
-          onClick={() => pendingAnchor.current && startDraft(pendingAnchor.current)}
+          onClick={quoteSelection}
         >
           Comment
         </Button>
@@ -3030,6 +3041,8 @@ export default function App({ root }: { root: Element }) {
                 <IconButton
                   icon="chats"
                   label="All comments"
+                  // Like New comment, never at the cost of what the reader is writing.
+                  disabled={drafting && written(draft)}
                   onClick={() => {
                     setView('all')
                     setStatusFilter('open')
