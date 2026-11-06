@@ -139,6 +139,7 @@ import {
 import { useDark } from './theme'
 import { Linked, type Repository } from './links'
 import { Markdown } from './markdown'
+import { appHref, appUrl, pageUrl } from './pages'
 import { editorLink, locate, type Editor } from './editor'
 import { FileDiffView, countsOf, useDiffs, type LineCounts } from './diff'
 import { SettingsDialog } from './settings'
@@ -1131,7 +1132,7 @@ function workingDiff(comment: ReviewComment) {
   return current ? (file: string) => fetchDiff(comment.id, current, file) : undefined
 }
 
-/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything. */
+/** The page `url` shows, or '' when there is none: a hand-edited comment may hold anything, `//elsewhere.com` included (see `appHref`). */
 function pagePath(url: string | undefined): string {
   if (!url) return ''
   try {
@@ -1802,8 +1803,7 @@ export default function App({ root }: { root: Element }) {
         ...(images?.length ? { images } : {}),
         ...(elements?.length ? { elements } : {}),
         route: window.location.pathname,
-        // Never the hash, where a sign-in may leave its token.
-        url: window.location.origin + window.location.pathname + window.location.search,
+        url: pageUrl(window.location.href),
       })
       setView('page')
       setThreadId(undefined)
@@ -2501,15 +2501,17 @@ export default function App({ root }: { root: Element }) {
   }
 
   const goToPage = (href: string, anchor: ReviewAnchor, id?: string) => {
-    const url = new URL(href, window.location.href)
+    // A hand-edited comment's page may resolve off the app's origin: never go there.
+    const url = appUrl(href)
+    if (!url) return
     writeSession(CENTER_KEY, { anchor, path: url.pathname, id })
-    window.location.assign(url.pathname + url.search)
+    window.location.assign(url.href)
   }
 
-  /** `href` is the comment's page, visited first when it is not this one. */
+  /** `href` is the comment's page, visited first when it is not this one (never off the app's origin). */
   const elementChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
     if (!anchor.element) return null
-    const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    const onThisPage = !href || appUrl(href)?.pathname === route
     const show = () => setTarget(onThisPage ? elementFromAnchor(root, anchor) : undefined)
     return (
       <button
@@ -2538,7 +2540,7 @@ export default function App({ root }: { root: Element }) {
   const areaChip = (anchor: ReviewAnchor, href?: string, id?: string) => {
     const { area } = anchor
     if (!area) return null
-    const onThisPage = !href || new URL(href, window.location.href).pathname === route
+    const onThisPage = !href || appUrl(href)?.pathname === route
     const show = () => setTargetArea(onThisPage ? area : undefined)
     return (
       <button
@@ -2872,16 +2874,20 @@ export default function App({ root }: { root: Element }) {
           <Chip tone={status}>{STATUS_CHIPS[status]}</Chip>
           {!href ? (
             <span className="an-label">Whole app</span>
-          ) : showPage ? (
+          ) : showPage && appHref(href) ? (
             <a
               className="an-page"
-              href={href}
+              href={appHref(href)}
               title={comment.url ?? href}
               onClick={(event) => event.stopPropagation()}
             >
               <span>{href}</span>
               <Icon name="external" />
             </a>
+          ) : showPage ? (
+            <span className="an-label" title={comment.url ?? href}>
+              {href}
+            </span>
           ) : (
             <span className="an-label" title={comment.anchor.section}>
               {comment.anchor.section}
