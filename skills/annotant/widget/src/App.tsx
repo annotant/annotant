@@ -102,6 +102,7 @@ import {
 import {
   Boundary,
   Button,
+  type Caret,
   Checkbox,
   Chip,
   Composer,
@@ -180,6 +181,8 @@ const PICTURES_KEY = 'annotant:draft-pictures'
 const REPLIES_KEY = 'annotant:replies'
 const RESEND_KEY = 'annotant:resend'
 const TOOL_KEY = 'annotant:tool'
+// The message box that had the focus, and its caret: back with them after a reload.
+const FOCUS_KEY = 'annotant:focus'
 
 /** Where the shortcuts moving through the page's comments go, in the panel's order. */
 const STEPS = { next: 1, previous: -1 } as const satisfies Partial<
@@ -970,6 +973,22 @@ function readResend(): Record<string, string> {
   )
 }
 
+/** The message box the reader was typing in: the draft's (`DRAFT`), or a thread's reply (its id). */
+interface SavedFocus extends Caret {
+  box: string
+}
+
+const isSavedFocus = (value: unknown): value is SavedFocus =>
+  isFields(value) &&
+  isText(value['box']) &&
+  isNumber(value['start']) &&
+  isNumber(value['end'])
+
+function readFocus(): SavedFocus | undefined {
+  const focus = readSession<unknown>(FOCUS_KEY)
+  return isSavedFocus(focus) ? focus : undefined
+}
+
 /** The draft the tab kept, with its pictures when they could be kept too. */
 function readDraft(): SavedDraft | undefined {
   const draft = readSession<unknown>(DRAFT_KEY)
@@ -1267,6 +1286,10 @@ export default function App({ root }: { root: Element }) {
   const [draft, setDraft] = useState<Draft>()
   // The draft kept before the page reloaded, until it is back or given up.
   const [restoring, setRestoring] = useState(readDraft)
+  // The one that came back: its message box takes the focus only if it had it.
+  const [restoredKey, setRestoredKey] = useState<number>()
+  // The message box that had the focus before the page reloaded, until it is back or given up.
+  const [refocusing, setRefocusing] = useState(readFocus)
   const [savedTool] = useState(() => {
     const tool = readSession<unknown>(TOOL_KEY)
     return isSavedTool(tool) ? tool : undefined
@@ -1464,7 +1487,11 @@ export default function App({ root }: { root: Element }) {
         frame = requestAnimationFrame(attempt)
         return
       }
-      if (back) setDraft((current) => current ?? { ...back, key: (drafts += 1) })
+      if (back) {
+        const key = (drafts += 1)
+        setDraft((current) => current ?? { ...back, key })
+        setRestoredKey(key)
+      }
       setRestoring(undefined)
     }
     attempt()
@@ -2016,6 +2043,50 @@ export default function App({ root }: { root: Element }) {
   const replyingId = replying?.id
   // The message box an element is picked for: the draft's, or the reply's.
   const writingIn = drafting ? DRAFT : replyingId
+
+  // The message box with the focus and its caret are kept as the reader
+  // writes, and as the page goes: the caret moves without a render. Not while
+  // the box kept is still to come back: it would be forgotten.
+  // What was written last: nothing yet, so that the tab's own is replaced first.
+  const keptFocus = useRef<string | null>(null)
+  useEffect(() => {
+    if (refocusing) return undefined
+    const keep = () => {
+      const focused = focusedElement()
+      const focus: SavedFocus | undefined =
+        writingIn &&
+        focused instanceof HTMLTextAreaElement &&
+        focused.closest('.an-composer-box')
+          ? { box: writingIn, start: focused.selectionStart, end: focused.selectionEnd }
+          : undefined
+      // `undefined` for no box: unlike the `null` of nothing written yet.
+      const json = JSON.stringify(focus)
+      if (json === keptFocus.current) return
+      // Not written, the tab being full: to try again.
+      keptFocus.current = writeSession(FOCUS_KEY, focus) ? json : null
+    }
+    keep()
+    window.addEventListener('pagehide', keep)
+    return () => window.removeEventListener('pagehide', keep)
+  })
+  // Forgotten once any message box is there: its own took the focus as it
+  // mounted, or left it to what had it. Or past waiting for it: its thread is
+  // gone, or the reader is elsewhere. The draft that came back is then a draft
+  // like another: shown again, its box takes the focus.
+  const settling = !!refocusing || restoredKey !== undefined
+  useEffect(() => {
+    if (!settling || restoring) return undefined
+    const timer = setTimeout(
+      () => {
+        setRefocusing(undefined)
+        setRestoredKey(undefined)
+      },
+      writingIn ? 0 : PENDING_CENTER_MS,
+    )
+    return () => clearTimeout(timer)
+  }, [settling, restoring, writingIn])
+  /** The caret `box` comes back with: none unless it had the focus when the page reloaded. */
+  const caretOf = (box: string) => (refocusing?.box === box ? refocusing : undefined)
 
   // The picker goes with the message box it picks for: off while the reader is elsewhere.
   const picksFor = open && attachingTo === writingIn ? writingIn : undefined
@@ -3330,7 +3401,9 @@ export default function App({ root }: { root: Element }) {
               {drafting && (
                 <Composer
                   key={draft.key}
-                  autoFocus
+                  // Back from a reload, only the box that had the focus takes it.
+                  autoFocus={draft.key !== restoredKey}
+                  {...(draft.key === restoredKey ? { caret: caretOf(DRAFT) } : {})}
                   value={draft.body}
                   images={draft.images ?? []}
                   // The selected text is the target, shown above: none other.
@@ -3375,6 +3448,7 @@ export default function App({ root }: { root: Element }) {
               {replying && (
                 <Composer
                   key={replying.id}
+                  caret={caretOf(replying.id)}
                   value={reply}
                   images={replyImages}
                   target={targetSlot(

@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import type { ReviewComment } from '../src/domain'
+import { MAC } from '../src/shortcuts'
 import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, startPageComment } from './widget'
 
@@ -464,4 +465,231 @@ test('each stopped thread keeps its comment being edited, and not once sent agai
   fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }))
   fireEvent.click(await screen.findByText('Make the footer smaller'))
   expect((await resendBox()).value).toBe('Make the footer tiny')
+})
+
+/** The page is about to reload: the tab is told (`pagehide`), then the widget goes. */
+function leave(view: { unmount: () => void }) {
+  window.dispatchEvent(new Event('pagehide'))
+  view.unmount()
+}
+
+test('a draft being written comes back with the focus and the caret where they were', async () => {
+  const { view } = renderCards()
+  await startPageComment()
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Make it blue' } })
+  written.focus()
+  written.setSelectionRange(5, 7)
+
+  leave(view)
+  reload()
+
+  const box = await messageBox()
+  expect(box.value).toBe('Make it blue')
+  expect(document.activeElement).toBe(box)
+  expect([box.selectionStart, box.selectionEnd]).toEqual([5, 7])
+})
+
+test('a reply being written comes back with the focus and the caret where they were', async () => {
+  const threads = working()
+  openThread('c1')
+  const { view } = renderCards(threads)
+  const written = await replyBox()
+  fireEvent.change(written, { target: { value: 'In bold too' } })
+  written.focus()
+  written.setSelectionRange(2, 2)
+
+  leave(view)
+  renderCards(threads)
+
+  const box = await replyBox()
+  expect(box.value).toBe('In bold too')
+  expect(document.activeElement).toBe(box)
+  expect([box.selectionStart, box.selectionEnd]).toEqual([2, 2])
+})
+
+test('a draft whose box did not have the focus comes back without taking it', async () => {
+  const { view } = renderCards()
+  await startPageComment()
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Make it blue' } })
+  written.blur()
+
+  leave(view)
+  reload()
+
+  const box = await messageBox()
+  expect(box.value).toBe('Make it blue')
+  expect(document.activeElement).not.toBe(box)
+})
+
+test('a reply whose box did not have the focus comes back without taking it', async () => {
+  const threads = working()
+  openThread('c1')
+  const { view } = renderCards(threads)
+  const written = await replyBox()
+  fireEvent.change(written, { target: { value: 'In bold too' } })
+  written.focus()
+  written.blur()
+
+  leave(view)
+  renderCards(threads)
+
+  const box = await replyBox()
+  expect(box.value).toBe('In bold too')
+  expect(document.activeElement).not.toBe(box)
+})
+
+test('the focus the app took while the draft was coming back stays where the app put it', async () => {
+  const { view } = renderCards()
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
+  drag([10, 300], [510, 360])
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Tighten this gap' } })
+  written.focus()
+
+  leave(view)
+  // The section comes late, after a field of the app took the focus.
+  reload([], '<h1 data-box="0,0,1000,60">Playground</h1><input aria-label="Search" />')
+  const search = screen.getByRole('textbox', { name: 'Search' })
+  search.focus()
+  document.querySelector('main')?.insertAdjacentHTML('beforeend', PAGE)
+
+  expect((await messageBox()).value).toBe('Tighten this gap')
+  expect(document.activeElement).toBe(search)
+})
+
+test('a draft started after the reload has the focus, whatever the tab kept', async () => {
+  const { view } = renderCards()
+  await startPageComment()
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Make it blue' } })
+  written.focus()
+  leave(view)
+  reload()
+  fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0]!)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'New comment' }))
+
+  const box = await messageBox()
+  await waitFor(() => expect(document.activeElement).toBe(box))
+})
+
+test('the caret moved after a reload is the one back after the next', async () => {
+  const { view } = renderCards()
+  await startPageComment()
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Make it blue' } })
+  written.focus()
+  written.setSelectionRange(5, 7)
+  leave(view)
+  const again = reload()
+  const back = await messageBox()
+  // What the tab kept is forgotten once the box is back.
+  await new Promise((done) => setTimeout(done, 20))
+  back.setSelectionRange(1, 3)
+
+  leave(again)
+  reload()
+
+  const box = await messageBox()
+  expect(document.activeElement).toBe(box)
+  expect([box.selectionStart, box.selectionEnd]).toEqual([1, 3])
+})
+
+test('the focus the app took after a reload is not taken back by the next reload', async () => {
+  const { view } = renderCards()
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
+  drag([10, 300], [510, 360])
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Tighten this gap' } })
+  written.focus()
+  leave(view)
+  const again = reload(
+    [],
+    '<h1 data-box="0,0,1000,60">Playground</h1><input aria-label="Search" />',
+  )
+  screen.getByRole('textbox', { name: 'Search' }).focus()
+  document.querySelector('main')?.insertAdjacentHTML('beforeend', PAGE)
+  await messageBox()
+  await new Promise((done) => setTimeout(done, 20))
+
+  leave(again)
+  reload()
+
+  const box = await messageBox()
+  expect(box.value).toBe('Tighten this gap')
+  expect(document.activeElement).not.toBe(box)
+})
+
+test("a reply's focus is not given to another thread's reply", async () => {
+  const threads = working()
+  openThread('c1')
+  const { view } = renderCards(threads)
+  const written = await replyBox()
+  fireEvent.change(written, { target: { value: 'In bold too' } })
+  written.focus()
+
+  leave(view)
+  openThread('c2')
+  renderCards(threads)
+
+  const box = await replyBox()
+  expect(box.value).toBe('')
+  expect(document.activeElement).not.toBe(box)
+})
+
+test('a reply takes the focus back when its thread comes after a while', async () => {
+  const threads = working()
+  openThread('c1')
+  const { view } = renderCards(threads)
+  const written = await replyBox()
+  fireEvent.change(written, { target: { value: 'In bold too' } })
+  written.focus()
+  written.setSelectionRange(2, 2)
+
+  leave(view)
+  fakeServer(threads)
+  const answer = globalThis.fetch
+  vi.stubGlobal('fetch', async (...request: Parameters<typeof fetch>) => {
+    await new Promise((done) => setTimeout(done, 50))
+    return answer(...request)
+  })
+  renderWidget()
+
+  const box = await replyBox()
+  expect(document.activeElement).toBe(box)
+  expect([box.selectionStart, box.selectionEnd]).toEqual([2, 2])
+})
+
+test('a draft back from a reload takes the focus when the reader comes back to it', async () => {
+  const threads = ['c1', 'c2'].map((id) =>
+    comment({ id, route: '/other', state: 'asking' }),
+  )
+  const { view } = renderCards(threads)
+  fireEvent.click(await screen.findByRole('button', { name: 'Draw area' }))
+  drag([10, 300], [510, 360])
+  const written = await messageBox()
+  fireEvent.change(written, { target: { value: 'Tighten this gap' } })
+  written.blur()
+  leave(view)
+  reload(threads)
+  await messageBox()
+  await new Promise((done) => setTimeout(done, 20))
+
+  // The threads that need the reader take the panel, then the shortcut shows the draft again.
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Comments, 2 threads need you' }),
+  )
+  expect(screen.queryByRole('textbox', { name: 'What should change?' })).toBeNull()
+  fireEvent.keyDown(document.body, {
+    code: 'Comma',
+    key: 'Comma',
+    shiftKey: true,
+    ...(MAC ? { metaKey: true } : { ctrlKey: true }),
+  })
+
+  const box = await messageBox()
+  await waitFor(() => expect(document.activeElement).toBe(box))
 })
