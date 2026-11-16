@@ -29,9 +29,9 @@
   },
   "devDependencies": {
     "@types/node": "26.6.6",
-    "knip": "6.44.1",
-    "oxlint": "1.90.0",
-    "oxlint-tsgolint": "7.0.2005",
+    "knip": "6.44.2",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2006",
     "prettier": "3.9.10"
   }
 }
