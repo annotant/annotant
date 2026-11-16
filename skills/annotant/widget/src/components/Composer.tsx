@@ -13,6 +13,12 @@ import { Icon } from './Icon'
 import { IconButton } from './IconButton'
 import { toast } from './Toasts'
 
+/** Where the reader was in a message box: its caret, or its selection. */
+export interface Caret {
+  start: number
+  end: number
+}
+
 /**
  * The message box at the end of the panel's body: Enter sends, Shift+Enter breaks the
  * line. An image pasted, dropped or chosen with its button is attached to the
@@ -23,6 +29,7 @@ export function Composer({
   placeholder,
   disabled,
   autoFocus,
+  caret,
   sendLabel = 'Send',
   images,
   target,
@@ -37,6 +44,11 @@ export function Composer({
   placeholder: string
   disabled: boolean
   autoFocus?: boolean
+  /**
+   * The box had the focus when the page reloaded: it takes it back as it
+   * mounts, with its caret, unless something else took the focus meanwhile.
+   */
+  caret?: Caret | undefined
   sendLabel?: string
   images: NewImage[]
   /** The message's target slot, above the text: what in the page it is about. */
@@ -52,6 +64,14 @@ export function Composer({
   onDetach?: (index: number) => void
 }) {
   const box = useRef<HTMLTextAreaElement>(null)
+  const [back] = useState(caret)
+  useEffect(() => {
+    const textarea = box.current
+    const focused = document.activeElement
+    if (!back || !textarea || (focused && focused !== document.body)) return
+    textarea.focus({ preventScroll: true })
+    textarea.setSelectionRange(back.start, back.end)
+  }, [back])
   // Grows with its text up to the CSS max-height, then scrolls.
   useLayoutEffect(() => {
     const textarea = box.current

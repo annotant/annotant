@@ -7,6 +7,16 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Fixed
+
+- **The message box keeps the focus and the caret through the page's reload.**
+  The dev server reloads the page on an agent's edit: the comment or the reply
+  being written came back, the reply without the focus and the comment without
+  its caret: the next keys went to the page, or to the end of the text. The
+  box that had the focus now takes it back, its caret or its selection where
+  it was; a box that did not have it no longer takes it, and the focus the app
+  took meanwhile stays the app's. (#337)
+
 ## 0.6.1 - 2026-11-05
 
 ### Fixed
