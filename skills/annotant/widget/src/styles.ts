@@ -420,7 +420,8 @@ ${COMPONENTS_CSS}
 .an-atwork .an-working { padding: 8px 44px 8px 10px; border-radius: var(--cb-radius); background: var(--cb-accent-weak); }
 .an-atwork-stop { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); color: var(--cb-accent-strong); }
 .an-atwork-stop:hover { background: var(--cb-accent-tint); }
-.an-atwork-stop svg { width: 16px; height: 16px; }
+/* A full square, as on a player: the line icon alone reads as a checkbox. */
+.an-atwork-stop svg { width: 16px; height: 16px; fill: currentColor; }
 .an-atwork:has(.an-current-line--failed) .an-atwork-stop { color: var(--cb-red); }
 /* The files of a run at work and its branch; nothing while it has changed none. */
 .an-run:empty { display: none; }
