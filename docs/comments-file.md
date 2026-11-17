@@ -441,8 +441,9 @@ true` once that run changed a file, as a message's `changed` counts them (a
 write started, or a deletion), which greys out a drawn area, as the page under
 it may have changed (a stopped comment's `cancellation.changed` does the
 same); `changed`, `added` and `deleted`, the files that run has changed so
-far, as a message names them, which the widget lists in the thread while the run is at work;
-and with `history=1` (the debug panel), `history`, every step of every run. With a dev
+far, as a message names them, which the widget lists in the thread while the
+run is at work; and with `history=1` (the debug panel), `history`, every step
+of every run. With a dev
 widget, `GET /api/debug/steps/<id>` serves both files as they are on disk,
 history first, which the debug panel opens in a tab.
 
