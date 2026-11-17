@@ -7,6 +7,18 @@ released to the `stable` branch.
 
 ## Unreleased
 
+### Changed
+
+- **The sign that an agent is at work sits right above the message box.** Its
+  current step left the thread, where the list of changed files pushed it out
+  of view, for a strip above the box that a sheen crosses while the run goes
+  on: it stays in place whatever the thread's scroll and goes when the run
+  ends. It is still with `prefers-reduced-motion`, and screen readers hear
+  that Claude works, then a step that failed, not every step. A square button
+  at the strip's end stops the run, in place of **Cancel** under the thread,
+  and a comment waiting for an agent shows in the same strip. **Cancel** stays
+  under the thread for an open comment that no session watches. (#339)
+
 ### Fixed
 
 - **The message box keeps the focus and the caret through the page's reload.**

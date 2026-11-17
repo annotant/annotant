@@ -29,7 +29,7 @@ export async function startPageComment() {
   fireEvent.click(screen.getByRole('button', { name: 'New comment' }))
 }
 
-/** The step the thread draws, without the one sliding away or the text read aloud. */
+/** The step drawn above the message box, without the one sliding away. */
 export const shownStep = () =>
   document.querySelector(
     '[data-testid="an-progress"] .an-current-line:not(.an-current-line--out)',

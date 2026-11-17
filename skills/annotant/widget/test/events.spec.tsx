@@ -193,7 +193,7 @@ test('a change the reader makes to a comment of another page does not read this 
   expect(walks).not.toHaveBeenCalled()
 })
 
-test('a new step is announced alone, not with the one sliding away', async () => {
+test('a new step is not read aloud: only that the run is at work', async () => {
   const events = fakeEvents()
   const comments = [
     comment({
@@ -205,6 +205,7 @@ test('a new step is announced alone, not with the one sliding away', async () =>
   openThread('c1')
   renderWidget()
   await screen.findByTestId('an-progress')
+  expect(screen.getByTestId('an-at-work').textContent).toBe('Claude is working on it')
 
   comments[0] = {
     ...comments[0]!,
@@ -216,9 +217,11 @@ test('a new step is announced alone, not with the one sliding away', async () =>
       'Reading src/main.tsx',
     ),
   )
+  // The lines, the one sliding away included, are for the eyes only.
   const progress = screen.getByTestId('an-progress')
-  const live = [progress, ...progress.querySelectorAll('*')].filter((node) =>
-    node.hasAttribute('aria-live'),
-  )
-  expect(live.map((region) => region.textContent)).toEqual(['Reading src/main.tsx'])
+  expect(progress.querySelector('[aria-live], [role="status"]')).toBeNull()
+  expect(
+    [...progress.children].every((line) => line.getAttribute('aria-hidden') === 'true'),
+  ).toBe(true)
+  expect(screen.getByTestId('an-at-work').textContent).toBe('Claude is working on it')
 })

@@ -265,8 +265,11 @@ function StepLine({
 }
 
 /**
- * The latest step only, never the list: a new one pushes the previous one out
- * to the right and comes in from the left.
+ * The sign that an agent is at work, in the strip right above the message
+ * box: a moving sheen and the latest step only, never the list. A new step
+ * pushes the previous one out to the right and comes in from the left. Screen
+ * readers are told by `atWorkStatus`, not step by step: the lines here are
+ * hidden from them.
  */
 function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
   const key = stepKey(step)
@@ -289,11 +292,6 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
 
   return (
     <div className="an-current" data-testid="an-progress">
-      {/* Read alone: the lines below hold the step sliding away too, and
-          hide the error in their title. */}
-      <span className="an-visually-hidden" aria-live="polite">
-        {step?.error ? `${activityOf(step)}: ${step.error}` : activityOf(step)}
-      </span>
       {leaving && (
         <StepLine
           key={`out-${stepKey(leaving)}`}
@@ -308,6 +306,16 @@ function CurrentStep({ step }: { step: ReviewProgress | undefined }) {
       />
     </div>
   )
+}
+
+/**
+ * What screen readers hear of a run at work: that it works, said again only
+ * after a step that failed, which is read with its error when it has one (the
+ * line keeps it in its title).
+ */
+function atWorkStatus(step: ReviewProgress | undefined) {
+  if (isOngoing(step)) return 'Claude is working on it'
+  return step?.error ? `${activityOf(step)}: ${step.error}` : activityOf(step)
 }
 
 /** What an open comment says, by how long ago the hooks were sent it. */
@@ -345,7 +353,8 @@ const REPLY_WAITS = [
 ]
 
 /**
- * An open comment while a session watches: sent, then handed over to the
+ * An open comment while a session watches, in the strip above the message
+ * box: sent, then handed over to the
  * hooks, then, while no agent claims it, waiting for one, then not started.
  * Each return to `open` starts again, with its message's `notifiedAt`; `reply` when
  * it is the reader's reply.
@@ -456,7 +465,7 @@ const CHANGES = {
 
 /**
  * The files the run behind Claude's message changed, under it, or the run at
- * work has changed so far, under its current step: by name when
+ * work has changed so far, at the thread's end: by name when
  * it changed one, else folded into a count that opens on a click. Once the
  * list shows, each file's diff loads, for the lines it added and removed on
  * its row; a click on the row unfolds the diff. Each file's path copies, and
@@ -2035,6 +2044,11 @@ export default function App({ root }: { root: Element }) {
   // for an agent or one works on it, the message joins the thread for it. A
   // stopped thread has its own, which sends the comment again.
   const replying = !drafting && thread && !paused(thread) ? thread : undefined
+  /** The open thread, while an agent works on it. */
+  const atWork = replying?.state === 'working' ? replying : undefined
+  /** The same, or while it waits for an agent a session can start: what the strip above the message box shows. */
+  const awaited =
+    replying && isActive(replying) && (atWork || watching) ? replying : undefined
   const ownReply = replying ? byThread(replies, replying.id) : undefined
   const reply = ownReply?.body ?? ''
   const replyImages = ownReply?.images ?? []
@@ -2804,8 +2818,8 @@ export default function App({ root }: { root: Element }) {
       </div>
       {isActive(comment) &&
         (comment.state === 'working' ? (
-          <div data-testid="an-working">
-            <CurrentStep step={comment.progress?.at(-1)} />
+          // The files it changed so far and its branch: its step is above the message box.
+          <div className="an-run" data-testid="an-working">
             {comment.changed?.length ? (
               <ChangedFiles
                 files={comment.changed}
@@ -2820,9 +2834,7 @@ export default function App({ root }: { root: Element }) {
             ) : null}
             <WrittenOn comment={comment} run={comment.events.at(-1)?.run} />
           </div>
-        ) : watching ? (
-          <Waiting notifiedAt={openingOf(comment)?.notifiedAt} reply={isReply(comment)} />
-        ) : (
+        ) : watching ? null : (
           <div className="an-idle" data-testid="an-unwatched">
             No Claude session is watching. Run /annotant:annotant.
           </div>
@@ -2887,32 +2899,36 @@ export default function App({ root }: { root: Element }) {
         </form>
       )}
       <div className="an-actions">
-        {isActive(comment) ? (
-          <Button
-            small
-            variant="secondary"
-            data-testid="an-cancel"
-            onClick={(event) => {
-              event.stopPropagation()
-              void run(() => updateComment(comment.id, { cancelled: true }))
-            }}
-          >
-            Cancel
-          </Button>
-        ) : (
-          (isAsking(comment) || answered(comment) || paused(comment)) && (
-            <Button
-              small
-              variant="tertiary"
-              onClick={(event) => {
-                event.stopPropagation()
-                void run(() => updateComment(comment.id, { status: 'resolved' }))
-              }}
-            >
-              Resolve
-            </Button>
-          )
-        )}
+        {isActive(comment)
+          ? // The strip above the message box stops a run at work, and a
+            // comment a session watches: this one is for an open comment
+            // that none does.
+            comment.state !== 'working' &&
+            !watching && (
+              <Button
+                small
+                variant="secondary"
+                data-testid="an-cancel"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void run(() => updateComment(comment.id, { cancelled: true }))
+                }}
+              >
+                Cancel
+              </Button>
+            )
+          : (isAsking(comment) || answered(comment) || paused(comment)) && (
+              <Button
+                small
+                variant="tertiary"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void run(() => updateComment(comment.id, { status: 'resolved' }))
+                }}
+              >
+                Resolve
+              </Button>
+            )}
       </div>
     </article>
   )
@@ -3397,6 +3413,53 @@ export default function App({ root }: { root: Element }) {
                 >
                   <Icon name="chevron-down" />
                 </button>
+              )}
+              {/* Out of the thread's boundary: a step it cannot draw never
+                  hides the message box. */}
+              <Boundary fallback={null} resetOn={awaited}>
+                {() => (
+                  // Always there, so that its text changing is what is announced.
+                  <span
+                    className="an-visually-hidden"
+                    role="status"
+                    data-testid="an-at-work"
+                  >
+                    {atWork ? atWorkStatus(atWork.progress?.at(-1)) : ''}
+                  </span>
+                )}
+              </Boundary>
+              {awaited && (
+                <div className="an-atwork">
+                  {/* The button stays out of this boundary: a step that cannot
+                      be drawn leaves the run stoppable. */}
+                  <Boundary
+                    fallback={<div className="an-working">Claude is working on it</div>}
+                    resetOn={awaited}
+                  >
+                    {() =>
+                      // Keyed: another thread's step never slides out of this one's.
+                      atWork ? (
+                        <CurrentStep key={atWork.id} step={atWork.progress?.at(-1)} />
+                      ) : (
+                        <Waiting
+                          key={awaited.id}
+                          notifiedAt={openingOf(awaited)?.notifiedAt}
+                          reply={isReply(awaited)}
+                        />
+                      )
+                    }
+                  </Boundary>
+                  {/* Out of the status above: not read again with each change. */}
+                  <IconButton
+                    className="an-atwork-stop"
+                    icon="stop"
+                    label="Stop Claude"
+                    data-testid="an-cancel"
+                    onClick={() =>
+                      void run(() => updateComment(awaited.id, { cancelled: true }))
+                    }
+                  />
+                </div>
               )}
               {drafting && (
                 <Composer

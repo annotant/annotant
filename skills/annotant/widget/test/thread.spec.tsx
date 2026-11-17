@@ -3,7 +3,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, shownStep } from './widget'
 
-test('a claimed comment shows what Claude is doing, and can be cancelled', async () => {
+test('a claimed comment shows what Claude is doing, and can be stopped', async () => {
   const server = fakeServer([
     comment({
       state: 'working',
@@ -483,8 +483,199 @@ test('a failed step reads its error aloud, which the line keeps in its title', a
   renderWidget()
 
   const progress = await screen.findByTestId('an-progress')
-  expect(progress.querySelector('[aria-live]')?.textContent).toBe(
-    'npm test failed: Exit 1',
+  expect(screen.getByTestId('an-at-work').textContent).toBe('npm test failed: Exit 1')
+  expect(progress.querySelector('.an-current-line')?.getAttribute('title')).toBe('Exit 1')
+})
+
+test('a step that fails, then the next one, change what is read aloud in place', async () => {
+  const events = fakeEvents()
+  const failed = {
+    at: 1,
+    id: 't1',
+    kind: 'bash',
+    label: 'npm test',
+    state: 'failed',
+  } as const
+  const comments = [comment({ state: 'working', progress: [{ ...failed, error: '' }] })]
+  fakeServer(comments)
+  openThread('c1')
+  renderWidget()
+
+  // With no error text, the failure itself is still read.
+  const status = await screen.findByTestId('an-at-work')
+  await waitFor(() => expect(status.textContent).toBe('npm test failed'))
+
+  comments[0] = comment({
+    state: 'working',
+    progress: [{ at: 2, id: 't2', kind: 'read', label: 'src/App.tsx', state: 'running' }],
+  })
+  events.send('changed')
+  await waitFor(() => expect(status.textContent).toBe('Claude is working on it'))
+  expect(screen.getByTestId('an-at-work')).toBe(status)
+})
+
+test('a step that cannot be drawn hides neither the message box nor the stop button', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+  })
+  const server = fakeServer([
+    comment({
+      state: 'working',
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a step file written by hand
+      progress: [{ at: 1, kind: 'read', state: 'done' } as never],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  expect(await screen.findByPlaceholderText('Add a detail for Claude…')).toBeTruthy()
+  expect(screen.queryByTestId('an-progress')).toBeNull()
+  // The strip still says so, and still stops the run.
+  const stop = screen.getByTestId('an-cancel')
+  expect(stop.closest('.an-atwork')?.textContent).toBe('Claude is working on it')
+  fireEvent.click(stop)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+/** The sign that an agent works, when it sits right above the message box. */
+const signAboveBox = () => {
+  const sign = screen.queryByTestId('an-progress')
+  const end = document.querySelector('.an-body-end')
+  const box = end?.querySelector('.an-composer-box')
+  return sign && box && sign.closest('.an-atwork')?.parentElement === end
+    ? !!(sign.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING)
+    : false
+}
+
+test('a run at work shows right above the message box, out of the thread', async () => {
+  fakeServer([
+    comment({
+      state: 'working',
+      progress: [{ at: 1, kind: 'edit', label: 'src/Cart.tsx', state: 'running' }],
+      changed: ['src/Cart.tsx'],
+    }),
+  ])
+  openThread('c1')
+  renderWidget()
+
+  await screen.findByTestId('an-progress')
+  expect(signAboveBox()).toBe(true)
+  expect(shownStep()).toContain('Editing src/Cart.tsx')
+  const status = screen.getByTestId('an-at-work')
+  expect(status.getAttribute('role')).toBe('status')
+  expect(status.textContent).toBe('Claude is working on it')
+  // The files it changed stay in the thread, without the step.
+  const inThread = screen.getByTestId('an-working')
+  expect(within(inThread).getByTestId('an-changed')).toBeTruthy()
+  expect(within(inThread).queryByTestId('an-progress')).toBeNull()
+})
+
+test.each([
+  [
+    'answered',
+    comment({
+      state: 'answered',
+      messages: [{ author: 'claude', body: 'Done.', at: '2026-01-01T10:05:00.000Z' }],
+    }),
+  ],
+  [
+    'asked',
+    comment({
+      state: 'asking',
+      messages: [
+        {
+          author: 'claude',
+          body: 'Which one?',
+          at: '2026-01-01T10:05:00.000Z',
+          question: true,
+        },
+      ],
+    }),
+  ],
+  ['stopped', comment({ state: 'stopped' })],
+])('the sign above the message box goes once the run is %s', async (_, after) => {
+  const events = fakeEvents()
+  const comments = [comment({ state: 'working' })]
+  fakeServer(comments)
+  openThread('c1')
+  renderWidget()
+  await screen.findByTestId('an-progress')
+  expect(screen.getByTestId('an-at-work').textContent).toBe('Claude is working on it')
+
+  comments[0] = after
+  events.send('changed')
+  await waitFor(() => expect(screen.queryByTestId('an-progress')).toBeNull())
+  expect(screen.getByTestId('an-at-work').textContent).toBe('')
+})
+
+test('a comment waiting for an agent says so above the message box, where it is stopped', async () => {
+  const server = fakeServer([comment()])
+  openThread('c1')
+  renderWidget()
+
+  const waiting = await screen.findByTestId('an-working')
+  const strip = waiting.closest('.an-atwork')
+  expect(strip?.parentElement).toBe(document.querySelector('.an-body-end'))
+  // No step, and nothing read aloud: no agent works yet.
+  expect(screen.queryByTestId('an-progress')).toBeNull()
+  expect(screen.getByTestId('an-at-work').textContent).toBe('')
+
+  const stop = screen.getByRole('button', { name: 'Stop Claude' })
+  expect(strip?.contains(stop)).toBe(true)
+  fireEvent.click(stop)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+test('a run at work is stopped from the strip, the thread holding no other button for it', async () => {
+  const server = fakeServer([comment({ state: 'working' })])
+  openThread('c1')
+  renderWidget()
+
+  const sign = await screen.findByTestId('an-progress')
+  const stops = screen.getAllByTestId('an-cancel')
+  expect(stops).toHaveLength(1)
+  expect(sign.closest('.an-atwork')?.contains(stops[0]!)).toBe(true)
+  // Out of the status: its name is not read with each change.
+  expect(screen.getByTestId('an-at-work').contains(stops[0]!)).toBe(false)
+  fireEvent.click(stops[0]!)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+test('with no session watching, a run at work is still stopped from the strip, and only there', async () => {
+  const server = fakeServer([comment({ state: 'working' })], { reachable: false })
+  openThread('c1', 'all')
+  renderWidget()
+
+  const sign = await screen.findByTestId('an-progress')
+  const stops = screen.getAllByTestId('an-cancel')
+  expect(stops).toHaveLength(1)
+  expect(sign.closest('.an-atwork')?.contains(stops[0]!)).toBe(true)
+  fireEvent.click(stops[0]!)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+test('with no session watching, an open comment has no strip and is cancelled in the thread', async () => {
+  const server = fakeServer([comment()], { reachable: false })
+  openThread('c1', 'all')
+  renderWidget()
+
+  const idle = await screen.findByTestId('an-unwatched')
+  expect(document.querySelector('.an-atwork')).toBeNull()
+  const cancel = screen.getByTestId('an-cancel')
+  expect(cancel.textContent).toBe('Cancel')
+  expect(idle.closest('.an-discussion')?.contains(cancel)).toBe(true)
+  fireEvent.click(cancel)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
   )
 })
 
@@ -1298,7 +1489,7 @@ const hunks = (text: string) => ({
   ],
 })
 
-test('the files a run at work has changed show under its step, and the list grows', async () => {
+test('the files a run at work has changed show in the thread, and the list grows', async () => {
   const events = fakeEvents()
   const started = [
     { at: '2026-01-01T10:00:00.000Z', state: 'open', by: 'reader' },
