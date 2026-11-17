@@ -406,10 +406,17 @@ ${COMPONENTS_CSS}
 .an-working span { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
 /* Read by screen readers only. */
 .an-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-/* One line, the latest step: the previous one leaves right, the new one enters left. */
+/* Above the message box, one line, the latest step: the previous one leaves right, the new one enters left. */
 .an-current { position: relative; overflow: hidden; padding: 8px 10px; border-radius: var(--cb-radius); background: var(--cb-accent-weak); color: var(--cb-accent-strong); font-size: 13px; font-weight: 600; }
 .an-current:has(.an-current-line--failed) { background: var(--cb-red-bg); }
-.an-current-line { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* A sheen crossing the strip, over and over: the work goes on. None on a failed step. */
+.an-current::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, rgba(var(--cb-accent-rgb), .28) 50%, transparent 70%); transform: translateX(-100%); animation: an-sheen 1.8s ease-in-out infinite; }
+.an-current:has(.an-current-line--failed)::after { display: none; }
+@keyframes an-sheen { to { transform: translateX(100%); } }
+/* The files of a run at work and its branch; nothing while it has changed none. */
+.an-run:empty { display: none; }
+/* Over the sheen, which would dim the text as it passes. */
+.an-current-line { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 /* The icon comes first: the text, not it, gives way with an ellipsis. */
 .an-current-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .an-current-line svg { width: 14px; height: 14px; flex-shrink: 0; }
@@ -430,6 +437,7 @@ ${COMPONENTS_CSS}
 @keyframes an-dot-3 { 0% { opacity: 0; } 66.6% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .an-current-line--out { display: none; }
+  .an-current::after { display: none; }
   .an-current-line--in, .an-dots i, .an-step-icon { animation: none; }
   .an-changed-toggle svg, .an-file-name > svg { transition: none; }
   /* The panel fades, and changes width at once. */

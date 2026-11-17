@@ -33,7 +33,7 @@
 You comment directly on your dev app in the browser: select text, point at an
 element, draw an area, or write about the page or the whole app. For each
 comment, Claude starts a background agent that makes the change, shows you its
-progress live under your comment, and answers in the same thread. Reply to
+progress live above the message box, and answers in the same thread. Reply to
 follow up; cancel to stop it.
 
 ## How it works
@@ -156,20 +156,20 @@ to use.
 dev server running as usual: a small strip of icons shows in the bottom right
 corner of the page. Click **Comments**, the blue icon at its end, then
 **New comment** (hover an icon for its name), write what to change and send it: an agent starts, its progress shows live
-under your comment, and it answers in the same thread. [In the widget](#in-the-widget) tells the rest.
+above the message box, and it answers in the same thread. [In the widget](#in-the-widget) tells the rest.
 
 No icons? See [the widget does not show](#the-widget-does-not-show).
 
 ### Commands
 
-| Command                             | What it does                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------------ |
+| Command                         | What it does                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------ |
 | `/annotant:annotant init [dir]` | Install in this project, or its folder `dir` (asks only what it cannot detect) |
-| `/annotant [dir]`                 | Watch the app: open your dev app and comment                                   |
-| `/annotant stop`                  | Stop watching                                                                  |
-| `/annotant status`                | The server, the agents at work and the comments waiting                        |
+| `/annotant [dir]`               | Watch the app: open your dev app and comment                                   |
+| `/annotant stop`                | Stop watching                                                                  |
+| `/annotant status`              | The server, the agents at work and the comments waiting                        |
 | `/annotant:annotant update`     | Migrate an older install                                                       |
-| `/annotant:annotant uninstall`  | Remove Annotant from the project                                             |
+| `/annotant:annotant uninstall`  | Remove Annotant from the project                                               |
 
 Plugin skills are prefixed with the plugin name, hence `/annotant:annotant`;
 `/annotant` is a command of the plugin's hooks, and runs at once, even while
@@ -296,8 +296,9 @@ next sessions.
   any page, a yellow count on the corner of **Comments** says how many, and
   Comments opens that list (or the thread, when only one waits); the thread's
   bubble on the page shows a **?**.
-- While Claude works: what the agent is doing now ("Reading `App.tsx`…",
-  "Thinking…"), its latest steps (files read and edited, commands, searches,
+- While Claude works: right above the message box, an animated strip with
+  what the agent is doing now ("Reading `App.tsx`…", "Thinking…"), its latest
+  steps (files read and edited, commands, searches,
   MCP calls, failed tools in red, its messages and its thinking), and
   **Cancel**. Claude Code often hides the thinking itself; its summary shows
   when available, for instance with `"showThinkingSummaries": true` in your
@@ -328,7 +329,7 @@ next sessions.
   `owner/repo#12`, `GH-12`, GitLab's `!12`) when your project's `origin`
   remote is on GitHub or GitLab, open in a new tab.
 - **Formatted answers**: Claude's answers and questions show a small subset
-  of Markdown (`code`, **bold**, *italic*, links, `-` and `1.` lists, fenced
+  of Markdown (`code`, **bold**, _italic_, links, `-` and `1.` lists, fenced
   code blocks, highlighted when their fence says `ts`, `tsx`, `js`, `jsx` or
   `json`); anything else, HTML included, shows as its text. Your own
   messages stay as you typed them.
@@ -388,7 +389,7 @@ stopped), the agents at work (their comment, agent, model and for how long),
 the comments waiting for a free agent in order, and the server's last error
 line. The status line counts the comments waiting too.
 
-When an agent shows no progress under its comment, edits a file another agent
+When an agent shows no progress in its thread, edits a file another agent
 is changing, or seems stuck, turn on the **hook log**. It writes one line for
 each decision the plugin's hooks make about the agents working on comments.
 
@@ -422,25 +423,25 @@ Each line reads `<time> <agent> <comment> <what happened>`; the agent is
 … a53927e6… e329bcbb… run ended (answered or asked): released 1 lock(s)
 ```
 
-| Line                                                        | What it means                                                                                                                                  |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hooks loaded in a new session`                             | The hooks run in that session. **No line at all** after starting a session: they did not load (Annotant needs Claude Code 2.1.287 or later). |
-| `locked <file>`                                             | The agent holds that file, named from the repository root, until its run ends.                                                                 |
-| `waiting for <file>, held by comment <id>`                  | Another comment's agent is changing it; the agent waits up to 6 seconds.                                                                       |
-| `refused <file>: still held by comment <id>`                | The wait ran out: the agent releases its locks, re-reads and retries.                                                                          |
-| `no lock for <file>: outside <repository>`                  | Files outside the git repository take no lock.                                                                                                 |
-| `refused a Bash write: <command>`                           | The agent tried to write files from Bash, where they cannot be locked; it is told to use Edit or Write.                                        |
-| `recorded <step>`                                           | A step shown under the comment, once the agent claimed it, until its run ends or stops.                                                          |
-| `run ended …`, `agent stopped …`                            | The agent answered, asked, or stopped: its locks are released.                                                                                 |
-| `turn ended: <its last line>`                               | The agent ended its turn: the next comment in line may start.                                                                                  |
-| `hook.mjs failed: <error>`                                  | The agent's hook could not run: its tool ran without a lock or a step.                                                                         |
-| `started on <model>, …`                                     | The model the comment's agent runs on, its effort when routing set one (`at medium effort`), and how the classifier sorted the comment.        |
-| `started for NEW`, `sent the follow-up`                     | `/annotant` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
-| `the comment still waits: sent the reply again`            | The reader answered as the agent ended its turn, unread: it goes to the agent again. |
-| `turn ended with the comment working: …` | The agent ended its turn neither answering nor asking: the comment stops, and the reader sends it again from its thread. |
-| `could not start an agent: <why>`                           | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                  |
-| `runs as a teammate: Claude Code dropped its hooks …`       | Agent teams are on: the agent has no file locks and records no steps. See [Known issues](#known-issues).                                        |
-| `stopped: the reader ended the comment`                     | The reader stopped, resolved or deleted the comment while its agent worked.                                                                    |
+| Line                                                  | What it means                                                                                                                                |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hooks loaded in a new session`                       | The hooks run in that session. **No line at all** after starting a session: they did not load (Annotant needs Claude Code 2.1.287 or later). |
+| `locked <file>`                                       | The agent holds that file, named from the repository root, until its run ends.                                                               |
+| `waiting for <file>, held by comment <id>`            | Another comment's agent is changing it; the agent waits up to 6 seconds.                                                                     |
+| `refused <file>: still held by comment <id>`          | The wait ran out: the agent releases its locks, re-reads and retries.                                                                        |
+| `no lock for <file>: outside <repository>`            | Files outside the git repository take no lock.                                                                                               |
+| `refused a Bash write: <command>`                     | The agent tried to write files from Bash, where they cannot be locked; it is told to use Edit or Write.                                      |
+| `recorded <step>`                                     | A step shown in the comment's thread, once the agent claimed it, until its run ends or stops.                                                |
+| `run ended …`, `agent stopped …`                      | The agent answered, asked, or stopped: its locks are released.                                                                               |
+| `turn ended: <its last line>`                         | The agent ended its turn: the next comment in line may start.                                                                                |
+| `hook.mjs failed: <error>`                            | The agent's hook could not run: its tool ran without a lock or a step.                                                                       |
+| `started on <model>, …`                               | The model the comment's agent runs on, its effort when routing set one (`at medium effort`), and how the classifier sorted the comment.      |
+| `started for NEW`, `sent the follow-up`               | `/annotant` started the comment's agent, or passed the reader's reply or edit to the one already started.                                    |
+| `the comment still waits: sent the reply again`       | The reader answered as the agent ended its turn, unread: it goes to the agent again.                                                         |
+| `turn ended with the comment working: …`              | The agent ended its turn neither answering nor asking: the comment stops, and the reader sends it again from its thread.                     |
+| `could not start an agent: <why>`                     | Claude Code refused the agent (background tasks turned off, say); a notification says so too.                                                |
+| `runs as a teammate: Claude Code dropped its hooks …` | Agent teams are on: the agent has no file locks and records no steps. See [Known issues](#known-issues).                                     |
+| `stopped: the reader ended the comment`               | The reader stopped, resolved or deleted the comment while its agent worked.                                                                  |
 
 ## Known issues
 
@@ -451,7 +452,7 @@ on (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` at `1` in your settings' `env`),
 each comment's agent starts as a teammate, and Claude Code keeps only a few
 fields of its agent type: not its hooks. The agent still makes the change,
 but with no file locks, so two agents may edit the same file at once, and
-no tool steps under the comment. A notification says so, once a session.
+no tool steps in the comment's thread. A notification says so, once a session.
 Until Claude Code applies a teammate's hooks, turn agent teams off where you
 turned them on, `~/.claude/settings.json` say; the setting is read again for
 each agent, with no restart:
@@ -509,7 +510,7 @@ What to do after a change:
 | `SKILL.md`, `agents/*`, `hooks/*`     | `/reload-plugins` in the session, or a new session     |
 | `scripts/*.mjs` except the server     | Nothing: each call runs the script again               |
 | `scripts/server.mjs`, `scripts/lib/*` | Restart the server: `/annotant stop`, then `/annotant` |
-| `widget/src/*`                        | Rebuild, reload the page: `npm run watch` does both     |
+| `widget/src/*`                        | Rebuild, reload the page: `npm run watch` does both    |
 
 The server reads `dist/widget.js` on every page load, so a rebuild and a page
 reload are enough for the widget. From the repository root:
@@ -528,13 +529,13 @@ for the rest of the rules.
 
 Paths below are relative to `skills/annotant/`.
 
-| Path                                                   | What                                                       |
-| ------------------------------------------------------ | ---------------------------------------------------------- |
-| `SKILL.md`                                             | The skill: watch, init, update, uninstall                  |
+| Path                                                   | What                                                              |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| `SKILL.md`                                             | The skill: watch, init, update, uninstall                         |
 | `scripts/server.mjs`                                   | Local server: widget, API, a line per comment event for the hooks |
-| `scripts/claim.mjs`, `resolve.mjs`, `ask.mjs`          | Used by the agents                                         |
-| `scripts/detect.mjs`, `verify-prod.mjs`, `migrate.mjs` | Used by `init` / `update`                                  |
-| `widget/src`                                           | The widget (React, TypeScript)                             |
+| `scripts/claim.mjs`, `resolve.mjs`, `ask.mjs`          | Used by the agents                                                |
+| `scripts/detect.mjs`, `verify-prod.mjs`, `migrate.mjs` | Used by `init` / `update`                                         |
+| `widget/src`                                           | The widget (React, TypeScript)                                    |
 
 At the repository root, `agents/worker.md` is the agent that handles a
 comment (`annotant:worker`): its steps and rules. `hooks/register.ts` is
