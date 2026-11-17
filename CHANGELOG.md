@@ -14,7 +14,9 @@ released to the `stable` branch.
   of view, for a strip above the box that a sheen crosses while the run goes
   on: it stays in place whatever the thread's scroll and goes when the run
   ends. It is still with `prefers-reduced-motion`, and screen readers hear
-  that Claude works, then a step that failed, not every step. (#339)
+  that Claude works, then a step that failed, not every step.  A square button at the strip's end stops the run, in place of **Cancel**
+  under the thread, and a comment waiting for an agent shows in the same
+  strip. (#339)
 
 ### Fixed
 

@@ -538,7 +538,7 @@ const signAboveBox = () => {
   const sign = screen.queryByTestId('an-progress')
   const end = document.querySelector('.an-body-end')
   const box = end?.querySelector('.an-composer-box')
-  return sign && box && sign.parentElement === end
+  return sign && box && sign.closest('.an-atwork')?.parentElement === end
     ? !!(sign.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING)
     : false
 }
@@ -604,14 +604,57 @@ test.each([
   expect(screen.getByTestId('an-at-work').textContent).toBe('')
 })
 
-test('a comment waiting for an agent shows no sign above the message box', async () => {
-  fakeServer([comment()])
+test('a comment waiting for an agent says so above the message box, where it is stopped', async () => {
+  const server = fakeServer([comment()])
   openThread('c1')
   renderWidget()
 
-  await screen.findByTestId('an-working')
+  const waiting = await screen.findByTestId('an-working')
+  const strip = waiting.closest('.an-atwork')
+  expect(strip?.parentElement).toBe(document.querySelector('.an-body-end'))
+  // No step, and nothing read aloud: no agent works yet.
   expect(screen.queryByTestId('an-progress')).toBeNull()
   expect(screen.getByTestId('an-at-work').textContent).toBe('')
+
+  const stop = screen.getByRole('button', { name: 'Stop Claude' })
+  expect(strip?.contains(stop)).toBe(true)
+  fireEvent.click(stop)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+test('a run at work is stopped from the strip, the thread holding no other button for it', async () => {
+  const server = fakeServer([comment({ state: 'working' })])
+  openThread('c1')
+  renderWidget()
+
+  const sign = await screen.findByTestId('an-progress')
+  const stops = screen.getAllByTestId('an-cancel')
+  expect(stops).toHaveLength(1)
+  expect(sign.closest('.an-atwork')?.contains(stops[0]!)).toBe(true)
+  // Out of the status: its name is not read with each change.
+  expect(screen.getByTestId('an-at-work').contains(stops[0]!)).toBe(false)
+  fireEvent.click(stops[0]!)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+test('with no session watching, an open comment has no strip and is cancelled in the thread', async () => {
+  const server = fakeServer([comment()], { reachable: false })
+  openThread('c1', 'all')
+  renderWidget()
+
+  const idle = await screen.findByTestId('an-unwatched')
+  expect(document.querySelector('.an-atwork')).toBeNull()
+  const cancel = screen.getByTestId('an-cancel')
+  expect(cancel.textContent).toBe('Cancel')
+  expect(idle.closest('.an-discussion')?.contains(cancel)).toBe(true)
+  fireEvent.click(cancel)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
 })
 
 /** The thread's dates on screen: those shown, not those left to screen readers. */

@@ -265,8 +265,8 @@ function StepLine({
 }
 
 /**
- * The sign that an agent is at work, right above the message box: a strip
- * with a moving sheen and the latest step only, never the list. A new step
+ * The sign that an agent is at work, in the strip right above the message
+ * box: a moving sheen and the latest step only, never the list. A new step
  * pushes the previous one out to the right and comes in from the left. Screen
  * readers are told by `atWorkStatus`, not step by step: the lines here are
  * hidden from them.
@@ -353,7 +353,8 @@ const REPLY_WAITS = [
 ]
 
 /**
- * An open comment while a session watches: sent, then handed over to the
+ * An open comment while a session watches, in the strip above the message
+ * box: sent, then handed over to the
  * hooks, then, while no agent claims it, waiting for one, then not started.
  * Each return to `open` starts again, with its message's `notifiedAt`; `reply` when
  * it is the reader's reply.
@@ -2045,6 +2046,9 @@ export default function App({ root }: { root: Element }) {
   const replying = !drafting && thread && !paused(thread) ? thread : undefined
   /** The open thread, while an agent works on it. */
   const atWork = replying?.state === 'working' ? replying : undefined
+  /** The same, or while it waits for an agent a session can start: what the strip above the message box shows. */
+  const awaited =
+    replying && isActive(replying) && (atWork || watching) ? replying : undefined
   const ownReply = replying ? byThread(replies, replying.id) : undefined
   const reply = ownReply?.body ?? ''
   const replyImages = ownReply?.images ?? []
@@ -2830,9 +2834,7 @@ export default function App({ root }: { root: Element }) {
             ) : null}
             <WrittenOn comment={comment} run={comment.events.at(-1)?.run} />
           </div>
-        ) : watching ? (
-          <Waiting notifiedAt={openingOf(comment)?.notifiedAt} reply={isReply(comment)} />
-        ) : (
+        ) : watching ? null : (
           <div className="an-idle" data-testid="an-unwatched">
             No Claude session is watching. Run /annotant:annotant.
           </div>
@@ -2897,32 +2899,34 @@ export default function App({ root }: { root: Element }) {
         </form>
       )}
       <div className="an-actions">
-        {isActive(comment) ? (
-          <Button
-            small
-            variant="secondary"
-            data-testid="an-cancel"
-            onClick={(event) => {
-              event.stopPropagation()
-              void run(() => updateComment(comment.id, { cancelled: true }))
-            }}
-          >
-            Cancel
-          </Button>
-        ) : (
-          (isAsking(comment) || answered(comment) || paused(comment)) && (
-            <Button
-              small
-              variant="tertiary"
-              onClick={(event) => {
-                event.stopPropagation()
-                void run(() => updateComment(comment.id, { status: 'resolved' }))
-              }}
-            >
-              Resolve
-            </Button>
-          )
-        )}
+        {isActive(comment)
+          ? // Watched, the strip above the message box stops it.
+            comment.state !== 'working' &&
+            !watching && (
+              <Button
+                small
+                variant="secondary"
+                data-testid="an-cancel"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void run(() => updateComment(comment.id, { cancelled: true }))
+                }}
+              >
+                Cancel
+              </Button>
+            )
+          : (isAsking(comment) || answered(comment) || paused(comment)) && (
+              <Button
+                small
+                variant="tertiary"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void run(() => updateComment(comment.id, { status: 'resolved' }))
+                }}
+              >
+                Resolve
+              </Button>
+            )}
       </div>
     </article>
   )
@@ -3409,8 +3413,8 @@ export default function App({ root }: { root: Element }) {
                 </button>
               )}
               {/* Out of the thread's boundary: a step it cannot draw hides the
-                  sign, never the message box. */}
-              <Boundary fallback={null} resetOn={atWork}>
+                  strip, never the message box. */}
+              <Boundary fallback={null} resetOn={awaited}>
                 {() => (
                   <>
                     {/* Always there, so that its text changing is what is announced. */}
@@ -3421,9 +3425,29 @@ export default function App({ root }: { root: Element }) {
                     >
                       {atWork ? atWorkStatus(atWork.progress?.at(-1)) : ''}
                     </span>
-                    {/* Another thread's step never slides out of this one's. */}
-                    {atWork && (
-                      <CurrentStep key={atWork.id} step={atWork.progress?.at(-1)} />
+                    {awaited && (
+                      <div className="an-atwork">
+                        {/* Keyed: another thread's step never slides out of this one's. */}
+                        {atWork ? (
+                          <CurrentStep key={atWork.id} step={atWork.progress?.at(-1)} />
+                        ) : (
+                          <Waiting
+                            key={awaited.id}
+                            notifiedAt={openingOf(awaited)?.notifiedAt}
+                            reply={isReply(awaited)}
+                          />
+                        )}
+                        {/* Out of the status above: not read again with each change. */}
+                        <IconButton
+                          className="an-atwork-stop"
+                          icon="stop"
+                          label="Stop Claude"
+                          data-testid="an-cancel"
+                          onClick={() =>
+                            void run(() => updateComment(awaited.id, { cancelled: true }))
+                          }
+                        />
+                      </div>
                     )}
                   </>
                 )}

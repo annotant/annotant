@@ -298,9 +298,10 @@ next sessions.
   bubble on the page shows a **?**.
 - While Claude works: right above the message box, an animated strip with
   what the agent is doing now ("Reading `App.tsx`…", "Thinking…"), its latest
-  steps (files read and edited, commands, searches,
-  MCP calls, failed tools in red, its messages and its thinking), and
-  **Cancel**. Claude Code often hides the thinking itself; its summary shows
+  steps (files read and edited, commands, searches, MCP calls, failed tools in
+  red, its messages and its thinking), and at its end a square button that
+  stops it. A comment waiting for an agent shows there too, with the same
+  button. Claude Code often hides the thinking itself; its summary shows
   when available, for instance with `"showThinkingSummaries": true` in your
   Claude Code settings.
   Cancelling stops the agent and lists the files it had already changed; edit

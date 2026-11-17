@@ -413,6 +413,15 @@ ${COMPONENTS_CSS}
 .an-current::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, rgba(var(--cb-accent-rgb), .28) 50%, transparent 70%); transform: translateX(-100%); animation: an-sheen 1.8s ease-in-out infinite; }
 .an-current:has(.an-current-line--failed)::after { display: none; }
 @keyframes an-sheen { to { transform: translateX(100%); } }
+/* The strip above the message box: the step, or the wait for an agent, and the button that stops it at its end. */
+.an-atwork { position: relative; }
+.an-atwork .an-current { padding-right: 44px; }
+.an-atwork .an-current-line--out { right: 44px; }
+.an-atwork .an-working { padding: 8px 44px 8px 10px; border-radius: var(--cb-radius); background: var(--cb-accent-weak); }
+.an-atwork-stop { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); color: var(--cb-accent-strong); }
+.an-atwork-stop:hover { background: var(--cb-accent-tint); }
+.an-atwork-stop svg { width: 16px; height: 16px; }
+.an-atwork:has(.an-current-line--failed) .an-atwork-stop { color: var(--cb-red); }
 /* The files of a run at work and its branch; nothing while it has changed none. */
 .an-run:empty { display: none; }
 /* Over the sheen, which would dim the text as it passes. */

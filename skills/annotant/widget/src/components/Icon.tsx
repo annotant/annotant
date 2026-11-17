@@ -30,6 +30,7 @@ const PATHS = {
   'arrow-up': 'M12 19V5M6 11l6-6 6 6',
   'chevron-down': 'M6 9l6 6 6-6',
   check: 'M5 12l5 5 9-11',
+  stop: 'M6 6h12v12H6z',
   dots: 'M5 12h.01M12 12h.01M19 12h.01',
   grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15 9h.01',
