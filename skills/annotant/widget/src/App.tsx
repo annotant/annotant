@@ -2900,7 +2900,9 @@ export default function App({ root }: { root: Element }) {
       )}
       <div className="an-actions">
         {isActive(comment)
-          ? // Watched, the strip above the message box stops it.
+          ? // The strip above the message box stops a run at work, and a
+            // comment a session watches: this one is for an open comment
+            // that none does.
             comment.state !== 'working' &&
             !watching && (
               <Button
@@ -3412,46 +3414,53 @@ export default function App({ root }: { root: Element }) {
                   <Icon name="chevron-down" />
                 </button>
               )}
-              {/* Out of the thread's boundary: a step it cannot draw hides the
-                  strip, never the message box. */}
+              {/* Out of the thread's boundary: a step it cannot draw never
+                  hides the message box. */}
               <Boundary fallback={null} resetOn={awaited}>
                 {() => (
-                  <>
-                    {/* Always there, so that its text changing is what is announced. */}
-                    <span
-                      className="an-visually-hidden"
-                      role="status"
-                      data-testid="an-at-work"
-                    >
-                      {atWork ? atWorkStatus(atWork.progress?.at(-1)) : ''}
-                    </span>
-                    {awaited && (
-                      <div className="an-atwork">
-                        {/* Keyed: another thread's step never slides out of this one's. */}
-                        {atWork ? (
-                          <CurrentStep key={atWork.id} step={atWork.progress?.at(-1)} />
-                        ) : (
-                          <Waiting
-                            key={awaited.id}
-                            notifiedAt={openingOf(awaited)?.notifiedAt}
-                            reply={isReply(awaited)}
-                          />
-                        )}
-                        {/* Out of the status above: not read again with each change. */}
-                        <IconButton
-                          className="an-atwork-stop"
-                          icon="stop"
-                          label="Stop Claude"
-                          data-testid="an-cancel"
-                          onClick={() =>
-                            void run(() => updateComment(awaited.id, { cancelled: true }))
-                          }
-                        />
-                      </div>
-                    )}
-                  </>
+                  // Always there, so that its text changing is what is announced.
+                  <span
+                    className="an-visually-hidden"
+                    role="status"
+                    data-testid="an-at-work"
+                  >
+                    {atWork ? atWorkStatus(atWork.progress?.at(-1)) : ''}
+                  </span>
                 )}
               </Boundary>
+              {awaited && (
+                <div className="an-atwork">
+                  {/* The button stays out of this boundary: a step that cannot
+                      be drawn leaves the run stoppable. */}
+                  <Boundary
+                    fallback={<div className="an-working">Claude is working on it</div>}
+                    resetOn={awaited}
+                  >
+                    {() =>
+                      // Keyed: another thread's step never slides out of this one's.
+                      atWork ? (
+                        <CurrentStep key={atWork.id} step={atWork.progress?.at(-1)} />
+                      ) : (
+                        <Waiting
+                          key={awaited.id}
+                          notifiedAt={openingOf(awaited)?.notifiedAt}
+                          reply={isReply(awaited)}
+                        />
+                      )
+                    }
+                  </Boundary>
+                  {/* Out of the status above: not read again with each change. */}
+                  <IconButton
+                    className="an-atwork-stop"
+                    icon="stop"
+                    label="Stop Claude"
+                    data-testid="an-cancel"
+                    onClick={() =>
+                      void run(() => updateComment(awaited.id, { cancelled: true }))
+                    }
+                  />
+                </div>
+              )}
               {drafting && (
                 <Composer
                   key={draft.key}

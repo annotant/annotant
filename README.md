@@ -34,7 +34,7 @@ You comment directly on your dev app in the browser: select text, point at an
 element, draw an area, or write about the page or the whole app. For each
 comment, Claude starts a background agent that makes the change, shows you its
 progress live above the message box, and answers in the same thread. Reply to
-follow up; cancel to stop it.
+follow up; stop it whenever you want.
 
 ## How it works
 
@@ -58,8 +58,8 @@ follow up; cancel to stop it.
   own hooks take a per-file lock before every write, so two agents never
   edit the same file at once, and refuse it a Bash command that writes
   files, which no lock could cover. What each agent does (files read and
-  edited, commands, MCP calls, its messages and thinking) shows up live under
-  the comment. The plugin's hooks are a Claude Code
+  edited, commands, MCP calls, its messages and thinking) shows up live above
+  the message box. The plugin's hooks are a Claude Code
   [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/), loaded
   once per session, for the watch; each comment's agent runs a short script
   around each of its tools, and no other agent does.
@@ -297,14 +297,15 @@ next sessions.
   Comments opens that list (or the thread, when only one waits); the thread's
   bubble on the page shows a **?**.
 - While Claude works: right above the message box, an animated strip with
-  what the agent is doing now ("Reading `App.tsx`…", "Thinking…"), its latest
-  steps (files read and edited, commands, searches, MCP calls, failed tools in
-  red, its messages and its thinking), and at its end a square button that
-  stops it. A comment waiting for an agent shows there too, with the same
-  button. Claude Code often hides the thinking itself; its summary shows
+  what the agent is doing now ("Reading `App.tsx`…", "Thinking…"), one step
+  at a time (files read and edited, commands, searches, MCP calls, failed
+  tools in red, its messages and its thinking), and at its end a square
+  button that stops it. A comment waiting for an agent shows there too, with
+  the same button; with no session watching, it has **Cancel** under the
+  thread instead. Claude Code often hides the thinking itself; its summary shows
   when available, for instance with `"showThinkingSummaries": true` in your
   Claude Code settings.
-  Cancelling stops the agent and lists the files it had already changed; edit
+  Stopping the agent lists the files it had already changed; edit
   the comment and send it again to hand it to a new agent.
   The message box stays: a detail you add ("and on mobile too") shows faded
   until the agent gets it, at its next step. One it never got, as it was

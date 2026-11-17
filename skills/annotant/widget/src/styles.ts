@@ -419,7 +419,8 @@ ${COMPONENTS_CSS}
 .an-atwork .an-current-line--out { right: 44px; }
 .an-atwork .an-working { padding: 8px 44px 8px 10px; border-radius: var(--cb-radius); background: var(--cb-accent-weak); }
 .an-atwork-stop { position: absolute; top: 50%; right: 6px; z-index: 2; transform: translateY(-50%); color: var(--cb-accent-strong); }
-.an-atwork-stop:hover { background: var(--cb-accent-tint); }
+/* Its own colour, faded: blue on the strip, red on a failed step, visible in both themes. */
+.an-atwork-stop:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
 /* A full square, as on a player: the line icon alone reads as a checkbox. */
 .an-atwork-stop svg { width: 16px; height: 16px; fill: currentColor; }
 .an-atwork:has(.an-current-line--failed) .an-atwork-stop { color: var(--cb-red); }

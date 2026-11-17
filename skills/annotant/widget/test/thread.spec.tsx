@@ -3,7 +3,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 import { comment, fakeEvents, fakeServer, openPanel, openThread } from './server'
 import { renderWidget, shownStep } from './widget'
 
-test('a claimed comment shows what Claude is doing, and can be cancelled', async () => {
+test('a claimed comment shows what Claude is doing, and can be stopped', async () => {
   const server = fakeServer([
     comment({
       state: 'working',
@@ -514,12 +514,12 @@ test('a step that fails, then the next one, change what is read aloud in place',
   expect(screen.getByTestId('an-at-work')).toBe(status)
 })
 
-test('a step that cannot be drawn hides the sign, not the message box', async () => {
+test('a step that cannot be drawn hides neither the message box nor the stop button', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   onTestFinished(() => {
     vi.restoreAllMocks()
   })
-  fakeServer([
+  const server = fakeServer([
     comment({
       state: 'working',
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a step file written by hand
@@ -531,6 +531,13 @@ test('a step that cannot be drawn hides the sign, not the message box', async ()
 
   expect(await screen.findByPlaceholderText('Add a detail for Claude…')).toBeTruthy()
   expect(screen.queryByTestId('an-progress')).toBeNull()
+  // The strip still says so, and still stops the run.
+  const stop = screen.getByTestId('an-cancel')
+  expect(stop.closest('.an-atwork')?.textContent).toBe('Claude is working on it')
+  fireEvent.click(stop)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
 })
 
 /** The sign that an agent works, when it sits right above the message box. */
@@ -635,6 +642,21 @@ test('a run at work is stopped from the strip, the thread holding no other butto
   expect(sign.closest('.an-atwork')?.contains(stops[0]!)).toBe(true)
   // Out of the status: its name is not read with each change.
   expect(screen.getByTestId('an-at-work').contains(stops[0]!)).toBe(false)
+  fireEvent.click(stops[0]!)
+  await waitFor(() =>
+    expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
+  )
+})
+
+test('with no session watching, a run at work is still stopped from the strip, and only there', async () => {
+  const server = fakeServer([comment({ state: 'working' })], { reachable: false })
+  openThread('c1', 'all')
+  renderWidget()
+
+  const sign = await screen.findByTestId('an-progress')
+  const stops = screen.getAllByTestId('an-cancel')
+  expect(stops).toHaveLength(1)
+  expect(sign.closest('.an-atwork')?.contains(stops[0]!)).toBe(true)
   fireEvent.click(stops[0]!)
   await waitFor(() =>
     expect(server.patches).toEqual([{ id: 'c1', patch: { cancelled: true } }]),
